@@ -55,3 +55,17 @@ GPL-2.0+, unlike the rest of the referenced MAME sources.  Our PC Card
 implementation does not derive from that code; it is a trivial SRAM buffer
 with file-backed persistence, implementing the hardware banking spec
 directly.  The GPL-licensed header was read for reference only.
+
+
+VirtualT Attribution
+====================
+
+The debugging tools (CPU register window, disassembler, memory editor,
+preferences, and remote control) are inspired by VirtualT, a TRS-80
+Model T emulator.
+
+  Copyright 2004-2008 Ken Pettit and Stephen Hurd
+  BSD-2-Clause License
+
+The VirtualT code was used as an architectural reference; the
+dreamulator implementation is original.

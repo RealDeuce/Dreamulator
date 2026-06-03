@@ -16,6 +16,11 @@
 #define V20_DF 0x0400
 #define V20_OF 0x0800
 
+typedef struct v20_trace {
+	uint16_t cs, ip, ax, bx, cx, dx, si, di, bp, sp, ds, es, ss, flags;
+	uint8_t  opcode;
+} v20_trace_t;
+
 typedef struct v20 v20_t;
 
 struct v20 {
@@ -51,10 +56,7 @@ struct v20 {
 	bool     bp_enabled[V20_MAX_BP];
 
 #define V20_TRACE_SIZE 2048
-	struct v20_trace {
-		uint16_t cs, ip, ax, bx, cx, dx, si, di, bp, sp, ds, es, ss, flags;
-		uint8_t  opcode;
-	} trace_buf[V20_TRACE_SIZE];
+	v20_trace_t trace_buf[V20_TRACE_SIZE];
 	int      trace_head;
 	int      trace_count;
 	bool     trace_enabled;

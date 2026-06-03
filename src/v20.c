@@ -1006,7 +1006,7 @@ void v20_reset(v20_t *c)
 
 static void record_trace(v20_t *c, uint8_t opcode)
 {
-	struct v20_trace *t = &c->trace_buf[c->trace_head];
+	v20_trace_t *t = &c->trace_buf[c->trace_head];
 	t->cs = c->cs; t->ip = c->ip; t->opcode = opcode;
 	t->ax = c->ax; t->bx = c->bx; t->cx = c->cx; t->dx = c->dx;
 	t->si = c->si; t->di = c->di; t->bp = c->bp; t->sp = c->sp;

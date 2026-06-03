@@ -23,6 +23,11 @@
 extern "C" {
 #include "machine.h"
 }
+#include "prefs.h"
+#include "dbg_regs.h"
+#include "dbg_dis.h"
+#include "dbg_mem.h"
+#include "remote.h"
 
 #define SCALE       2
 #define MENUBAR_H   25
@@ -37,6 +42,10 @@ static machine_t    g_mach;
 static PaStream    *g_audio;
 #endif
 static int          g_speed = 1;
+static int          g_remote_port = 0;
+static DbgRegsWindow *g_dbg_regs = nullptr;
+static DbgDisWindow  *g_dbg_dis  = nullptr;
+static DbgMemWindow  *g_dbg_mem  = nullptr;
 static char         g_nvram_path[1024];
 static char         g_pccard_path[1024];
 static char         g_floppy_path[1024];
@@ -191,6 +200,34 @@ static void reconnect_uart(int backend, int port, const char *path) {
 }
 
 /* ---- menu callbacks ---- */
+
+/* ---- debug callbacks ---- */
+
+static void debug_monitor_cb(void *)
+{
+	if (g_dbg_regs && g_dbg_regs->visible()) g_dbg_regs->refresh();
+	if (g_dbg_dis && g_dbg_dis->visible()) g_dbg_dis->refresh();
+}
+
+static void cb_show_regs(Fl_Widget *, void *) {
+	if (!g_dbg_regs) g_dbg_regs = new DbgRegsWindow(&g_mach.cpu);
+	g_dbg_regs->show();
+	g_dbg_regs->refresh();
+}
+
+static void cb_show_dis(Fl_Widget *, void *) {
+	if (!g_dbg_dis) g_dbg_dis = new DbgDisWindow(&g_mach.cpu);
+	g_dbg_dis->show();
+	g_dbg_dis->refresh();
+}
+
+static void cb_show_mem(Fl_Widget *, void *) {
+	if (!g_dbg_mem) g_dbg_mem = new DbgMemWindow(&g_mach.cpu);
+	g_dbg_mem->show();
+	g_dbg_mem->refresh();
+}
+
+/* ---- main callbacks ---- */
 
 static void cb_quit(Fl_Widget *, void *) {
 	machine_close_pccard(&g_mach);
@@ -363,6 +400,8 @@ int main(int argc, char *argv[])
 			{ snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", argv[++i]); }
 		else if (!strcmp(argv[i], "--floppy") && i+1 < argc)
 			{ snprintf(g_floppy_path, sizeof(g_floppy_path), "%s", argv[++i]); }
+		else if (!strcmp(argv[i], "--remote") && i+1 < argc)
+			g_remote_port = atoi(argv[++i]);
 		else if (!strcmp(argv[i], "--model") && i+1 < argc)
 			model_name = argv[++i];
 		else if (!strcmp(argv[i], "--bios") && i+1 < argc)
@@ -421,7 +460,8 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "\nUsage: %s [options] [rom]\n"
 				"  --model NAME  --bios VER  --romdir PATH\n"
 				"  --tcp PORT  --serial DEV  --lpt DEV  --ppi DEV\n"
-				"  --pccard FILE  --floppy FILE\n", argv[0]);
+				"  --pccard FILE  --floppy FILE\n"
+			"  --remote PORT\n", argv[0]);
 			return 1;
 		}
 		if (found) {
@@ -456,7 +496,10 @@ int main(int argc, char *argv[])
 	             cent_backend, cent_path);
 	if (g_pccard_path[0]) machine_open_pccard(&g_mach, g_pccard_path);
 	if (g_floppy_path[0]) fdc_load_disk(&g_mach.fdc, g_floppy_path);
+	prefs_init();
 	machine_open_nvram(&g_mach, g_nvram_path);
+	g_mach.cpu.debug_cb = debug_monitor_cb;
+	g_mach.cpu.debug_ctx = nullptr;
 	machine_load_rom(&g_mach, rom_path, rom_entry);
 	machine_reset(&g_mach);
 
@@ -492,6 +535,10 @@ int main(int argc, char *argv[])
 	menu->add("&Serial/Connect Device...", 0, cb_serial_device);
 	menu->add("&Serial/Disconnect",        0, cb_serial_disconnect);
 
+	menu->add("&Debug/CPU Registers",  FL_CTRL+'r', cb_show_regs);
+	menu->add("&Debug/Disassembly",    FL_CTRL+'d', cb_show_dis);
+	menu->add("&Debug/Memory Editor",  FL_CTRL+'m', cb_show_mem);
+
 	menu->add("S&peed/Normal (1x)",   0, cb_speed, (void *)1, FL_MENU_RADIO | FL_MENU_VALUE);
 	menu->add("S&peed/Double (2x)",   0, cb_speed, (void *)2, FL_MENU_RADIO);
 	menu->add("S&peed/Half (0.5x)",   0, cb_speed, (void *)0, FL_MENU_RADIO);
@@ -515,6 +562,9 @@ int main(int argc, char *argv[])
 
 	/* ---- run ---- */
 
+	if (g_remote_port > 0)
+		remote_init(&g_mach, g_remote_port);
+
 	Fl::add_timeout(1.0/60.0, emu_tick, lcd);
 	int ret = Fl::run();
 
@@ -524,6 +574,7 @@ int main(int argc, char *argv[])
 	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); }
 	Pa_Terminate();
 #endif
+	remote_shutdown();
 	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);

@@ -15,6 +15,11 @@ add_executable(dreamulator
     src/uart.c
     src/fdc.c
     src/dis86.c
+    src/prefs.cpp
+    src/dbg_regs.cpp
+    src/dbg_dis.cpp
+    src/dbg_mem.cpp
+    src/remote.cpp
 )
 
 target_include_directories(dreamulator SYSTEM PRIVATE
