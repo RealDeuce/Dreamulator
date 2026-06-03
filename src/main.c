@@ -1,11 +1,15 @@
 #include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "machine.h"
 
-#define SCALE     2
-#define WINDOW_W  (LCD_WIDTH * SCALE)
-#define WINDOW_H  (LCD_HEIGHT * SCALE)
+#define SCALE      2
+#define WINDOW_W   (LCD_WIDTH * SCALE)
+#define WINDOW_H   (LCD_HEIGHT * SCALE)
+#define SAMPLE_RATE 48000
+#define AUDIO_BUF   512
+#define BEEP_VOL    0.05f
 
 struct keymap { SDL_Scancode sc; int row, bit; };
 
@@ -77,6 +81,39 @@ static const struct keymap keymap[] = {
 	{ 0, -1, -1 }
 };
 
+static void audio_callback(void *userdata, Uint8 *stream, int len)
+{
+	machine_t *m = userdata;
+	float *out = (float *)stream;
+	int samples = len / (int)sizeof(float);
+
+	uint16_t divisor = m->buzzer_low | ((uint16_t)m->buzzer_high << 8);
+	float freq = (divisor && m->buzzer_on)
+		? (float)(XTAL / 64) / (float)divisor
+		: 0.0f;
+	float step = freq / (float)SAMPLE_RATE;
+
+	for (int i = 0; i < samples; i++) {
+		if (freq > 0.0f) {
+			out[i] = (m->beeper_phase < 0.5f) ? BEEP_VOL : -BEEP_VOL;
+			m->beeper_phase += step;
+			if (m->beeper_phase >= 1.0f)
+				m->beeper_phase -= 1.0f;
+		} else {
+			out[i] = 0.0f;
+			m->beeper_phase = 0.0f;
+		}
+	}
+}
+
+static char *make_nvram_path(const char *rom_path)
+{
+	size_t len = strlen(rom_path);
+	char *p = malloc(len + 7);
+	if (p) { memcpy(p, rom_path, len); memcpy(p + len, ".nvram", 7); }
+	return p;
+}
+
 int main(int argc, char *argv[])
 {
 	if (argc < 2) {
@@ -84,12 +121,15 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	char *nvram_path = make_nvram_path(argv[1]);
+
 	machine_t m;
 	if (machine_init(&m) != 0) return 1;
 	if (machine_load_rom(&m, argv[1]) != 0) return 1;
+	machine_load_nvram(&m, nvram_path);
 	machine_reset(&m);
 
-	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
 		fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
 		return 1;
 	}
@@ -101,6 +141,20 @@ int main(int argc, char *argv[])
 	SDL_Texture *tex = SDL_CreateTexture(ren,
 		SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
 		LCD_WIDTH, LCD_HEIGHT);
+
+	SDL_AudioSpec want = {0}, have;
+	want.freq     = SAMPLE_RATE;
+	want.format   = AUDIO_F32;
+	want.channels = 1;
+	want.samples  = AUDIO_BUF;
+	want.callback = audio_callback;
+	want.userdata = &m;
+
+	SDL_AudioDeviceID audio_dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
+	if (audio_dev)
+		SDL_PauseAudioDevice(audio_dev, 0);
+	else
+		fprintf(stderr, "Audio init failed: %s\n", SDL_GetError());
 
 	uint32_t pixels[LCD_WIDTH * LCD_HEIGHT];
 	int running = 1;
@@ -151,9 +205,14 @@ int main(int argc, char *argv[])
 			SDL_Delay(16 - elapsed);
 	}
 
+	machine_save_nvram(&m, nvram_path);
+
+	if (audio_dev)
+		SDL_CloseAudioDevice(audio_dev);
 	SDL_DestroyTexture(tex);
 	SDL_DestroyRenderer(ren);
 	SDL_DestroyWindow(win);
 	SDL_Quit();
+	free(nvram_path);
 	return 0;
 }

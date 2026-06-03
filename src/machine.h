@@ -46,6 +46,7 @@ struct machine {
 	uint8_t  buzzer_low;
 	uint8_t  buzzer_high;
 	bool     buzzer_on;
+	float    beeper_phase;
 
 	uint8_t  uart_control;
 
@@ -67,5 +68,7 @@ void machine_render_lcd(machine_t *m, uint32_t *pixels);
 void machine_key_down(machine_t *m, int row, int bit);
 void machine_key_up(machine_t *m, int row, int bit);
 void machine_power_button(machine_t *m, bool pressed);
+int  machine_load_nvram(machine_t *m, const char *path);
+int  machine_save_nvram(machine_t *m, const char *path);
 
 #endif

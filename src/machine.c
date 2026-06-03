@@ -486,3 +486,27 @@ void machine_power_button(machine_t *m, bool pressed)
 	m->irq_active |= 0x01;
 	update_irqs(m);
 }
+
+/* ---- NVRAM ---- */
+
+int machine_load_nvram(machine_t *m, const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	if (!f) return -1;
+
+	size_t n = fread(m->ram, 1, RAM_SIZE, f);
+	fclose(f);
+	fprintf(stderr, "Loaded NVRAM: %zu bytes from %s\n", n, path);
+	return 0;
+}
+
+int machine_save_nvram(machine_t *m, const char *path)
+{
+	FILE *f = fopen(path, "wb");
+	if (!f) { fprintf(stderr, "Cannot write NVRAM: %s\n", path); return -1; }
+
+	fwrite(m->ram, 1, RAM_SIZE, f);
+	fclose(f);
+	fprintf(stderr, "Saved NVRAM: %s\n", path);
+	return 0;
+}
