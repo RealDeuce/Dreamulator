@@ -9,6 +9,7 @@
 #include <FL/Fl_Text_Display.H>
 #include <FL/Fl_Text_Buffer.H>
 #include <cstdio>
+#include <string>
 #include <cstring>
 #include <cstdlib>
 
@@ -150,7 +151,7 @@ void DbgRegsWindow::update_flags()
 
 void DbgRegsWindow::update_trace()
 {
-	m_trace_buf->text("");
+	std::string text;
 	char line[256];
 	int count = m_cpu->trace_count;
 
@@ -171,8 +172,9 @@ void DbgRegsWindow::update_trace()
 
 		snprintf(line, sizeof(line), "%04X:%04X  %-28s AX=%04X BX=%04X CX=%04X DX=%04X\n",
 			t->cs, t->ip, dis, t->ax, t->bx, t->cx, t->dx);
-		m_trace_buf->append(line);
+		text += line;
 	}
+	m_trace_buf->text(text.c_str());
 }
 
 void DbgRegsWindow::write_regs()

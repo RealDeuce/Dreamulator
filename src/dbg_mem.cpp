@@ -8,6 +8,7 @@
 #include <FL/Fl_Text_Display.H>
 #include <FL/Fl_Text_Buffer.H>
 #include <cstdio>
+#include <string>
 #include <cstring>
 #include <cstdlib>
 #include <cctype>
@@ -60,7 +61,7 @@ void DbgMemWindow::goto_addr(uint32_t addr)
 
 void DbgMemWindow::render()
 {
-	m_buf->text("");
+	std::string text;
 	char line[128];
 	int lines = 32;
 
@@ -83,8 +84,9 @@ void DbgMemWindow::render()
 		}
 		line[p++] = '\n';
 		line[p] = 0;
-		m_buf->append(line);
+		text += line;
 	}
+	m_buf->text(text.c_str());
 }
 
 void DbgMemWindow::cb_goto(Fl_Widget*, void *data)

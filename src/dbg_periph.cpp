@@ -8,6 +8,7 @@
 #include <FL/Fl_Text_Display.H>
 #include <FL/Fl_Text_Buffer.H>
 #include <cstdio>
+#include <string>
 #include <cstring>
 #include <ctime>
 #include <sys/time.h>
@@ -85,9 +86,8 @@ void periph_log_io_write(uint16_t port, uint8_t val)
 
 static void format_serial(Fl_Text_Buffer *buf, log_entry *ring, int head, int count)
 {
-	buf->text("");
+	std::string text;
 	char line[128];
-	int start = (head - count + LOG_MAX) % LOG_MAX;
 	int show = count < 500 ? count : 500;
 	int begin = (head - show + LOG_MAX) % LOG_MAX;
 
@@ -97,13 +97,14 @@ static void format_serial(Fl_Text_Buffer *buf, log_entry *ring, int head, int co
 		const char *dir = (e->flags == F_TX) ? "TX" : "RX";
 		char ch = (e->val >= 0x20 && e->val < 0x7f) ? (char)e->val : '.';
 		snprintf(line, sizeof(line), "%s %02X '%c'\n", dir, e->val, ch);
-		buf->append(line);
+		text += line;
 	}
+	buf->text(text.c_str());
 }
 
 static void format_parallel(Fl_Text_Buffer *buf, log_entry *ring, int head, int count)
 {
-	buf->text("");
+	std::string text;
 	char line[128];
 	int show = count < 500 ? count : 500;
 	int begin = (head - show + LOG_MAX) % LOG_MAX;
@@ -113,13 +114,14 @@ static void format_parallel(Fl_Text_Buffer *buf, log_entry *ring, int head, int 
 		log_entry *e = &ring[idx];
 		char ch = (e->val >= 0x20 && e->val < 0x7f) ? (char)e->val : '.';
 		snprintf(line, sizeof(line), "OUT %02X '%c'\n", e->val, ch);
-		buf->append(line);
+		text += line;
 	}
+	buf->text(text.c_str());
 }
 
 static void format_io(Fl_Text_Buffer *buf, log_entry *ring, int head, int count)
 {
-	buf->text("");
+	std::string text;
 	char line[128];
 	int show = count < 500 ? count : 500;
 	int begin = (head - show + LOG_MAX) % LOG_MAX;
@@ -129,8 +131,9 @@ static void format_io(Fl_Text_Buffer *buf, log_entry *ring, int head, int count)
 		log_entry *e = &ring[idx];
 		const char *dir = (e->flags == F_IO_R) ? "IN " : "OUT";
 		snprintf(line, sizeof(line), "%s  %04X = %02X\n", dir, e->port, e->val);
-		buf->append(line);
+		text += line;
 	}
+	buf->text(text.c_str());
 }
 
 /* ---- window ---- */

@@ -8,6 +8,7 @@
 #include <FL/Fl_Text_Display.H>
 #include <FL/Fl_Text_Buffer.H>
 #include <cstdio>
+#include <string>
 #include <cstring>
 #include <cstdlib>
 
@@ -75,7 +76,7 @@ void DbgDisWindow::goto_addr(uint16_t seg, uint16_t off)
 
 void DbgDisWindow::disassemble_region()
 {
-	m_buf->text("");
+	std::string text;
 	char line[256], dis[128];
 	uint16_t off = m_off;
 
@@ -95,9 +96,10 @@ void DbgDisWindow::disassemble_region()
 		char marker = (m_seg == m_cpu->cs && off == m_cpu->ip) ? '>' : ' ';
 		snprintf(line, sizeof(line), "%c%04X:%04X  %-18s %s\n",
 			marker, m_seg, off, hex, dis);
-		m_buf->append(line);
+		text += line;
 		off += (uint16_t)len;
 	}
+	m_buf->text(text.c_str());
 }
 
 void DbgDisWindow::cb_goto(Fl_Widget*, void *data)
