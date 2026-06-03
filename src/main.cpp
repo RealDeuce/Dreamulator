@@ -264,12 +264,6 @@ static void cb_insert_floppy(Fl_Widget *, void *) {
 }
 
 static void cb_new_floppy(Fl_Widget *, void *) {
-	static const struct { const char *label; uint32_t size; } fmts[] = {
-		{"1.44 MB HD (18 spt)", 80*2*18*512},
-		{"720 KB DD (9 spt)",   80*2*9*512},
-	};
-	int choice = fl_choice("Floppy format?", "1.44 MB HD", "720 KB DD", nullptr);
-
 	const char *path = fl_file_chooser("Save New Floppy As", "*.img", "floppy.img");
 	if (!path) return;
 
@@ -277,8 +271,7 @@ static void cb_new_floppy(Fl_Widget *, void *) {
 	if (!f) { fl_alert("Cannot create %s", path); return; }
 	uint8_t zero[512];
 	memset(zero, 0, sizeof(zero));
-	uint32_t sectors = fmts[choice].size / 512;
-	for (uint32_t i = 0; i < sectors; i++) fwrite(zero, 1, 512, f);
+	for (int i = 0; i < 80 * 2 * 18; i++) fwrite(zero, 1, 512, f);
 	fclose(f);
 
 	open_floppy(path);
