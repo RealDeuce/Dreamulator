@@ -106,6 +106,8 @@ int machine_init(machine_t *m, const model_t *model,
 	m->model = model;
 	m->ram_size = model->ram_size;
 	m->lcd_height = model->lcd_height;
+	m->rom = nullptr;
+	m->rom_fd = -1;
 	m->nvram_fd = -1;
 	m->bank_bit3_selects_ram = model->bank_bit3_selects_ram;
 	m->cent_backend = cent_backend;
@@ -167,30 +169,47 @@ void machine_reset(machine_t *m)
 
 int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 {
-	FILE *f = fopen(path, "rb");
-	if (!f) { fprintf(stderr, "Cannot open ROM: %s\n", path); return -1; }
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) { fprintf(stderr, "Cannot open ROM: %s\n", path); return -1; }
 
-	uint8_t buf[ROM_SIZE];
-	size_t n = fread(buf, 1, ROM_SIZE, f);
-	fclose(f);
+	struct stat st;
+	fstat(fd, &st);
+	size_t filesz = (size_t)st.st_size;
 
-	uint32_t crc = crc32_buf(buf, n);
-	const rom_entry_t *detected = rom_find_by_crc(crc);
-
-	memset(m->rom, 0xFF, ROM_SIZE);
-	if (entry) {
-		if (n <= ROM_SIZE - entry->load_offset)
-			memcpy(m->rom + entry->load_offset, buf, n);
-	} else if (detected) {
-		if (n <= ROM_SIZE - detected->load_offset)
-			memcpy(m->rom + detected->load_offset, buf, n);
-		entry = detected;
-	} else {
-		memcpy(m->rom, buf, n);
+	uint8_t *filebuf = (uint8_t *)mmap(nullptr, filesz, PROT_READ,
+	                                   MAP_PRIVATE, fd, 0);
+	if (filebuf == MAP_FAILED) {
+		fprintf(stderr, "ROM: mmap failed for %s\n", path);
+		close(fd);
+		return -1;
 	}
 
+	uint32_t crc = crc32_buf(filebuf, filesz);
+	const rom_entry_t *detected = rom_find_by_crc(crc);
+
+	m->rom = (uint8_t *)mmap(nullptr, ROM_SIZE, PROT_READ | PROT_WRITE,
+	                         MAP_PRIVATE | MAP_ANON, -1, 0);
+	if (m->rom == MAP_FAILED) {
+		m->rom = nullptr;
+		munmap(filebuf, filesz);
+		close(fd);
+		return -1;
+	}
+	m->rom_fd = fd;
+	memset(m->rom, 0xFF, ROM_SIZE);
+
+	uint32_t offset = 0;
+	if (entry) offset = entry->load_offset;
+	else if (detected) { offset = detected->load_offset; entry = detected; }
+
+	if (filesz <= ROM_SIZE - offset)
+		memcpy(m->rom + offset, filebuf, filesz);
+
+	munmap(filebuf, filesz);
+	mprotect(m->rom, ROM_SIZE, PROT_READ);
+
 	if (detected)
-		fprintf(stderr, "ROM: %s %s%s%s (CRC %08x)\n",
+		fprintf(stderr, "ROM: %s %s%s%s (CRC %08x, mmap)\n",
 			detected->model,
 			detected->bios ? "(" : "",
 			detected->bios ? detected->bios : "",
@@ -198,7 +217,7 @@ int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 			crc);
 	else
 		fprintf(stderr, "ROM: unknown (CRC %08x), %zu bytes from %s\n",
-			crc, n, path);
+			crc, filesz, path);
 
 	return 0;
 }
@@ -764,6 +783,18 @@ int machine_open_nvram(machine_t *m, const char *path)
 	m->nvram_fd = fd;
 	fprintf(stderr, "NVRAM: %s (%u KB, mmap)\n", path, m->ram_size / 1024);
 	return 0;
+}
+
+void machine_close_rom(machine_t *m)
+{
+	if (m->rom) {
+		munmap(m->rom, ROM_SIZE);
+		m->rom = nullptr;
+	}
+	if (m->rom_fd >= 0) {
+		close(m->rom_fd);
+		m->rom_fd = -1;
+	}
 }
 
 void machine_close_nvram(machine_t *m)

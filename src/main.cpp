@@ -256,6 +256,7 @@ static void cleanup_and_exit(int code) {
 #endif
 	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
+	machine_close_rom(&g_mach);
 	fdc_destroy(&g_mach.fdc);
 	uart_destroy(&g_mach.uart);
 	exit(code);

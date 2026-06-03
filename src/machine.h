@@ -60,7 +60,8 @@ struct machine_t {
 	const model_t *model;
 	v20_t    cpu;
 
-	uint8_t  rom[ROM_SIZE];
+	uint8_t  *rom;
+	int      rom_fd;
 	uint8_t  *ram;
 	uint32_t ram_size;
 	int      nvram_fd;
@@ -124,6 +125,7 @@ void machine_render_lcd(machine_t *m, uint32_t *pixels);
 void machine_key_down(machine_t *m, int row, int bit);
 void machine_key_up(machine_t *m, int row, int bit);
 void machine_power_button(machine_t *m, bool pressed);
+void machine_close_rom(machine_t *m);
 int  machine_open_nvram(machine_t *m, const char *path);
 void machine_close_nvram(machine_t *m);
 int  machine_open_pccard(machine_t *m, const char *path);
