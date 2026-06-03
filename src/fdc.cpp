@@ -133,7 +133,7 @@ static void finish_command(fdc_t *f)
 
 	case 0x0d: /* FORMAT TRACK */
 		f->data_pos = 0;
-		f->data_remaining = f->cmd[3] * 4;
+		f->data_remaining = (f->cmd[3] > FDC_SECTORS ? FDC_SECTORS : f->cmd[3]) * 4;
 		f->data_is_read = false;
 		f->phase = FDC_EXEC;
 		break;
@@ -301,7 +301,9 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 
 		/* data write phase */
 		if (f->phase == FDC_EXEC && !f->data_is_read) {
-			f->sec_buf[f->data_pos++] = data;
+			if ((f->cmd[0] & 0x1f) != 0x0d)
+				f->sec_buf[f->data_pos] = data;
+			f->data_pos++;
 			f->data_remaining--;
 			if (f->data_remaining <= 0)
 				data_complete(f);
@@ -329,7 +331,7 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 				f->shim_reads = sector_size(f->cmd[5], f->cmd[8]);
 				break;
 			case 0x0d:
-				f->shim_writes = f->cmd[3] * 4;
+				f->shim_writes = (f->cmd[3] > FDC_SECTORS ? FDC_SECTORS : f->cmd[3]) * 4;
 				break;
 			}
 			finish_command(f);

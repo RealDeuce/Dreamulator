@@ -204,15 +204,21 @@ static void emu_tick(void *)
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, nullptr);
 }
 
-static void reconnect_uart(int backend, int port, const char *path) {
+static bool reconnect_uart(int backend, int port, const char *path) {
 	auto saved_txrdy = g_mach.uart.txrdy_cb;
 	auto saved_rxrdy = g_mach.uart.rxrdy_cb;
 	auto saved_ctx   = g_mach.uart.cb_ctx;
 	uart_destroy(&g_mach.uart);
-	uart_init(&g_mach.uart, backend, port, path);
+	if (uart_init(&g_mach.uart, backend, port, path) < 0) {
+		g_mach.uart.txrdy_cb = saved_txrdy;
+		g_mach.uart.rxrdy_cb = saved_rxrdy;
+		g_mach.uart.cb_ctx   = saved_ctx;
+		return false;
+	}
 	g_mach.uart.txrdy_cb = saved_txrdy;
 	g_mach.uart.rxrdy_cb = saved_rxrdy;
 	g_mach.uart.cb_ctx   = saved_ctx;
+	return true;
 }
 
 /* ---- menu callbacks ---- */
@@ -541,7 +547,10 @@ static void cb_battery(Fl_Widget *, void *v) {
 static void open_pccard(const char *path) {
 	machine_close_pccard(&g_mach);
 	snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", path);
-	machine_open_pccard(&g_mach, g_pccard_path);
+	if (machine_open_pccard(&g_mach, g_pccard_path) < 0) {
+		g_pccard_path[0] = 0;
+		fl_alert("Cannot open PC Card %s", path);
+	}
 }
 
 static void cb_insert_pccard(Fl_Widget *, void *) {
@@ -622,23 +631,29 @@ static void cb_printer_file(Fl_Widget *, void *) {
 }
 
 static void cb_serial_pty(Fl_Widget *, void *) {
-	reconnect_uart(UART_PTY, 0, nullptr);
-	fl_message("Serial PTY: %s", g_mach.uart.path.c_str());
+	if (reconnect_uart(UART_PTY, 0, nullptr))
+		fl_message("Serial PTY: %s", g_mach.uart.path.c_str());
+	else
+		fl_alert("Cannot open serial PTY");
 }
 
 static void cb_serial_tcp(Fl_Widget *, void *) {
 	const char *port = fl_input("TCP port:", "9600");
 	if (port) {
-		reconnect_uart(UART_TCP, atoi(port), nullptr);
-		fl_message("Serial TCP: %s", g_mach.uart.path.c_str());
+		if (reconnect_uart(UART_TCP, atoi(port), nullptr))
+			fl_message("Serial TCP: %s", g_mach.uart.path.c_str());
+		else
+			fl_alert("Cannot listen on TCP port %s", port);
 	}
 }
 
 static void cb_serial_device(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Serial Device", "*", "/dev/cuau0");
 	if (path) {
-		reconnect_uart(UART_SERIAL, 0, path);
-		fl_message("Serial: %s", g_mach.uart.path.c_str());
+		if (reconnect_uart(UART_SERIAL, 0, path))
+			fl_message("Serial: %s", g_mach.uart.path.c_str());
+		else
+			fl_alert("Cannot open serial device %s", path);
 	}
 }
 
@@ -790,15 +805,33 @@ int main(int argc, char *argv[])
 
 	make_nvram_path(rom_path, g_nvram_path, sizeof(g_nvram_path));
 
-	machine_init(&g_mach, g_model, uart_backend, tcp_port, serial_path,
-	             cent_backend, cent_path);
-	if (g_pccard_path[0]) machine_open_pccard(&g_mach, g_pccard_path);
-	if (g_floppy_path[0]) fdc_load_disk(&g_mach.fdc, g_floppy_path);
+	if (machine_init(&g_mach, g_model, uart_backend, tcp_port, serial_path,
+	                 cent_backend, cent_path) < 0) {
+		fprintf(stderr, "Machine: initialization failed\n");
+		uart_destroy(&g_mach.uart);
+		return 1;
+	}
+	if (g_floppy_path[0] && fdc_load_disk(&g_mach.fdc, g_floppy_path) < 0)
+		fprintf(stderr, "FDC: cannot open %s\n", g_floppy_path);
 	prefs_init();
-	machine_open_nvram(&g_mach, g_nvram_path);
+	if (machine_open_nvram(&g_mach, g_nvram_path) < 0) {
+		fprintf(stderr, "NVRAM: cannot allocate RAM\n");
+		fdc_destroy(&g_mach.fdc);
+		uart_destroy(&g_mach.uart);
+		return 1;
+	}
 	g_mach.cpu.debug_cb = debug_monitor_cb;
 	g_mach.cpu.debug_ctx = nullptr;
-	machine_load_rom(&g_mach, rom_path, rom_entry);
+	if (machine_load_rom(&g_mach, rom_path, rom_entry) < 0) {
+		machine_close_nvram(&g_mach);
+		fdc_destroy(&g_mach.fdc);
+		uart_destroy(&g_mach.uart);
+		return 1;
+	}
+	if (g_pccard_path[0] && machine_open_pccard(&g_mach, g_pccard_path) < 0) {
+		fprintf(stderr, "PC Card: cannot open %s\n", g_pccard_path);
+		g_pccard_path[0] = 0;
+	}
 	machine_reset(&g_mach);
 
 	/* ---- FLTK window ---- */

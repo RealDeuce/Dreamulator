@@ -3,3 +3,4 @@
 *.nvram
 printer.out
 /build/
+/card.bin

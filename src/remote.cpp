@@ -37,7 +37,9 @@ static void rsend(const char *fmt, ...)
 	va_start(ap, fmt);
 	int n = vsnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
-	(void)write(g_client_fd, buf, n);
+	if (n <= 0) return;
+	size_t len = (n >= (int)sizeof(buf)) ? sizeof(buf) - 1 : (size_t)n;
+	(void)write(g_client_fd, buf, len);
 }
 
 static void process_command(const char *cmd)

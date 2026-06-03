@@ -188,8 +188,10 @@ int uart_init(uart_t *u, int backend, int tcp_port, const char *serial_path)
 	default:          rc = open_pty(u); break;
 	}
 
-	if (rc < 0)
+	if (rc < 0) {
 		fprintf(stderr, "UART: backend init failed\n");
+		return -1;
+	}
 
 	uart_reset(u);
 	return 0;

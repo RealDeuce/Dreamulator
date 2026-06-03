@@ -133,7 +133,8 @@ int machine_init(machine_t *m, const model_t *model,
 
 	m->kb_timer_period = CPU_CLOCK / (XTAL / 20480);
 
-	uart_init(&m->uart, uart_backend, tcp_port, serial_path);
+	if (uart_init(&m->uart, uart_backend, tcp_port, serial_path) < 0)
+		return -1;
 	fdc_init(&m->fdc);
 	m->uart.txrdy_cb = uart_txrdy_cb;
 	m->uart.rxrdy_cb = uart_rxrdy_cb;
@@ -203,8 +204,18 @@ int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 	if (entry) offset = entry->load_offset;
 	else if (detected) { offset = detected->load_offset; entry = detected; }
 
-	if (filesz <= ROM_SIZE - offset)
-		memcpy(m->rom + offset, filebuf, filesz);
+	if (offset > ROM_SIZE || filesz > ROM_SIZE - offset) {
+		fprintf(stderr, "ROM: %s is too large for load offset 0x%05x (%zu bytes)\n",
+		        path, offset, filesz);
+		munmap(filebuf, filesz);
+		munmap(m->rom, ROM_SIZE);
+		m->rom = nullptr;
+		close(fd);
+		m->rom_fd = -1;
+		return -1;
+	}
+
+	memcpy(m->rom + offset, filebuf, filesz);
 
 	munmap(filebuf, filesz);
 	mprotect(m->rom, ROM_SIZE, PROT_READ);
