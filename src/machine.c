@@ -593,8 +593,25 @@ void machine_power_button(machine_t *m, bool pressed)
 		return;
 	}
 
-	m->irq_active |= 0x01;
-	update_irqs(m);
+	uint16_t nmi_off = mem_read(m, 0x0008) | ((uint16_t)mem_read(m, 0x0009) << 8);
+	uint16_t nmi_seg = mem_read(m, 0x000A) | ((uint16_t)mem_read(m, 0x000B) << 8);
+	uint16_t f8_off  = mem_read(m, 0x03E0) | ((uint16_t)mem_read(m, 0x03E1) << 8);
+	uint16_t f8_seg  = mem_read(m, 0x03E2) | ((uint16_t)mem_read(m, 0x03E3) << 8);
+
+	uint16_t f8_handler = f8_off;
+	uint32_t f8_phys = ((uint32_t)f8_seg << 4) + f8_off;
+	if (f8_phys <= 0xFFFFD && mem_read(m, f8_phys) == 0xE9) {
+		int16_t disp = (int16_t)(mem_read(m, f8_phys + 1) |
+		               ((uint16_t)mem_read(m, f8_phys + 2) << 8));
+		f8_handler = (uint16_t)(f8_off + 3 + disp);
+	}
+
+	if (nmi_seg == f8_seg && nmi_off == f8_handler)
+		v20_nmi(&m->cpu, true);
+	else {
+		m->irq_active |= 0x01;
+		update_irqs(m);
+	}
 }
 
 /* ---- NVRAM ---- */
