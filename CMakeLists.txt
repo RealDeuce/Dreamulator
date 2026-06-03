@@ -14,6 +14,7 @@ add_executable(dreamulator
     src/machine.c
     src/uart.c
     src/fdc.c
+    src/dis86.c
 )
 
 target_include_directories(dreamulator SYSTEM PRIVATE

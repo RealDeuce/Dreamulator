@@ -40,6 +40,27 @@ struct v20 {
 	uint8_t  (*io_read)(void *ctx, uint16_t port);
 	void     (*io_write)(void *ctx, uint16_t port, uint8_t val);
 	void     *ctx;
+
+	/* debug */
+	bool     debug_stop;
+	bool     debug_step;
+
+#define V20_MAX_BP 8
+	uint16_t bp_seg[V20_MAX_BP];
+	uint16_t bp_off[V20_MAX_BP];
+	bool     bp_enabled[V20_MAX_BP];
+
+#define V20_TRACE_SIZE 2048
+	struct v20_trace {
+		uint16_t cs, ip, ax, bx, cx, dx, si, di, bp, sp, ds, es, ss, flags;
+		uint8_t  opcode;
+	} trace_buf[V20_TRACE_SIZE];
+	int      trace_head;
+	int      trace_count;
+	bool     trace_enabled;
+
+	void     (*debug_cb)(void *debug_ctx);
+	void     *debug_ctx;
 };
 
 void v20_init(v20_t *cpu);

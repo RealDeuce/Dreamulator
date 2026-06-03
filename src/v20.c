@@ -1004,13 +1004,52 @@ void v20_reset(v20_t *c)
 	c->seg_override = -1;
 }
 
+static void record_trace(v20_t *c, uint8_t opcode)
+{
+	struct v20_trace *t = &c->trace_buf[c->trace_head];
+	t->cs = c->cs; t->ip = c->ip; t->opcode = opcode;
+	t->ax = c->ax; t->bx = c->bx; t->cx = c->cx; t->dx = c->dx;
+	t->si = c->si; t->di = c->di; t->bp = c->bp; t->sp = c->sp;
+	t->ds = c->ds; t->es = c->es; t->ss = c->ss; t->flags = c->flags;
+	c->trace_head = (c->trace_head + 1) % V20_TRACE_SIZE;
+	if (c->trace_count < V20_TRACE_SIZE) c->trace_count++;
+}
+
+static bool check_breakpoints(v20_t *c)
+{
+	for (int i = 0; i < V20_MAX_BP; i++)
+		if (c->bp_enabled[i] && c->cs == c->bp_seg[i] && c->ip == c->bp_off[i])
+			return true;
+	return false;
+}
+
 int v20_exec(v20_t *c, int target)
 {
 	int done = 0;
 	while (done < target) {
+		if (c->debug_stop && !c->debug_step) {
+			done = target;
+			break;
+		}
+
 		check_irq(c);
 		if (c->halted) { done = target; break; }
+
+		if (c->trace_enabled)
+			record_trace(c, c->mem_read(c->ctx, ((uint32_t)c->cs << 4) + c->ip));
+
 		done += exec_one(c);
+
+		if (c->debug_step) {
+			c->debug_step = false;
+			c->debug_stop = true;
+		}
+
+		if (check_breakpoints(c))
+			c->debug_stop = true;
+
+		if (c->debug_cb && (c->debug_stop || c->trace_enabled))
+			c->debug_cb(c->debug_ctx);
 	}
 	return done;
 }
