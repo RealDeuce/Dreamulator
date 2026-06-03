@@ -1,6 +1,7 @@
 #ifndef MACHINE_H
 #define MACHINE_H
 
+#include <stddef.h>
 #include "v20.h"
 #include "uart.h"
 
@@ -28,6 +29,21 @@ typedef struct {
 extern const model_t models[];
 extern const int     model_count;
 const model_t *model_find(const char *name);
+
+typedef struct {
+	const char *model;
+	const char *bios;
+	const char *filename;
+	uint32_t    crc32;
+	uint32_t    size;
+	uint32_t    load_offset;
+} rom_entry_t;
+
+extern const rom_entry_t rom_db[];
+extern const int          rom_db_count;
+const rom_entry_t *rom_find_by_crc(uint32_t crc);
+const rom_entry_t *rom_find_for_model(const char *model, const char *bios);
+uint32_t crc32_buf(const uint8_t *data, size_t len);
 
 typedef struct {
 	uint8_t  reg[2][13];
@@ -94,7 +110,8 @@ int  machine_init(machine_t *m, const model_t *model,
                   const char *serial_path,
                   int cent_backend, const char *cent_path);
 void machine_reset(machine_t *m);
-int  machine_load_rom(machine_t *m, const char *path);
+int  machine_load_rom(machine_t *m, const char *path,
+                      const rom_entry_t *entry);
 void machine_step(machine_t *m, int cycles);
 void machine_render_lcd(machine_t *m, uint32_t *pixels);
 void machine_key_down(machine_t *m, int row, int bit);

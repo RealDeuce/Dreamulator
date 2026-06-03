@@ -33,6 +33,54 @@ const model_t *model_find(const char *name)
 	return NULL;
 }
 
+/* ---- ROM database ---- */
+
+const rom_entry_t rom_db[] = {
+	{ "wales210", NULL,    "wales210.ic303",        0xa8e8d991, 0x80000,  0 },
+	{ "dw325",    "v1.02", "dr3_1_02uk.ic303",     0x027db9fe, 0x80000,  0 },
+	{ "dw325",    "v1.03", "dr3_1_03.ic303",       0x21fd074e, 0x80000,  0 },
+	{ "dw325",    "v2.0",  "nts_325_basic.ic303",  0xfeb40854, 0x80000,  0 },
+	{ "dator3k",  NULL,    "dator3000.ic303",       0xb67fffeb, 0x80000,  0 },
+	{ "es210_es", NULL,    "nakajima_es.ic303",     0x214d73ce, 0x80000,  0 },
+	{ "dwT100",   "v2.3",  "t100_2.3.ic303",       0x8a16f12f, 0x80000,  0 },
+	{ "dwT200",   NULL,    "drwrt200.bin",          0x3c39483c, 0x100000, 0 },
+	{ "dwT400",   "v3.1",  "t4_ir_3.1_e588.ic303", 0x1724ceb2, 0x100000, 0 },
+	{ "dwT400",   "v2.1",  "t4_ir_2.1.ic303",      0xf0f45fd2, 0x80000,  0x80000 },
+	{ "dw450",    NULL,    "t4_ir_35ba308.ic303",   0x3b5a580d, 0x100000, 0 },
+};
+const int rom_db_count = sizeof(rom_db) / sizeof(rom_db[0]);
+
+const rom_entry_t *rom_find_by_crc(uint32_t crc)
+{
+	for (int i = 0; i < rom_db_count; i++)
+		if (rom_db[i].crc32 == crc)
+			return &rom_db[i];
+	return NULL;
+}
+
+const rom_entry_t *rom_find_for_model(const char *model, const char *bios)
+{
+	const rom_entry_t *fallback = NULL;
+	for (int i = 0; i < rom_db_count; i++) {
+		if (strcmp(rom_db[i].model, model) != 0) continue;
+		if (bios && rom_db[i].bios && strcmp(rom_db[i].bios, bios) == 0)
+			return &rom_db[i];
+		if (!fallback) fallback = &rom_db[i];
+	}
+	return fallback;
+}
+
+uint32_t crc32_buf(const uint8_t *data, size_t len)
+{
+	uint32_t crc = 0xFFFFFFFF;
+	for (size_t i = 0; i < len; i++) {
+		crc ^= data[i];
+		for (int j = 0; j < 8; j++)
+			crc = (crc >> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+	}
+	return ~crc;
+}
+
 static uint8_t mem_read(void *ctx, uint32_t addr);
 static void    mem_write(void *ctx, uint32_t addr, uint8_t val);
 static uint8_t io_read(void *ctx, uint16_t port);
@@ -110,21 +158,40 @@ void machine_reset(machine_t *m)
 		update_bank(m, i);
 }
 
-int machine_load_rom(machine_t *m, const char *path)
+int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 {
 	FILE *f = fopen(path, "rb");
 	if (!f) { fprintf(stderr, "Cannot open ROM: %s\n", path); return -1; }
 
-	memset(m->rom, 0xFF, ROM_SIZE);
-	size_t n = fread(m->rom, 1, ROM_SIZE, f);
+	uint8_t buf[ROM_SIZE];
+	size_t n = fread(buf, 1, ROM_SIZE, f);
 	fclose(f);
 
-	if (n == ROM_SIZE / 2) {
-		memmove(m->rom + ROM_SIZE / 2, m->rom, ROM_SIZE / 2);
-		memset(m->rom, 0xFF, ROM_SIZE / 2);
+	uint32_t crc = crc32_buf(buf, n);
+	const rom_entry_t *detected = rom_find_by_crc(crc);
+
+	memset(m->rom, 0xFF, ROM_SIZE);
+	if (entry) {
+		if (n <= ROM_SIZE - entry->load_offset)
+			memcpy(m->rom + entry->load_offset, buf, n);
+	} else if (detected) {
+		memcpy(m->rom + detected->load_offset, buf, n);
+		entry = detected;
+	} else {
+		memcpy(m->rom, buf, n);
 	}
 
-	fprintf(stderr, "Loaded %zu bytes from %s\n", n, path);
+	if (detected)
+		fprintf(stderr, "ROM: %s %s%s%s (CRC %08x)\n",
+			detected->model,
+			detected->bios ? "(" : "",
+			detected->bios ? detected->bios : "",
+			detected->bios ? ")" : "",
+			crc);
+	else
+		fprintf(stderr, "ROM: unknown (CRC %08x), %zu bytes from %s\n",
+			crc, n, path);
+
 	return 0;
 }
 

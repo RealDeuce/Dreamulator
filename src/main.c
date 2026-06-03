@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "machine.h"
 
 #define SCALE       2
@@ -123,7 +125,9 @@ int main(int argc, char *argv[])
 	int cent_backend = CENT_FILE;
 	const char *cent_path = NULL;
 	const char *pccard_path = NULL;
-	const char *model_name = "dwT400";
+	const char *model_name = NULL;
+	const char *bios_name = NULL;
+	const char *romdir = NULL;
 	const char *rom_path = NULL;
 
 	for (int i = 1; i < argc; i++) {
@@ -143,27 +147,136 @@ int main(int argc, char *argv[])
 			pccard_path = argv[++i];
 		} else if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
 			model_name = argv[++i];
+		} else if (strcmp(argv[i], "--bios") == 0 && i + 1 < argc) {
+			bios_name = argv[++i];
+		} else if (strcmp(argv[i], "--romdir") == 0 && i + 1 < argc) {
+			romdir = argv[++i];
+		} else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+			rom_path = NULL;
+			model_name = NULL;
+			goto usage;
 		} else if (!rom_path) {
 			rom_path = argv[i];
 		}
 	}
 
+	/* ---- resolve romdir ---- */
+	if (!romdir) {
+		struct stat st;
+		if (stat("roms", &st) == 0 && S_ISDIR(st.st_mode))
+			romdir = "roms";
+		else if (stat("../roms", &st) == 0 && S_ISDIR(st.st_mode))
+			romdir = "../roms";
+	}
+
+	/* ---- scan romdir for known ROMs ---- */
+	if (!rom_path && romdir) {
+		const rom_entry_t *found = NULL;
+		static char found_path[1024];
+		DIR *d = opendir(romdir);
+		if (d) {
+			struct dirent *de;
+			while ((de = readdir(d)) != NULL) {
+				for (int i = 0; i < rom_db_count; i++) {
+					if (strcmp(de->d_name, rom_db[i].filename) != 0)
+						continue;
+					if (model_name && strcmp(rom_db[i].model, model_name) != 0)
+						continue;
+					if (bios_name && rom_db[i].bios &&
+					    strcmp(rom_db[i].bios, bios_name) != 0)
+						continue;
+					if (!model_name && !found) {
+						/* listing mode — print all */
+					}
+					if (found && model_name) break;
+					found = &rom_db[i];
+					snprintf(found_path, sizeof(found_path),
+						"%s/%s", romdir, de->d_name);
+				}
+			}
+			closedir(d);
+		}
+
+		if (!model_name && !rom_path) {
+			/* list mode */
+			fprintf(stderr, "Available ROMs");
+			if (romdir) fprintf(stderr, " in %s", romdir);
+			fprintf(stderr, ":\n");
+			int any = 0;
+			if (romdir) {
+				d = opendir(romdir);
+				if (d) {
+					struct dirent *de2;
+					while ((de2 = readdir(d)) != NULL) {
+						for (int i = 0; i < rom_db_count; i++) {
+							if (strcmp(de2->d_name, rom_db[i].filename) != 0)
+								continue;
+							const model_t *md = model_find(rom_db[i].model);
+							fprintf(stderr, "  %-10s %-6s  %s  (%s)\n",
+								rom_db[i].model,
+								rom_db[i].bios ? rom_db[i].bios : "",
+								de2->d_name,
+								md ? md->description : "");
+							any = 1;
+						}
+					}
+					closedir(d);
+				}
+			}
+			if (!any)
+				fprintf(stderr, "  (none found)\n");
+usage:
+			fprintf(stderr, "\nUsage: %s [options] [rom]\n"
+				"  --model NAME      Machine model (default: auto-detect)\n"
+				"  --bios VER        BIOS version (e.g. v3.1, v2.1)\n"
+				"  --romdir PATH     ROM search directory\n"
+				"  --tcp PORT        UART via TCP\n"
+				"  --serial DEV      UART via serial device\n"
+				"  --lpt DEV         Centronics via lpt device\n"
+				"  --ppi DEV         Centronics via ppi device\n"
+				"  --pccard FILE     PC Card SRAM image\n"
+				"\nModels: ", argv[0]);
+			for (int i = 0; i < model_count; i++)
+				fprintf(stderr, "%s%s", i ? ", " : "", models[i].name);
+			fprintf(stderr, "\n");
+			return 1;
+		}
+
+		if (found) {
+			rom_path = found_path;
+			if (!model_name) model_name = found->model;
+		}
+	}
+
 	if (!rom_path) {
-		fprintf(stderr, "Usage: %s [options] <rom>\n"
-			"  --model NAME      Machine model (default: drwrt400)\n"
-			"  --tcp PORT        UART via TCP\n"
-			"  --serial DEV      UART via serial device\n"
-			"  --lpt DEV         Centronics via lpt device\n"
-			"  --ppi DEV         Centronics via ppi device\n"
-			"  --pccard FILE     PC Card SRAM image\n"
-			"\nModels: ", argv[0]);
-		for (int i = 0; i < model_count; i++)
-			fprintf(stderr, "%s%s", i ? ", " : "", models[i].name);
+		fprintf(stderr, "No ROM found");
+		if (model_name) fprintf(stderr, " for model %s", model_name);
+		if (bios_name) fprintf(stderr, " bios %s", bios_name);
+		if (romdir) fprintf(stderr, " in %s", romdir);
 		fprintf(stderr, "\n");
 		return 1;
 	}
 
-	const model_t *model = model_find(model_name);
+	/* ---- identify ROM and resolve model ---- */
+	const model_t *model;
+	const rom_entry_t *rom_entry = NULL;
+
+	/* pre-read ROM to identify */
+	{
+		FILE *rf = fopen(rom_path, "rb");
+		if (rf) {
+			uint8_t tmp[ROM_SIZE];
+			size_t n = fread(tmp, 1, ROM_SIZE, rf);
+			fclose(rf);
+			uint32_t crc = crc32_buf(tmp, n);
+			rom_entry = rom_find_by_crc(crc);
+			if (rom_entry && !model_name)
+				model_name = rom_entry->model;
+		}
+	}
+
+	if (!model_name) model_name = "dwT400";
+	model = model_find(model_name);
 	if (!model) {
 		fprintf(stderr, "Unknown model: %s\n", model_name);
 		return 1;
@@ -179,7 +292,7 @@ int main(int argc, char *argv[])
 	                 cent_backend, cent_path) != 0) return 1;
 	if (pccard_path)
 		machine_load_pccard(&m, pccard_path);
-	if (machine_load_rom(&m, rom_path) != 0) return 1;
+	if (machine_load_rom(&m, rom_path, rom_entry) != 0) return 1;
 	machine_load_nvram(&m, nvram_path);
 	machine_reset(&m);
 
