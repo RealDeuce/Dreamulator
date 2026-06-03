@@ -49,6 +49,8 @@ struct machine {
 	float    beeper_phase;
 
 	uint8_t  uart_control;
+	uint8_t  cent_data;
+	void     *printer;
 
 	rtc_t    rtc;
 

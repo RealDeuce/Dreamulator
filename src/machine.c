@@ -328,8 +328,22 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 		update_bank(m, port - 0x10);
 		break;
 
-	case 0x0030: m->uart_control = val; break;
-	case 0x0040: break;
+	case 0x0030: {
+		uint8_t old = m->uart_control;
+		m->uart_control = val;
+		if ((old & 0x20) && !(val & 0x20)) {
+			if (!m->printer)
+				m->printer = fopen("printer.out", "ab");
+			if (m->printer) {
+				fputc(m->cent_data, (FILE *)m->printer);
+				fflush((FILE *)m->printer);
+			}
+			m->irq_active |= 0x02;
+			update_irqs(m);
+		}
+		break;
+	}
+	case 0x0040: m->cent_data = val; break;
 
 	case 0x0050: m->buzzer_low  = val; break;
 	case 0x0051: m->buzzer_high = val; break;
