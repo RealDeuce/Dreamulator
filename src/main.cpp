@@ -184,7 +184,7 @@ static void reconnect_uart(int backend, int port, const char *path) {
 /* ---- menu callbacks ---- */
 
 static void cb_quit(Fl_Widget *, void *) {
-	if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
+	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);
 	uart_destroy(&g_mach.uart);
@@ -208,25 +208,15 @@ static void cb_battery(Fl_Widget *, void *v) {
 static void cb_insert_pccard(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Insert PC Card", "*", g_pccard_path[0] ? g_pccard_path : nullptr);
 	if (path) {
-		if (g_mach.pccard) {
-			if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
-			free(g_mach.pccard);
-			g_mach.pccard = nullptr;
-			g_mach.pccard_size = 0;
-		}
+		machine_close_pccard(&g_mach);
 		snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", path);
-		machine_load_pccard(&g_mach, g_pccard_path);
+		machine_open_pccard(&g_mach, g_pccard_path);
 	}
 }
 
 static void cb_eject_pccard(Fl_Widget *, void *) {
-	if (g_mach.pccard) {
-		if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
-		free(g_mach.pccard);
-		g_mach.pccard = nullptr;
-		g_mach.pccard_size = 0;
-		g_pccard_path[0] = 0;
-	}
+	machine_close_pccard(&g_mach);
+	g_pccard_path[0] = 0;
 }
 
 static void cb_insert_floppy(Fl_Widget *, void *) {
@@ -410,7 +400,7 @@ int main(int argc, char *argv[])
 
 	machine_init(&g_mach, g_model, uart_backend, tcp_port, serial_path,
 	             cent_backend, cent_path);
-	if (g_pccard_path[0]) machine_load_pccard(&g_mach, g_pccard_path);
+	if (g_pccard_path[0]) machine_open_pccard(&g_mach, g_pccard_path);
 	if (g_floppy_path[0]) fdc_load_disk(&g_mach.fdc, g_floppy_path);
 	machine_open_nvram(&g_mach, g_nvram_path);
 	machine_load_rom(&g_mach, rom_path, rom_entry);
@@ -476,8 +466,7 @@ int main(int argc, char *argv[])
 
 	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); }
 	Pa_Terminate();
-	if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
-	free(g_mach.pccard);
+	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);
 	uart_destroy(&g_mach.uart);

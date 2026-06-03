@@ -774,31 +774,35 @@ void machine_close_nvram(machine_t *m)
 
 #define PCCARD_DEFAULT_SIZE (512 * 1024)
 
-int machine_load_pccard(machine_t *m, const char *path)
+int machine_open_pccard(machine_t *m, const char *path)
 {
-	FILE *f = fopen(path, "rb");
-	uint32_t sz;
+	int fd = open(path, O_RDWR | O_CREAT, 0644);
+	if (fd < 0) return -1;
 
-	if (f) {
-		fseek(f, 0, SEEK_END);
-		sz = (uint32_t)ftell(f);
-		fseek(f, 0, SEEK_SET);
-	} else {
+	struct stat st;
+	fstat(fd, &st);
+	uint32_t sz = (uint32_t)st.st_size;
+	bool is_new = (sz == 0);
+	if (sz < PCCARD_DEFAULT_SIZE) {
 		sz = PCCARD_DEFAULT_SIZE;
+		(void)ftruncate(fd, (off_t)sz);
 	}
 
-	m->pccard = calloc(1, sz);
-	if (!m->pccard) { if (f) fclose(f); return -1; }
+	m->pccard = (uint8_t *)mmap(NULL, sz, PROT_READ | PROT_WRITE,
+	                            MAP_SHARED, fd, 0);
+	if (m->pccard == MAP_FAILED) {
+		m->pccard = NULL;
+		close(fd);
+		return -1;
+	}
+
+	if (is_new) memset(m->pccard, 0xFF, sz);
+
 	m->pccard_size = sz;
+	m->pccard_fd = fd;
 
-	if (f) {
-		fread(m->pccard, 1, sz, f);
-		fclose(f);
-		fprintf(stderr, "Loaded PC Card: %u KB from %s\n", sz / 1024, path);
-	} else {
-		memset(m->pccard, 0xFF, sz);
-		fprintf(stderr, "New PC Card: %u KB (%s)\n", sz / 1024, path);
-	}
+	fprintf(stderr, "PC Card: %s (%u KB, mmap%s)\n",
+		path, sz / 1024, is_new ? ", new" : "");
 
 	for (int i = 0; i < NUM_BANKS; i++)
 		update_bank(m, i);
@@ -806,15 +810,21 @@ int machine_load_pccard(machine_t *m, const char *path)
 	return 0;
 }
 
-int machine_save_pccard(machine_t *m, const char *path)
+void machine_close_pccard(machine_t *m)
 {
-	if (!m->pccard) return 0;
+	if (!m->pccard) return;
 
-	FILE *f = fopen(path, "wb");
-	if (!f) { fprintf(stderr, "Cannot write PC Card: %s\n", path); return -1; }
+	if (m->pccard_fd >= 0) {
+		msync(m->pccard, m->pccard_size, MS_SYNC);
+		munmap(m->pccard, m->pccard_size);
+		close(m->pccard_fd);
+	} else {
+		free(m->pccard);
+	}
+	m->pccard = NULL;
+	m->pccard_size = 0;
+	m->pccard_fd = -1;
 
-	fwrite(m->pccard, 1, m->pccard_size, f);
-	fclose(f);
-	fprintf(stderr, "Saved PC Card: %s\n", path);
-	return 0;
+	for (int i = 0; i < NUM_BANKS; i++)
+		update_bank(m, i);
 }

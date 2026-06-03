@@ -94,6 +94,7 @@ struct machine {
 
 	uint8_t  *pccard;
 	uint32_t pccard_size;
+	int      pccard_fd;
 
 	uart_t   uart;
 	fdc_t    fdc;
@@ -126,7 +127,7 @@ void machine_key_up(machine_t *m, int row, int bit);
 void machine_power_button(machine_t *m, bool pressed);
 int  machine_open_nvram(machine_t *m, const char *path);
 void machine_close_nvram(machine_t *m);
-int  machine_load_pccard(machine_t *m, const char *path);
-int  machine_save_pccard(machine_t *m, const char *path);
+int  machine_open_pccard(machine_t *m, const char *path);
+void machine_close_pccard(machine_t *m);
 
 #endif
