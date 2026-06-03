@@ -165,8 +165,6 @@ int main(int argc, char *argv[])
 		struct stat st;
 		if (stat("roms", &st) == 0 && S_ISDIR(st.st_mode))
 			romdir = "roms";
-		else if (stat("../roms", &st) == 0 && S_ISDIR(st.st_mode))
-			romdir = "../roms";
 	}
 
 	/* ---- scan romdir for known ROMs ---- */
