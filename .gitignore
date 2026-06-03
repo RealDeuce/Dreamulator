@@ -1,3 +1,5 @@
 *.o
 *.d
+*.nvram
 dreamulator
+printer.out
