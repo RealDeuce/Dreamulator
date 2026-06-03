@@ -182,7 +182,8 @@ int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 		if (n <= ROM_SIZE - entry->load_offset)
 			memcpy(m->rom + entry->load_offset, buf, n);
 	} else if (detected) {
-		memcpy(m->rom + detected->load_offset, buf, n);
+		if (n <= ROM_SIZE - detected->load_offset)
+			memcpy(m->rom + detected->load_offset, buf, n);
 		entry = detected;
 	} else {
 		memcpy(m->rom, buf, n);

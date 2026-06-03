@@ -85,31 +85,27 @@ DbgRegsWindow::DbgRegsWindow(v20_t *cpu)
 	brun->shortcut(FL_F + 5);
 	y += 36;
 
-	/* breakpoints */
+	/* breakpoints: 2 columns × 4 rows */
 	new Fl_Box(10, y, 100, 18, "Breakpoints (seg:off):");
 	y += 20;
-	for (int i = 0; i < 8; i++) {
+	for (int row = 0; row < 4; row++) {
+		int i = row, j = row + 4;
 		m_bp_en[i] = new Fl_Check_Button(10, y, 24, 22);
 		m_bp_en[i]->callback(cb_bp_changed, this);
 		m_bp_addr[i] = new Fl_Input(36, y, 90, 22);
-		m_bp_addr[i]->textfont(FL_COURIER);
-		m_bp_addr[i]->textsize(12);
+		m_bp_addr[i]->textfont(FL_COURIER); m_bp_addr[i]->textsize(12);
 		m_bp_addr[i]->callback(cb_bp_changed, this);
 		m_bp_addr[i]->when(FL_WHEN_ENTER_KEY);
-		if (i < 4) {
-			/* second column */
-			m_bp_en[i+4] = new Fl_Check_Button(210, y, 24, 22);
-			m_bp_en[i+4]->callback(cb_bp_changed, this);
-			m_bp_addr[i+4] = new Fl_Input(236, y, 90, 22);
-			m_bp_addr[i+4]->textfont(FL_COURIER);
-			m_bp_addr[i+4]->textsize(12);
-			m_bp_addr[i+4]->callback(cb_bp_changed, this);
-			m_bp_addr[i+4]->when(FL_WHEN_ENTER_KEY);
-		}
-		if (i < 4) y += 24;
-		else break;
+
+		m_bp_en[j] = new Fl_Check_Button(210, y, 24, 22);
+		m_bp_en[j]->callback(cb_bp_changed, this);
+		m_bp_addr[j] = new Fl_Input(236, y, 90, 22);
+		m_bp_addr[j]->textfont(FL_COURIER); m_bp_addr[j]->textsize(12);
+		m_bp_addr[j]->callback(cb_bp_changed, this);
+		m_bp_addr[j]->when(FL_WHEN_ENTER_KEY);
+		y += 24;
 	}
-	y += 32;
+	y += 8;
 
 	/* trace display */
 	new Fl_Box(10, y, 100, 18, "Instruction Trace:");
@@ -157,7 +153,6 @@ void DbgRegsWindow::update_trace()
 	m_trace_buf->text("");
 	char line[256];
 	int count = m_cpu->trace_count;
-	int start = (m_cpu->trace_head - count + V20_TRACE_SIZE) % V20_TRACE_SIZE;
 
 	int show = count < 40 ? count : 40;
 	int begin = (m_cpu->trace_head - show + V20_TRACE_SIZE) % V20_TRACE_SIZE;

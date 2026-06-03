@@ -234,34 +234,40 @@ static inline void dec16(v20_t *c, uint16_t *r) {
 static int s_movsb(v20_t *c, bool rep) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
+	if (rep && !c->cx) return 5;
 	do { MWB(c->es,c->di,MRB(ss,c->si)); c->si+=d; c->di+=d; n++;
 	     if(!rep) return 7; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_movsw(v20_t *c, bool rep) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
+	if (rep && !c->cx) return 5;
 	do { MWW(c->es,c->di,MRW(ss,c->si)); c->si+=d; c->di+=d; n++;
 	     if(!rep) return 9; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_stosb(v20_t *c, bool rep) {
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
+	if (rep && !c->cx) return 5;
 	do { MWB(c->es,c->di,c->al); c->di+=d; n++;
 	     if(!rep) return 3; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_stosw(v20_t *c, bool rep) {
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
+	if (rep && !c->cx) return 5;
 	do { MWW(c->es,c->di,c->ax); c->di+=d; n++;
 	     if(!rep) return 3; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_lodsb(v20_t *c, bool rep) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
+	if (rep && !c->cx) return 5;
 	do { c->al=MRB(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_lodsw(v20_t *c, bool rep) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
+	if (rep && !c->cx) return 5;
 	do { c->ax=MRW(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
@@ -269,6 +275,7 @@ static int s_cmpsb(v20_t *c, bool rep, bool repne) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	bool has_rep = rep||repne;
+	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, MRB(ss,c->si), MRB(c->es,c->di), 0);
 		c->si+=d; c->di+=d; n++;
@@ -282,6 +289,7 @@ static int s_cmpsw(v20_t *c, bool rep, bool repne) {
 	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
 	bool has_rep = rep||repne;
+	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, MRW(ss,c->si), MRW(c->es,c->di), 1);
 		c->si+=d; c->di+=d; n++;
@@ -294,6 +302,7 @@ static int s_cmpsw(v20_t *c, bool rep, bool repne) {
 static int s_scasb(v20_t *c, bool rep, bool repne) {
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	bool has_rep = rep||repne;
+	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, c->al, MRB(c->es,c->di), 0);
 		c->di+=d; n++;
@@ -306,6 +315,7 @@ static int s_scasb(v20_t *c, bool rep, bool repne) {
 static int s_scasw(v20_t *c, bool rep, bool repne) {
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
 	bool has_rep = rep||repne;
+	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, c->ax, MRW(c->es,c->di), 1);
 		c->di+=d; n++;

@@ -22,9 +22,11 @@ static int cmd_length(uint8_t c)
 	}
 }
 
-static uint16_t sector_size(uint8_t n, uint8_t dtl)
+static int sector_size(uint8_t n, uint8_t dtl)
 {
-	return n ? (uint16_t)(128U << n) : dtl;
+	int sz = n ? (int)(128U << (n & 3)) : dtl;
+	if (sz > FDC_SECTOR_SIZE) sz = FDC_SECTOR_SIZE;
+	return sz;
 }
 
 static long sector_offset(int cyl, int head, int sect)

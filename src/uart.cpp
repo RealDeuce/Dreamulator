@@ -166,7 +166,14 @@ static void modem_in(uart_t *u)
 
 int uart_init(uart_t *u, int backend, int tcp_port, const char *serial_path)
 {
-	memset(u, 0, sizeof(*u));
+	u->path.clear();
+	u->prog_state = I8251_NEXT_MODE;
+	u->mode = 0; u->command = 0; u->status = 0;
+	u->tx_data = 0; u->rx_data = 0; u->tx_pending = false;
+	u->char_cycles = 0; u->tx_timer = 0; u->poll_timer = 0;
+	u->baud_divider = 0;
+	u->prev_txrdy = false; u->prev_rxrdy = false;
+	u->txrdy_cb = nullptr; u->rxrdy_cb = nullptr; u->cb_ctx = nullptr;
 	u->backend = backend;
 	u->fd = -1;
 	u->listen_fd = -1;

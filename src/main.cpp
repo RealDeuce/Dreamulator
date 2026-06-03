@@ -180,23 +180,15 @@ static void emu_tick(void *data)
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, data);
 }
 
-/* ---- UART IRQ helpers (needed for reconnect) ---- */
-
-static void uart_txrdy_glue(void *ctx, bool state) {
-	machine_t *m = (machine_t *)ctx;
-	if (state) { m->irq_active |= 0x04; /* update_irqs called by machine_step */ }
-}
-static void uart_rxrdy_glue(void *ctx, bool state) {
-	machine_t *m = (machine_t *)ctx;
-	if (state) { m->irq_active |= 0x08; }
-}
-
 static void reconnect_uart(int backend, int port, const char *path) {
+	auto saved_txrdy = g_mach.uart.txrdy_cb;
+	auto saved_rxrdy = g_mach.uart.rxrdy_cb;
+	auto saved_ctx   = g_mach.uart.cb_ctx;
 	uart_destroy(&g_mach.uart);
 	uart_init(&g_mach.uart, backend, port, path);
-	g_mach.uart.txrdy_cb = uart_txrdy_glue;
-	g_mach.uart.rxrdy_cb = uart_rxrdy_glue;
-	g_mach.uart.cb_ctx   = &g_mach;
+	g_mach.uart.txrdy_cb = saved_txrdy;
+	g_mach.uart.rxrdy_cb = saved_rxrdy;
+	g_mach.uart.cb_ctx   = saved_ctx;
 }
 
 /* ---- menu callbacks ---- */
@@ -235,12 +227,42 @@ static void cb_show_periph(Fl_Widget *, void *) {
 
 /* ---- main callbacks ---- */
 
-static void cb_quit(Fl_Widget *, void *) {
+static Fl_Double_Window *g_main_win = nullptr;
+
+static void save_prefs() {
+	if (g_main_win)
+		prefs_save_window("main", g_main_win->x(), g_main_win->y(),
+		                  g_main_win->w(), g_main_win->h());
+	if (g_dbg_regs && g_dbg_regs->visible())
+		prefs_save_window("dbg_regs", g_dbg_regs->x(), g_dbg_regs->y(),
+		                  g_dbg_regs->w(), g_dbg_regs->h());
+	if (g_dbg_dis && g_dbg_dis->visible())
+		prefs_save_window("dbg_dis", g_dbg_dis->x(), g_dbg_dis->y(),
+		                  g_dbg_dis->w(), g_dbg_dis->h());
+	if (g_dbg_mem && g_dbg_mem->visible())
+		prefs_save_window("dbg_mem", g_dbg_mem->x(), g_dbg_mem->y(),
+		                  g_dbg_mem->w(), g_dbg_mem->h());
+	if (g_dbg_periph && g_dbg_periph->visible())
+		prefs_save_window("dbg_periph", g_dbg_periph->x(), g_dbg_periph->y(),
+		                  g_dbg_periph->w(), g_dbg_periph->h());
+}
+
+static void cleanup_and_exit(int code) {
+	save_prefs();
+	remote_shutdown();
+#ifdef HAS_PORTAUDIO
+	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); g_audio = nullptr; }
+	Pa_Terminate();
+#endif
 	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);
 	uart_destroy(&g_mach.uart);
-	exit(0);
+	exit(code);
+}
+
+static void cb_quit(Fl_Widget *, void *) {
+	cleanup_and_exit(0);
 }
 
 static void cb_power(Fl_Widget *, void *) {
@@ -518,6 +540,7 @@ int main(int argc, char *argv[])
 	snprintf(title, sizeof(title), "dreamulator - %s", g_model->description);
 
 	Fl_Double_Window *win = new Fl_Double_Window(win_w, win_h, title);
+	g_main_win = win;
 	win->callback([](Fl_Widget *, void *) { cb_quit(nullptr, nullptr); });
 
 	Fl_Menu_Bar *menu = new Fl_Menu_Bar(0, 0, win_w, MENUBAR_H);
@@ -573,18 +596,6 @@ int main(int argc, char *argv[])
 		remote_init(&g_mach, g_remote_port);
 
 	Fl::add_timeout(1.0/60.0, emu_tick, lcd);
-	int ret = Fl::run();
-
-	/* ---- cleanup ---- */
-
-#ifdef HAS_PORTAUDIO
-	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); }
-	Pa_Terminate();
-#endif
-	remote_shutdown();
-	machine_close_pccard(&g_mach);
-	machine_close_nvram(&g_mach);
-	fdc_destroy(&g_mach.fdc);
-	uart_destroy(&g_mach.uart);
-	return ret;
+	Fl::run();
+	cleanup_and_exit(0);
 }
