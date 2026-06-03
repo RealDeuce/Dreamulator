@@ -1058,7 +1058,7 @@ int v20_exec(v20_t *c, int target)
 		if (check_breakpoints(c))
 			c->debug_stop = true;
 
-		if (c->debug_cb && (c->debug_stop || c->trace_enabled))
+		if (c->debug_stop && c->debug_cb)
 			c->debug_cb(c->debug_ctx);
 	}
 	return done;
