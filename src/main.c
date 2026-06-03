@@ -5,9 +5,7 @@
 #include <signal.h>
 #include "machine.h"
 
-#define SCALE      2
-#define WINDOW_W   (LCD_WIDTH * SCALE)
-#define WINDOW_H   (LCD_HEIGHT * SCALE)
+#define SCALE       2
 #define SAMPLE_RATE 48000
 #define AUDIO_BUF   512
 #define BEEP_VOL    0.05f
@@ -125,6 +123,7 @@ int main(int argc, char *argv[])
 	int cent_backend = CENT_FILE;
 	const char *cent_path = NULL;
 	const char *pccard_path = NULL;
+	const char *model_name = "drwrt400";
 	const char *rom_path = NULL;
 
 	for (int i = 1; i < argc; i++) {
@@ -142,6 +141,8 @@ int main(int argc, char *argv[])
 			cent_path = argv[++i];
 		} else if (strcmp(argv[i], "--pccard") == 0 && i + 1 < argc) {
 			pccard_path = argv[++i];
+		} else if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
+			model_name = argv[++i];
 		} else if (!rom_path) {
 			rom_path = argv[i];
 		}
@@ -149,19 +150,32 @@ int main(int argc, char *argv[])
 
 	if (!rom_path) {
 		fprintf(stderr, "Usage: %s [options] <rom>\n"
+			"  --model NAME      Machine model (default: drwrt400)\n"
 			"  --tcp PORT        UART via TCP\n"
 			"  --serial DEV      UART via serial device\n"
 			"  --lpt DEV         Centronics via lpt device\n"
 			"  --ppi DEV         Centronics via ppi device\n"
-			"  --pccard FILE     PC Card SRAM image\n",
-			argv[0]);
+			"  --pccard FILE     PC Card SRAM image\n"
+			"\nModels: ", argv[0]);
+		for (int i = 0; i < model_count; i++)
+			fprintf(stderr, "%s%s", i ? ", " : "", models[i].name);
+		fprintf(stderr, "\n");
 		return 1;
 	}
+
+	const model_t *model = model_find(model_name);
+	if (!model) {
+		fprintf(stderr, "Unknown model: %s\n", model_name);
+		return 1;
+	}
+	fprintf(stderr, "Model: %s (%s, %uKB RAM, %d-line LCD)\n",
+		model->name, model->description,
+		model->ram_size / 1024, model->lcd_height / 8);
 
 	char *nvram_path = make_nvram_path(rom_path);
 
 	machine_t m;
-	if (machine_init(&m, uart_backend, tcp_port, serial_path,
+	if (machine_init(&m, model, uart_backend, tcp_port, serial_path,
 	                 cent_backend, cent_path) != 0) return 1;
 	if (pccard_path)
 		machine_load_pccard(&m, pccard_path);
@@ -174,13 +188,18 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	SDL_Window *win = SDL_CreateWindow("DreamWriter T400",
+	int win_w = LCD_WIDTH * SCALE;
+	int win_h = m.lcd_height * SCALE;
+	char title[64];
+	snprintf(title, sizeof(title), "%s", model->description);
+
+	SDL_Window *win = SDL_CreateWindow(title,
 		SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-		WINDOW_W, WINDOW_H, 0);
+		win_w, win_h, 0);
 	SDL_Renderer *ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED);
 	SDL_Texture *tex = SDL_CreateTexture(ren,
 		SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-		LCD_WIDTH, LCD_HEIGHT);
+		LCD_WIDTH, m.lcd_height);
 
 	SDL_AudioSpec want = {0}, have;
 	want.freq     = SAMPLE_RATE;
@@ -196,7 +215,7 @@ int main(int argc, char *argv[])
 	else
 		fprintf(stderr, "Audio init failed: %s\n", SDL_GetError());
 
-	uint32_t pixels[LCD_WIDTH * LCD_HEIGHT];
+	uint32_t pixels[LCD_WIDTH * MAX_LCD_H];
 	int running = 1;
 	Uint32 ticks;
 

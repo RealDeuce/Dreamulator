@@ -8,12 +8,26 @@
 #define CPU_CLOCK   (XTAL / 2)
 
 #define ROM_SIZE    0x100000
-#define RAM_SIZE    (256 * 1024)
+#define MAX_RAM     (256 * 1024)
 #define NUM_BANKS   8
 #define BANK_SIZE   0x20000
 
 #define LCD_WIDTH   480
-#define LCD_HEIGHT  64
+#define MAX_LCD_H   128
+
+typedef struct {
+	const char *name;
+	const char *description;
+	uint32_t ram_size;
+	int      lcd_height;
+	bool     has_pccard;
+	bool     bank_bit3_selects_ram;
+	bool     power_nmi;
+} model_t;
+
+extern const model_t models[];
+extern const int     model_count;
+const model_t *model_find(const char *name);
 
 typedef struct {
 	uint8_t  reg[2][13];
@@ -25,10 +39,12 @@ typedef struct {
 typedef struct machine machine_t;
 
 struct machine {
+	const model_t *model;
 	v20_t    cpu;
 
 	uint8_t  rom[ROM_SIZE];
-	uint8_t  ram[RAM_SIZE];
+	uint8_t  ram[MAX_RAM];
+	uint32_t ram_size;
 
 	uint8_t  bank_select[NUM_BANKS];
 	uint8_t  *bank_rd[NUM_BANKS];
@@ -36,6 +52,7 @@ struct machine {
 
 	uint8_t  lcd_memory_start;
 	bool     lcd_on;
+	int      lcd_height;
 
 	uint8_t  irq_enabled;
 	uint8_t  irq_active;
@@ -72,7 +89,8 @@ struct machine {
 
 enum { CENT_FILE = 0, CENT_LPT = 1, CENT_PPI = 2 };
 
-int  machine_init(machine_t *m, int uart_backend, int tcp_port,
+int  machine_init(machine_t *m, const model_t *model,
+                  int uart_backend, int tcp_port,
                   const char *serial_path,
                   int cent_backend, const char *cent_path);
 void machine_reset(machine_t *m);

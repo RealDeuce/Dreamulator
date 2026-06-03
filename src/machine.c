@@ -11,6 +11,27 @@
 #include <dev/ppbus/ppbconf.h>
 #endif
 
+/* ---- model table ---- */
+
+const model_t models[] = {
+	{ "wales210", "Walther ES-210",       128*1024, 64,  true,  false, false },
+	{ "dator3k",  "Dator 3000",           128*1024, 64,  true,  false, false },
+	{ "es210_es", "Nakajima ES-210 (ES)", 128*1024, 64,  true,  false, false },
+	{ "drwrt100", "DreamWriter T100",     128*1024, 64,  false, true,  false },
+	{ "drwrt400", "DreamWriter T400",     256*1024, 64,  true,  true,  true  },
+	{ "drwrt450", "DreamWriter 450",      256*1024, 64,  true,  true,  true  },
+	{ "drwrt200", "DreamWriter T200",     256*1024, 128, true,  true,  true  },
+};
+const int model_count = sizeof(models) / sizeof(models[0]);
+
+const model_t *model_find(const char *name)
+{
+	for (int i = 0; i < model_count; i++)
+		if (strcmp(models[i].name, name) == 0)
+			return &models[i];
+	return NULL;
+}
+
 static uint8_t mem_read(void *ctx, uint32_t addr);
 static void    mem_write(void *ctx, uint32_t addr, uint8_t val);
 static uint8_t io_read(void *ctx, uint16_t port);
@@ -22,12 +43,16 @@ static void    rtc_init(rtc_t *r);
 static void uart_txrdy_cb(void *ctx, bool state);
 static void uart_rxrdy_cb(void *ctx, bool state);
 
-int machine_init(machine_t *m, int uart_backend, int tcp_port,
+int machine_init(machine_t *m, const model_t *model,
+                 int uart_backend, int tcp_port,
                  const char *serial_path,
                  int cent_backend, const char *cent_path)
 {
 	memset(m, 0, sizeof(*m));
-	m->bank_bit3_selects_ram = true;
+	m->model = model;
+	m->ram_size = model->ram_size;
+	m->lcd_height = model->lcd_height;
+	m->bank_bit3_selects_ram = model->bank_bit3_selects_ram;
 	m->cent_backend = cent_backend;
 	m->cent_fd = -1;
 
@@ -107,7 +132,7 @@ int machine_load_rom(machine_t *m, const char *path)
 static void update_bank(machine_t *m, int bank)
 {
 	uint8_t sel = m->bank_select[bank];
-	int ram_pages = RAM_SIZE / BANK_SIZE;
+	int ram_pages = m->ram_size / BANK_SIZE;
 
 	if (!(sel & 0x10)) {
 		if (sel & 0x08) {
@@ -519,20 +544,20 @@ void machine_render_lcd(machine_t *m, uint32_t *px)
 	const uint32_t bg = 0xFF8A9294, fg = 0xFF5C5358;
 
 	if (!m->lcd_on) {
-		for (int i = 0; i < LCD_WIDTH * LCD_HEIGHT; i++)
+		for (int i = 0; i < LCD_WIDTH * m->lcd_height; i++)
 			px[i] = bg;
 		return;
 	}
 
 	uint32_t base = (uint32_t)m->lcd_memory_start << 9;
 
-	for (int y = 0; y < LCD_HEIGHT; y++) {
+	for (int y = 0; y < m->lcd_height; y++) {
 		for (int x = 0; x < 60; x++) {
 			uint32_t addr = base + y * 64 + x;
-			uint8_t d = (addr < RAM_SIZE) ? m->ram[addr] : 0;
+			uint8_t d = (addr < m->ram_size) ? m->ram[addr] : 0;
 			for (int p = 0; p < 8; p++) {
 				int idx = y * LCD_WIDTH + x * 8 + p;
-				if (idx < LCD_WIDTH * LCD_HEIGHT)
+				if (idx < LCD_WIDTH * m->lcd_height)
 					px[idx] = (d & 0x80) ? fg : bg;
 				d <<= 1;
 			}
@@ -593,25 +618,28 @@ void machine_power_button(machine_t *m, bool pressed)
 		return;
 	}
 
-	uint16_t nmi_off = mem_read(m, 0x0008) | ((uint16_t)mem_read(m, 0x0009) << 8);
-	uint16_t nmi_seg = mem_read(m, 0x000A) | ((uint16_t)mem_read(m, 0x000B) << 8);
-	uint16_t f8_off  = mem_read(m, 0x03E0) | ((uint16_t)mem_read(m, 0x03E1) << 8);
-	uint16_t f8_seg  = mem_read(m, 0x03E2) | ((uint16_t)mem_read(m, 0x03E3) << 8);
+	if (m->model->power_nmi) {
+		uint16_t nmi_off = mem_read(m, 0x0008) | ((uint16_t)mem_read(m, 0x0009) << 8);
+		uint16_t nmi_seg = mem_read(m, 0x000A) | ((uint16_t)mem_read(m, 0x000B) << 8);
+		uint16_t f8_off  = mem_read(m, 0x03E0) | ((uint16_t)mem_read(m, 0x03E1) << 8);
+		uint16_t f8_seg  = mem_read(m, 0x03E2) | ((uint16_t)mem_read(m, 0x03E3) << 8);
 
-	uint16_t f8_handler = f8_off;
-	uint32_t f8_phys = ((uint32_t)f8_seg << 4) + f8_off;
-	if (f8_phys <= 0xFFFFD && mem_read(m, f8_phys) == 0xE9) {
-		int16_t disp = (int16_t)(mem_read(m, f8_phys + 1) |
-		               ((uint16_t)mem_read(m, f8_phys + 2) << 8));
-		f8_handler = (uint16_t)(f8_off + 3 + disp);
+		uint16_t f8_handler = f8_off;
+		uint32_t f8_phys = ((uint32_t)f8_seg << 4) + f8_off;
+		if (f8_phys <= 0xFFFFD && mem_read(m, f8_phys) == 0xE9) {
+			int16_t disp = (int16_t)(mem_read(m, f8_phys + 1) |
+			               ((uint16_t)mem_read(m, f8_phys + 2) << 8));
+			f8_handler = (uint16_t)(f8_off + 3 + disp);
+		}
+
+		if (nmi_seg == f8_seg && nmi_off == f8_handler) {
+			v20_nmi(&m->cpu, true);
+			return;
+		}
 	}
 
-	if (nmi_seg == f8_seg && nmi_off == f8_handler)
-		v20_nmi(&m->cpu, true);
-	else {
-		m->irq_active |= 0x01;
-		update_irqs(m);
-	}
+	m->irq_active |= 0x01;
+	update_irqs(m);
 }
 
 /* ---- NVRAM ---- */
@@ -621,7 +649,7 @@ int machine_load_nvram(machine_t *m, const char *path)
 	FILE *f = fopen(path, "rb");
 	if (!f) return -1;
 
-	size_t n = fread(m->ram, 1, RAM_SIZE, f);
+	size_t n = fread(m->ram, 1, m->ram_size, f);
 	fclose(f);
 	fprintf(stderr, "Loaded NVRAM: %zu bytes from %s\n", n, path);
 	return 0;
@@ -632,7 +660,7 @@ int machine_save_nvram(machine_t *m, const char *path)
 	FILE *f = fopen(path, "wb");
 	if (!f) { fprintf(stderr, "Cannot write NVRAM: %s\n", path); return -1; }
 
-	fwrite(m->ram, 1, RAM_SIZE, f);
+	fwrite(m->ram, 1, m->ram_size, f);
 	fclose(f);
 	fprintf(stderr, "Saved NVRAM: %s\n", path);
 	return 0;
