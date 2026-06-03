@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd, MAMEDev (Bryan McPhail)
 #include "v20.h"
+#include <climits>
 #include <cstdio>
 #include <cstddef>
 
@@ -247,7 +248,7 @@ static int s_movsw(v20_t *c, bool rep) {
 static int s_stosb(v20_t *c, bool rep) {
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	if (rep && !c->cx) return 5;
-	do { MWB(c->es,c->di,c->al); c->di+=d; n++;
+	do { MWB(c->es,c->di,c->al()); c->di+=d; n++;
 	     if(!rep) return 3; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_stosw(v20_t *c, bool rep) {
@@ -260,7 +261,7 @@ static int s_lodsb(v20_t *c, bool rep) {
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	if (rep && !c->cx) return 5;
-	do { c->al=MRB(ss,c->si); c->si+=d; n++;
+	do { c->al()=MRB(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_lodsw(v20_t *c, bool rep) {
@@ -303,7 +304,7 @@ static int s_scasb(v20_t *c, bool rep, bool repne) {
 	bool has_rep = rep||repne;
 	if (has_rep && !c->cx) return 5;
 	do {
-		alu(c, 7, c->al, MRB(c->es,c->di), 0);
+		alu(c, 7, c->al(), MRB(c->es,c->di), 0);
 		c->di+=d; n++;
 		if(!has_rep) return 6;
 		c->cx--;
@@ -340,7 +341,7 @@ static void v20_bitop(v20_t *c, uint8_t op2)
 		uint8_t ib = f8(c);
 		bit = w ? (ib & 0xF) : (ib & 7);
 	} else {
-		bit = w ? (c->cl & 0xF) : (c->cl & 7);
+		bit = w ? (c->cl() & 0xF) : (c->cl() & 7);
 	}
 
 	if (w) {
@@ -372,7 +373,7 @@ static void v20_bitop(v20_t *c, uint8_t op2)
 
 static void v20_add4s(v20_t *c)
 {
-	int n = (c->cl + 1) / 2;
+	int n = (c->cl() + 1) / 2;
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int carry = 0;
 
@@ -397,7 +398,7 @@ static void v20_add4s(v20_t *c)
 
 static void v20_sub4s(v20_t *c)
 {
-	int n = (c->cl + 1) / 2;
+	int n = (c->cl() + 1) / 2;
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int borrow = 0;
 
@@ -422,7 +423,7 @@ static void v20_sub4s(v20_t *c)
 
 static void v20_cmp4s(v20_t *c)
 {
-	int n = (c->cl + 1) / 2;
+	int n = (c->cl() + 1) / 2;
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int borrow = 0, nz = 0;
 
@@ -447,8 +448,8 @@ static void v20_rol4(v20_t *c)
 {
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	uint8_t mem = MRB(ss, c->si);
-	uint8_t al_hi = c->al >> 4;
-	c->al = (uint8_t)((c->al << 4) | (mem >> 4));
+	uint8_t al_hi = c->al() >> 4;
+	c->al() = (uint8_t)((c->al() << 4) | (mem >> 4));
 	MWB(ss, c->si, (uint8_t)((mem << 4) | al_hi));
 }
 
@@ -456,8 +457,8 @@ static void v20_ror4(v20_t *c)
 {
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	uint8_t mem = MRB(ss, c->si);
-	uint8_t al_lo = c->al & 0x0F;
-	c->al = (uint8_t)((mem << 4) | (c->al >> 4));
+	uint8_t al_lo = c->al() & 0x0F;
+	c->al() = (uint8_t)((mem << 4) | (c->al() >> 4));
 	MWB(ss, c->si, (uint8_t)((al_lo << 4) | (mem >> 4)));
 }
 
@@ -554,7 +555,7 @@ pfx:
 				cyc += (e.mod==3) ? 2 : (w ? 24 : 16);
 			}
 		} else if (sub==4) {
-			uint8_t r=(uint8_t)alu(c,aop,c->al,f8(c),0); if(aop!=7) c->al=r; cyc+=4;
+			uint8_t r=(uint8_t)alu(c,aop,c->al(),f8(c),0); if(aop!=7) c->al()=r; cyc+=4;
 		} else {
 			uint16_t r=(uint16_t)alu(c,aop,c->ax,f16(c),1); if(aop!=7) c->ax=r; cyc+=4;
 		}
@@ -573,42 +574,42 @@ pfx:
 
 	/* ---- BCD ---- */
 	case 0x27: { /* DAA */
-		uint8_t oa = c->al; int ocf = c->flags&V20_CF;
+		uint8_t oa = c->al(); int ocf = c->flags&V20_CF;
 		c->flags &= ~V20_CF;
-		if ((c->al&0x0F)>9 || (c->flags&V20_AF)) {
-			c->al+=6; c->flags|=V20_AF;
-			if (ocf || c->al < oa) c->flags|=V20_CF;
+		if ((c->al()&0x0F)>9 || (c->flags&V20_AF)) {
+			c->al()+=6; c->flags|=V20_AF;
+			if (ocf || c->al() < oa) c->flags|=V20_CF;
 		} else c->flags&=~V20_AF;
-		if (oa>0x99 || ocf) { c->al+=0x60; c->flags|=V20_CF; }
+		if (oa>0x99 || ocf) { c->al()+=0x60; c->flags|=V20_CF; }
 		c->flags &= ~(V20_SF|V20_ZF|V20_PF);
-		if (!c->al) c->flags|=V20_ZF; if (c->al&0x80) c->flags|=V20_SF;
-		if (ptab[c->al]) c->flags|=V20_PF;
+		if (!c->al()) c->flags|=V20_ZF; if (c->al()&0x80) c->flags|=V20_SF;
+		if (ptab[c->al()]) c->flags|=V20_PF;
 		cyc+=10; break;
 	}
 	case 0x2f: { /* DAS */
-		uint8_t oa = c->al; int ocf = c->flags&V20_CF;
+		uint8_t oa = c->al(); int ocf = c->flags&V20_CF;
 		c->flags &= ~V20_CF;
-		if ((c->al&0x0F)>9 || (c->flags&V20_AF)) {
-			c->al-=6; c->flags|=V20_AF;
-			if (ocf || c->al > oa) c->flags|=V20_CF;
+		if ((c->al()&0x0F)>9 || (c->flags&V20_AF)) {
+			c->al()-=6; c->flags|=V20_AF;
+			if (ocf || c->al() > oa) c->flags|=V20_CF;
 		} else c->flags&=~V20_AF;
-		if (oa>0x99 || ocf) { c->al-=0x60; c->flags|=V20_CF; }
+		if (oa>0x99 || ocf) { c->al()-=0x60; c->flags|=V20_CF; }
 		c->flags &= ~(V20_SF|V20_ZF|V20_PF);
-		if (!c->al) c->flags|=V20_ZF; if (c->al&0x80) c->flags|=V20_SF;
-		if (ptab[c->al]) c->flags|=V20_PF;
+		if (!c->al()) c->flags|=V20_ZF; if (c->al()&0x80) c->flags|=V20_SF;
+		if (ptab[c->al()]) c->flags|=V20_PF;
 		cyc+=10; break;
 	}
 	case 0x37: /* AAA */
-		if ((c->al&0x0F)>9 || (c->flags&V20_AF)) {
-			c->al+=6; c->ah++; c->flags|=V20_AF|V20_CF;
+		if ((c->al()&0x0F)>9 || (c->flags&V20_AF)) {
+			c->al()+=6; c->ah()++; c->flags|=V20_AF|V20_CF;
 		} else { c->flags&=~(V20_AF|V20_CF); }
-		c->al &= 0x0F;
+		c->al() &= 0x0F;
 		cyc+=7; break;
 	case 0x3f: /* AAS */
-		if ((c->al&0x0F)>9 || (c->flags&V20_AF)) {
-			c->al-=6; c->ah--; c->flags|=V20_AF|V20_CF;
+		if ((c->al()&0x0F)>9 || (c->flags&V20_AF)) {
+			c->al()-=6; c->ah()--; c->flags|=V20_AF|V20_CF;
 		} else { c->flags&=~(V20_AF|V20_CF); }
-		c->al &= 0x0F;
+		c->al() &= 0x0F;
 		cyc+=7; break;
 
 	/* ---- INC reg16 ---- */
@@ -707,7 +708,7 @@ pfx:
 	case 0x95: case 0x96: case 0x97:
 		{ uint16_t t=c->ax; c->ax=*r16p(c,op&7); *r16p(c,op&7)=t; cyc+=3; break; }
 
-	case 0x98: c->ax = (uint16_t)(int16_t)(int8_t)c->al; cyc+=2; break; /* CBW */
+	case 0x98: c->ax = (uint16_t)(int16_t)(int8_t)c->al(); cyc+=2; break; /* CBW */
 	case 0x99: c->dx = (c->ax & 0x8000) ? 0xFFFF : 0; cyc+=5; break; /* CWD */
 
 	/* ---- CALL far ---- */
@@ -720,13 +721,13 @@ pfx:
 	case 0x9d: c->flags = (pop(c) & 0x0FD5) | 0x0002; cyc+=12; break;
 
 	/* ---- SAHF / LAHF ---- */
-	case 0x9e: c->flags = (c->flags & 0xFF00) | (c->ah & 0xD5) | 0x02; cyc+=3; break;
-	case 0x9f: c->ah = (uint8_t)((c->flags & 0xD5) | 0x02); cyc+=3; break;
+	case 0x9e: c->flags = (c->flags & 0xFF00) | (c->ah() & 0xD5) | 0x02; cyc+=3; break;
+	case 0x9f: c->ah() = (uint8_t)((c->flags & 0xD5) | 0x02); cyc+=3; break;
 
 	/* ---- MOV AL/AX, [addr] ---- */
-	case 0xa0: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al=MRB(s,a); cyc+=10; break; }
+	case 0xa0: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al()=MRB(s,a); cyc+=10; break; }
 	case 0xa1: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; c->ax=MRW(s,a); cyc+=10; break; }
-	case 0xa2: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; MWB(s,a,c->al); cyc+=10; break; }
+	case 0xa2: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; MWB(s,a,c->al()); cyc+=10; break; }
 	case 0xa3: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; MWW(s,a,c->ax); cyc+=10; break; }
 
 	/* ---- string ops ---- */
@@ -736,7 +737,7 @@ pfx:
 	case 0xa7: cyc+=s_cmpsw(c, rep, repne); break;
 
 	/* ---- TEST AL/AX, imm ---- */
-	case 0xa8: alu(c,4,c->al,f8(c),0); cyc+=4; break;
+	case 0xa8: alu(c,4,c->al(),f8(c),0); cyc+=4; break;
 	case 0xa9: alu(c,4,c->ax,f16(c),1); cyc+=4; break;
 
 	case 0xaa: cyc+=s_stosb(c, rep); break;
@@ -801,23 +802,23 @@ pfx:
 	/* ---- shifts r/m, 1 / CL ---- */
 	case 0xd0: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),1,0)); cyc+=(e.mod==3)?3:24; break; }
 	case 0xd1: { ea_t e=decode_ea(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),1,1)); cyc+=(e.mod==3)?3:24; break; }
-	case 0xd2: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),c->cl,0)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
-	case 0xd3: { ea_t e=decode_ea(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),c->cl,1)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
+	case 0xd2: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),c->cl(),0)); cyc+=(e.mod==3?3:24)+(c->cl()&0x1f); break; }
+	case 0xd3: { ea_t e=decode_ea(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),c->cl(),1)); cyc+=(e.mod==3?3:24)+(c->cl()&0x1f); break; }
 
 	/* ---- AAM / AAD ---- */
-	case 0xd4: { uint8_t b=f8(c); if(b) { c->ah=c->al/b; c->al=c->al%b; }
+	case 0xd4: { uint8_t b=f8(c); if(b) { c->ah()=c->al()/b; c->al()=c->al()%b; }
 		c->flags &= ~(V20_SF|V20_ZF|V20_PF);
-		if(!c->ax) c->flags|=V20_ZF; if(c->al&0x80) c->flags|=V20_SF;
-		if(ptab[c->al]) c->flags|=V20_PF; cyc+=19; break; }
-	case 0xd5: { uint8_t b=f8(c); c->al=(uint8_t)(c->ah*b+c->al); c->ah=0;
+		if(!c->ax) c->flags|=V20_ZF; if(c->al()&0x80) c->flags|=V20_SF;
+		if(ptab[c->al()]) c->flags|=V20_PF; cyc+=19; break; }
+	case 0xd5: { uint8_t b=f8(c); c->al()=(uint8_t)(c->ah()*b+c->al()); c->ah()=0;
 		c->flags &= ~(V20_SF|V20_ZF|V20_PF);
-		if(!c->al) c->flags|=V20_ZF; if(c->al&0x80) c->flags|=V20_SF;
-		if(ptab[c->al]) c->flags|=V20_PF; cyc+=10; break; }
+		if(!c->al()) c->flags|=V20_ZF; if(c->al()&0x80) c->flags|=V20_SF;
+		if(ptab[c->al()]) c->flags|=V20_PF; cyc+=10; break; }
 
-	case 0xd6: c->al = (c->flags & V20_CF) ? 0xFF : 0x00; cyc+=3; break; /* SALC */
+	case 0xd6: c->al() = (c->flags & V20_CF) ? 0xFF : 0x00; cyc+=3; break; /* SALC */
 
 	/* ---- XLAT ---- */
-	case 0xd7: { uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al=MRB(s,(uint16_t)(c->bx+c->al)); cyc+=10; break; }
+	case 0xd7: { uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al()=MRB(s,(uint16_t)(c->bx+c->al())); cyc+=10; break; }
 
 	/* ---- ESC (FPU, ignore) ---- */
 	case 0xd8: case 0xd9: case 0xda: case 0xdb:
@@ -831,10 +832,10 @@ pfx:
 	case 0xe3: { int8_t d=(int8_t)f8(c); if(!c->cx) c->ip+=d; cyc+=13; break; }
 
 	/* ---- IN / OUT imm8 ---- */
-	case 0xe4: c->al = c->io_read(c->ctx, f8(c)); cyc+=10; break;
-	case 0xe5: { uint16_t p=f8(c); c->al=c->io_read(c->ctx,p); c->ah=c->io_read(c->ctx,p+1); cyc+=10; break; }
-	case 0xe6: c->io_write(c->ctx, f8(c), c->al); cyc+=10; break;
-	case 0xe7: { uint16_t p=f8(c); c->io_write(c->ctx,p,c->al); c->io_write(c->ctx,p+1,c->ah); cyc+=10; break; }
+	case 0xe4: c->al() = c->io_read(c->ctx, f8(c)); cyc+=10; break;
+	case 0xe5: { uint16_t p=f8(c); c->al()=c->io_read(c->ctx,p); c->ah()=c->io_read(c->ctx,p+1); cyc+=10; break; }
+	case 0xe6: c->io_write(c->ctx, f8(c), c->al()); cyc+=10; break;
+	case 0xe7: { uint16_t p=f8(c); c->io_write(c->ctx,p,c->al()); c->io_write(c->ctx,p+1,c->ah()); cyc+=10; break; }
 
 	/* ---- CALL / JMP near ---- */
 	case 0xe8: { int16_t d=(int16_t)f16(c); push(c,c->ip); c->ip+=d; cyc+=19; break; }
@@ -843,10 +844,10 @@ pfx:
 	case 0xeb: { int8_t d=(int8_t)f8(c); c->ip+=d; cyc+=10; break; }
 
 	/* ---- IN / OUT DX ---- */
-	case 0xec: c->al = c->io_read(c->ctx, c->dx); cyc+=8; break;
-	case 0xed: c->al=c->io_read(c->ctx,c->dx); c->ah=c->io_read(c->ctx,c->dx+1); cyc+=8; break;
-	case 0xee: c->io_write(c->ctx, c->dx, c->al); cyc+=8; break;
-	case 0xef: c->io_write(c->ctx,c->dx,c->al); c->io_write(c->ctx,c->dx+1,c->ah); cyc+=8; break;
+	case 0xec: c->al() = c->io_read(c->ctx, c->dx); cyc+=8; break;
+	case 0xed: c->al()=c->io_read(c->ctx,c->dx); c->ah()=c->io_read(c->ctx,c->dx+1); cyc+=8; break;
+	case 0xee: c->io_write(c->ctx, c->dx, c->al()); cyc+=8; break;
+	case 0xef: c->io_write(c->ctx,c->dx,c->al()); c->io_write(c->ctx,c->dx+1,c->ah()); cyc+=8; break;
 
 	/* ---- HLT / CMC ---- */
 	case 0xf4: c->halted = true; cyc+=2; break;
@@ -876,14 +877,14 @@ pfx:
 		case 4: /* MUL */
 			if (w) { uint32_t r=(uint32_t)c->ax*ea_rw(c,&e); c->ax=(uint16_t)r; c->dx=r>>16;
 				c->flags&=~(V20_CF|V20_OF); if(c->dx) c->flags|=V20_CF|V20_OF; }
-			else   { uint16_t r=(uint16_t)c->al*ea_rb(c,&e); c->ax=r;
-				c->flags&=~(V20_CF|V20_OF); if(c->ah) c->flags|=V20_CF|V20_OF; }
+			else   { uint16_t r=(uint16_t)c->al()*ea_rb(c,&e); c->ax=r;
+				c->flags&=~(V20_CF|V20_OF); if(c->ah()) c->flags|=V20_CF|V20_OF; }
 			cyc += m ? 43 : 32;
 			break;
 		case 5: /* IMUL */
 			if (w) { int32_t r=(int32_t)(int16_t)c->ax*(int16_t)ea_rw(c,&e); c->ax=(uint16_t)r; c->dx=(uint16_t)(r>>16);
 				c->flags&=~(V20_CF|V20_OF); if(r!=(int16_t)r) c->flags|=V20_CF|V20_OF; }
-			else   { int16_t r=(int16_t)(int8_t)c->al*(int8_t)ea_rb(c,&e); c->ax=(uint16_t)r;
+			else   { int16_t r=(int16_t)(int8_t)c->al()*(int8_t)ea_rb(c,&e); c->ax=(uint16_t)r;
 				c->flags&=~(V20_CF|V20_OF); if(r!=(int8_t)r) c->flags|=V20_CF|V20_OF; }
 			cyc += m ? 43 : 32;
 			break;
@@ -891,16 +892,16 @@ pfx:
 			if (w) { uint32_t n=((uint32_t)c->dx<<16)|c->ax; uint16_t d=ea_rw(c,&e);
 				if(!d||n/d>0xFFFF){do_int(c,0);break;} c->ax=(uint16_t)(n/d); c->dx=(uint16_t)(n%d); }
 			else   { uint16_t n=c->ax; uint8_t d=ea_rb(c,&e);
-				if(!d||n/d>0xFF){do_int(c,0);break;} c->al=(uint8_t)(n/d); c->ah=(uint8_t)(n%d); }
+				if(!d||n/d>0xFF){do_int(c,0);break;} c->al()=(uint8_t)(n/d); c->ah()=(uint8_t)(n%d); }
 			cyc += m ? (w?47:29) : (w?35:19);
 			break;
 		case 7: /* IDIV */
 			if (w) { int32_t n=(int32_t)(((uint32_t)c->dx<<16)|c->ax); int16_t d=(int16_t)ea_rw(c,&e);
-				if(!d){do_int(c,0);break;} int32_t q=n/d;
+				if(!d||(n==INT32_MIN&&d==-1)){do_int(c,0);break;} int32_t q=n/d;
 				if(q!=(int16_t)q){do_int(c,0);break;} c->ax=(uint16_t)q; c->dx=(uint16_t)(n%d); }
 			else   { int16_t n=(int16_t)c->ax; int8_t d=(int8_t)ea_rb(c,&e);
 				if(!d){do_int(c,0);break;} int16_t q=n/d;
-				if(q!=(int8_t)q){do_int(c,0);break;} c->al=(uint8_t)q; c->ah=(uint8_t)(n%d); }
+				if(q!=(int8_t)q){do_int(c,0);break;} c->al()=(uint8_t)q; c->ah()=(uint8_t)(n%d); }
 			cyc += m ? (w?51:33) : (w?39:23);
 			break;
 		}

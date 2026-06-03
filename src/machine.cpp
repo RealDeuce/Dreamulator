@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
 #include "dbg_periph.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -340,7 +341,7 @@ static constexpr uint8_t rtc_wmask[2][13] = {
 
 static void rtc_init(rtc_t *r)
 {
-	memset(r, 0, sizeof(*r));
+	*r = rtc_t{};
 	r->reg[1][10] = 1;
 
 	time_t now = time(nullptr);
@@ -387,7 +388,7 @@ static void rtc_write(rtc_t *r, uint8_t offset, uint8_t data)
 	if (offset == 0x0E) return;
 	if (offset == 0x0F) {
 		if (data & 1)
-			memset(&r->reg[1][0], 0, 5);
+			std::fill_n(r->reg[1].begin(), 5, 0);
 		r->reset = data;
 		return;
 	}

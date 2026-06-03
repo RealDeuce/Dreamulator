@@ -20,6 +20,28 @@
 constexpr int V20_MAX_BP    = 8;
 constexpr int V20_TRACE_SIZE = 2048;
 
+class RegByte {
+	uint16_t &reg_;
+	unsigned shift_;
+public:
+	RegByte(uint16_t &r, unsigned s) : reg_(r), shift_(s) {}
+	operator uint8_t() const { return (uint8_t)(reg_ >> shift_); }
+	RegByte& operator=(uint8_t v) {
+		reg_ = (uint16_t)(((unsigned)reg_ & ~(0xFFU << shift_)) | ((unsigned)v << shift_));
+		return *this;
+	}
+	RegByte& operator=(const RegByte &o) { return *this = (uint8_t)o; }
+	RegByte& operator+=(uint8_t v) { return *this = (uint8_t)(*this + v); }
+	RegByte& operator-=(uint8_t v) { return *this = (uint8_t)(*this - v); }
+	RegByte& operator&=(uint8_t v) { return *this = (uint8_t)(*this & v); }
+	RegByte& operator|=(uint8_t v) { return *this = (uint8_t)(*this | v); }
+	RegByte& operator^=(uint8_t v) { return *this = (uint8_t)(*this ^ v); }
+	RegByte& operator++()    { return *this = (uint8_t)(*this + 1); }
+	RegByte& operator--()    { return *this = (uint8_t)(*this - 1); }
+	uint8_t  operator++(int) { uint8_t t = *this; ++*this; return t; }
+	uint8_t  operator--(int) { uint8_t t = *this; --*this; return t; }
+};
+
 struct v20_trace_t {
 	uint16_t cs = 0, ip = 0;
 	uint16_t ax = 0, bx = 0, cx = 0, dx = 0;
@@ -29,14 +51,20 @@ struct v20_trace_t {
 };
 
 struct v20_t {
-	union { uint16_t ax = 0; struct { uint8_t al, ah; }; };
-	union { uint16_t cx = 0; struct { uint8_t cl, ch; }; };
-	union { uint16_t dx = 0; struct { uint8_t dl, dh; }; };
-	union { uint16_t bx = 0; struct { uint8_t bl, bh; }; };
+	uint16_t ax = 0, cx = 0, dx = 0, bx = 0;
 	uint16_t sp = 0, bp = 0, si = 0, di = 0;
 	uint16_t es = 0, cs = 0, ss = 0, ds = 0;
 	uint16_t ip = 0;
 	uint16_t flags = 0;
+
+	RegByte al() { return {ax, 0}; }
+	RegByte ah() { return {ax, 8}; }
+	RegByte cl() { return {cx, 0}; }
+	RegByte ch() { return {cx, 8}; }
+	RegByte dl() { return {dx, 0}; }
+	RegByte dh() { return {dx, 8}; }
+	RegByte bl() { return {bx, 0}; }
+	RegByte bh() { return {bx, 8}; }
 
 	bool     halted = false;
 	bool     irq_line = false;
