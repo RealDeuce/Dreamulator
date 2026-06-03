@@ -504,13 +504,18 @@ int main(int argc, char *argv[])
 	/* identify ROM */
 	const rom_entry_t *rom_entry = nullptr;
 	{
-		FILE *rf = fopen(rom_path, "rb");
-		if (rf) {
-			uint8_t tmp[ROM_SIZE];
-			size_t n = fread(tmp, 1, ROM_SIZE, rf);
-			fclose(rf);
-			rom_entry = rom_find_by_crc(crc32_buf(tmp, n));
-			if (rom_entry && !model_name) model_name = rom_entry->model;
+		int rf = open(rom_path, O_RDONLY);
+		if (rf >= 0) {
+			struct stat rst;
+			fstat(rf, &rst);
+			size_t n = (size_t)rst.st_size;
+			uint8_t *tmp = (uint8_t *)mmap(nullptr, n, PROT_READ, MAP_PRIVATE, rf, 0);
+			if (tmp != MAP_FAILED) {
+				rom_entry = rom_find_by_crc(crc32_buf(tmp, n));
+				if (rom_entry && !model_name) model_name = rom_entry->model;
+				munmap(tmp, n);
+			}
+			close(rf);
 		}
 	}
 
