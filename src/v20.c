@@ -314,6 +314,164 @@ static void s_scasw(v20_t *c, bool rep, bool repne) {
 	} while(c->cx);
 }
 
+/* ---- V20 extensions (0x0F prefix) ---- */
+
+static void v20_bitop(v20_t *c, uint8_t op2)
+{
+	int w   = op2 & 1;
+	int fn  = (op2 >> 1) & 3;
+	int imm = op2 & 8;
+
+	ea_t e = decode_ea(c);
+	int bit;
+
+	if (imm) {
+		uint8_t ib = f8(c);
+		bit = w ? (ib & 0xF) : (ib & 7);
+	} else {
+		bit = w ? (c->cl & 0xF) : (c->cl & 7);
+	}
+
+	if (w) {
+		uint16_t v = ea_rw(c, &e);
+		uint16_t mask = (uint16_t)1 << bit;
+		switch (fn) {
+		case 0: /* TEST */
+			c->flags &= ~(V20_CF|V20_OF|V20_ZF);
+			if (!(v & mask)) c->flags |= V20_ZF;
+			break;
+		case 1: ea_ww(c, &e, v & ~mask); break;    /* CLR */
+		case 2: ea_ww(c, &e, v | mask); break;     /* SET */
+		case 3: ea_ww(c, &e, v ^ mask); break;     /* NOT */
+		}
+	} else {
+		uint8_t v = ea_rb(c, &e);
+		uint8_t mask = (uint8_t)(1 << bit);
+		switch (fn) {
+		case 0:
+			c->flags &= ~(V20_CF|V20_OF|V20_ZF);
+			if (!(v & mask)) c->flags |= V20_ZF;
+			break;
+		case 1: ea_wb(c, &e, v & ~mask); break;
+		case 2: ea_wb(c, &e, v | mask); break;
+		case 3: ea_wb(c, &e, v ^ mask); break;
+		}
+	}
+}
+
+static void v20_add4s(v20_t *c)
+{
+	int n = (c->cl + 1) / 2;
+	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	int carry = 0;
+
+	for (int i = 0; i < n; i++) {
+		uint8_t s = MRB(ss, (uint16_t)(c->si + i));
+		uint8_t d = MRB(c->es, (uint16_t)(c->di + i));
+		int lo = (d & 0x0F) + (s & 0x0F) + carry;
+		carry = 0;
+		if (lo > 9) { lo -= 10; carry = 1; }
+		int hi = ((d >> 4) & 0x0F) + ((s >> 4) & 0x0F) + carry;
+		carry = 0;
+		if (hi > 9) { hi -= 10; carry = 1; }
+		MWB(c->es, (uint16_t)(c->di + i), (uint8_t)((hi << 4) | lo));
+	}
+
+	c->flags &= ~(V20_CF | V20_ZF);
+	if (carry) c->flags |= V20_CF;
+	int nz = 0;
+	for (int i = 0; i < n; i++) nz |= MRB(c->es, (uint16_t)(c->di + i));
+	if (!nz) c->flags |= V20_ZF;
+}
+
+static void v20_sub4s(v20_t *c)
+{
+	int n = (c->cl + 1) / 2;
+	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	int borrow = 0;
+
+	for (int i = 0; i < n; i++) {
+		uint8_t s = MRB(ss, (uint16_t)(c->si + i));
+		uint8_t d = MRB(c->es, (uint16_t)(c->di + i));
+		int lo = (d & 0x0F) - (s & 0x0F) - borrow;
+		borrow = 0;
+		if (lo < 0) { lo += 10; borrow = 1; }
+		int hi = ((d >> 4) & 0x0F) - ((s >> 4) & 0x0F) - borrow;
+		borrow = 0;
+		if (hi < 0) { hi += 10; borrow = 1; }
+		MWB(c->es, (uint16_t)(c->di + i), (uint8_t)((hi << 4) | lo));
+	}
+
+	c->flags &= ~(V20_CF | V20_ZF);
+	if (borrow) c->flags |= V20_CF;
+	int nz = 0;
+	for (int i = 0; i < n; i++) nz |= MRB(c->es, (uint16_t)(c->di + i));
+	if (!nz) c->flags |= V20_ZF;
+}
+
+static void v20_cmp4s(v20_t *c)
+{
+	int n = (c->cl + 1) / 2;
+	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	int borrow = 0, nz = 0;
+
+	for (int i = 0; i < n; i++) {
+		uint8_t s = MRB(ss, (uint16_t)(c->si + i));
+		uint8_t d = MRB(c->es, (uint16_t)(c->di + i));
+		int lo = (d & 0x0F) - (s & 0x0F) - borrow;
+		borrow = 0;
+		if (lo < 0) { lo += 10; borrow = 1; }
+		int hi = ((d >> 4) & 0x0F) - ((s >> 4) & 0x0F) - borrow;
+		borrow = 0;
+		if (hi < 0) { hi += 10; borrow = 1; }
+		nz |= (hi << 4) | lo;
+	}
+
+	c->flags &= ~(V20_CF | V20_ZF);
+	if (borrow) c->flags |= V20_CF;
+	if (!nz) c->flags |= V20_ZF;
+}
+
+static void v20_rol4(v20_t *c)
+{
+	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint8_t mem = MRB(ss, c->si);
+	uint8_t al_hi = c->al >> 4;
+	c->al = (c->al << 4) | (mem >> 4);
+	MWB(ss, c->si, (uint8_t)((mem << 4) | al_hi));
+}
+
+static void v20_ror4(v20_t *c)
+{
+	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint8_t mem = MRB(ss, c->si);
+	uint8_t al_lo = c->al & 0x0F;
+	c->al = (mem << 4) | (c->al >> 4);
+	MWB(ss, c->si, (uint8_t)((al_lo << 4) | (mem >> 4)));
+}
+
+static void exec_0f(v20_t *c)
+{
+	uint8_t op2 = f8(c);
+
+	if (op2 >= 0x10 && op2 <= 0x1F) {
+		v20_bitop(c, op2);
+		return;
+	}
+
+	switch (op2) {
+	case 0x20: v20_add4s(c); break;
+	case 0x22: v20_sub4s(c); break;
+	case 0x26: v20_cmp4s(c); break;
+	case 0x28: v20_rol4(c); break;
+	case 0x2A: v20_ror4(c); break;
+	case 0xFF: do_int(c, f8(c)); break; /* BRKEM */
+	default:
+		fprintf(stderr, "UNIMPL 0F %02X at %04X:%04X\n", op2, c->cs, (uint16_t)(c->ip-2));
+		break;
+	}
+}
+
 /* ---- conditional jump helper ---- */
 
 static bool jcc(v20_t *c, int cc) {
@@ -393,7 +551,7 @@ pfx:
 	case 0x06: push(c, c->es); break;
 	case 0x07: c->es = pop(c); break;
 	case 0x0e: push(c, c->cs); break;
-	case 0x0f: break;
+	case 0x0f: exec_0f(c); break;
 	case 0x16: push(c, c->ss); break;
 	case 0x17: c->ss = pop(c); break;
 	case 0x1e: push(c, c->ds); break;

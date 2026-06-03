@@ -1,6 +1,7 @@
 #include "machine.h"
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static uint8_t mem_read(void *ctx, uint32_t addr);
 static void    mem_write(void *ctx, uint32_t addr, uint8_t val);
@@ -8,6 +9,7 @@ static uint8_t io_read(void *ctx, uint16_t port);
 static void    io_write(void *ctx, uint16_t port, uint8_t val);
 static void    update_bank(machine_t *m, int bank);
 static void    update_irqs(machine_t *m);
+static void    rtc_init(rtc_t *r);
 
 int machine_init(machine_t *m)
 {
@@ -41,6 +43,9 @@ void machine_reset(machine_t *m)
 	m->buzzer_on         = false;
 	m->f9_timer_cycles   = 0;
 	m->kb_timer_cycles   = m->kb_timer_period;
+	m->rtc_timer_cycles  = CPU_CLOCK;
+
+	rtc_init(&m->rtc);
 
 	memset(m->bank_select, 0, sizeof(m->bank_select));
 	for (int i = 0; i < NUM_BANKS; i++)
@@ -158,6 +163,126 @@ static void kb_timer_tick(machine_t *m)
 	update_irqs(m);
 }
 
+/* ---- RTC (RP5C01) ---- */
+
+static const uint8_t rtc_wmask[2][13] = {
+	{ 0xF,0x7,0xF,0x7,0xF,0x3,0x7,0xF,0x3,0xF,0x1,0xF,0xF },
+	{ 0x0,0x0,0xF,0x3,0xF,0x3,0x0,0x0,0x0,0x0,0x1,0x3,0x0 },
+};
+
+static void rtc_init(rtc_t *r)
+{
+	memset(r, 0, sizeof(*r));
+	r->reg[1][10] = 1;
+
+	time_t now = time(NULL);
+	struct tm *t = localtime(&now);
+
+	r->reg[0][0]  = t->tm_sec % 10;
+	r->reg[0][1]  = t->tm_sec / 10;
+	r->reg[0][2]  = t->tm_min % 10;
+	r->reg[0][3]  = t->tm_min / 10;
+	r->reg[0][4]  = t->tm_hour % 10;
+	r->reg[0][5]  = t->tm_hour / 10;
+	r->reg[0][6]  = t->tm_wday;
+	r->reg[0][7]  = t->tm_mday % 10;
+	r->reg[0][8]  = t->tm_mday / 10;
+	r->reg[0][9]  = (t->tm_mon + 1) % 10;
+	r->reg[0][10] = (t->tm_mon + 1) / 10;
+	r->reg[0][11] = (t->tm_year % 100) % 10;
+	r->reg[0][12] = (t->tm_year % 100) / 10;
+	r->reg[1][11] = t->tm_year % 4;
+}
+
+static uint8_t rtc_read(rtc_t *r, uint8_t offset)
+{
+	offset &= 0x0F;
+
+	if (offset == 0x0D) return r->mode & 0x0F;
+	if (offset >= 0x0E) return 0;
+
+	switch (r->mode & 3) {
+	case 0: return r->reg[0][offset] & 0x0F;
+	case 1: return r->reg[1][offset] & 0x0F;
+	case 2: return r->ram[offset] & 0x0F;
+	case 3: return (r->ram[offset] >> 4) & 0x0F;
+	}
+	return 0;
+}
+
+static void rtc_write(rtc_t *r, uint8_t offset, uint8_t data)
+{
+	offset &= 0x0F;
+	data   &= 0x0F;
+
+	if (offset == 0x0D) { r->mode = data; return; }
+	if (offset == 0x0E) return;
+	if (offset == 0x0F) {
+		if (data & 1)
+			memset(&r->reg[1][0], 0, 5);
+		r->reset = data;
+		return;
+	}
+
+	switch (r->mode & 3) {
+	case 0: r->reg[0][offset] = data & rtc_wmask[0][offset]; break;
+	case 1: r->reg[1][offset] = data & rtc_wmask[1][offset]; break;
+	case 2: r->ram[offset] = (r->ram[offset] & 0xF0) | data; break;
+	case 3: r->ram[offset] = (r->ram[offset] & 0x0F) | (data << 4); break;
+	}
+}
+
+static void rtc_tick(rtc_t *r)
+{
+	if (!(r->mode & 0x08)) return;
+
+	static const uint8_t mdays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+	if (++r->reg[0][0] <= 9) return;
+	r->reg[0][0] = 0;
+	if (++r->reg[0][1] <= 5) return;
+	r->reg[0][1] = 0;
+
+	if (++r->reg[0][2] <= 9) return;
+	r->reg[0][2] = 0;
+	if (++r->reg[0][3] <= 5) return;
+	r->reg[0][3] = 0;
+
+	r->reg[0][4]++;
+	if (r->reg[0][4] > 9) { r->reg[0][4] = 0; r->reg[0][5]++; }
+	if (r->reg[0][5] * 10 + r->reg[0][4] < 24) return;
+	r->reg[0][4] = 0;
+	r->reg[0][5] = 0;
+
+	r->reg[0][6] = (r->reg[0][6] + 1) % 7;
+
+	int mon = r->reg[0][10] * 10 + r->reg[0][9];
+	int mx = 31;
+	if (mon >= 1 && mon <= 12) {
+		mx = mdays[mon - 1];
+		if (mon == 2 && r->reg[1][11] == 0) mx = 29;
+	}
+
+	r->reg[0][7]++;
+	if (r->reg[0][7] > 9) { r->reg[0][7] = 0; r->reg[0][8]++; }
+	if (r->reg[0][8] * 10 + r->reg[0][7] <= mx) return;
+	r->reg[0][7] = 1;
+	r->reg[0][8] = 0;
+
+	r->reg[0][9]++;
+	if (r->reg[0][9] > 9) { r->reg[0][9] = 0; r->reg[0][10]++; }
+	if (r->reg[0][10] * 10 + r->reg[0][9] <= 12) return;
+	r->reg[0][9] = 1;
+	r->reg[0][10] = 0;
+
+	r->reg[0][11]++;
+	if (r->reg[0][11] > 9) {
+		r->reg[0][11] = 0;
+		r->reg[0][12] = (r->reg[0][12] + 1) % 10;
+	}
+	r->reg[1][11] = (r->reg[1][11] + 1) & 3;
+}
+
 /* ---- I/O ---- */
 
 static uint8_t io_read(void *ctx, uint16_t port)
@@ -181,7 +306,7 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	case 0x00D4: case 0x00D5: case 0x00D6: case 0x00D7:
 	case 0x00D8: case 0x00D9: case 0x00DA: case 0x00DB:
 	case 0x00DC: case 0x00DD: case 0x00DE: case 0x00DF:
-		return 0;
+		return rtc_read(&m->rtc, (uint8_t)(port - 0xD0));
 	}
 
 	return 0xFF;
@@ -251,6 +376,7 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 	case 0x00D4: case 0x00D5: case 0x00D6: case 0x00D7:
 	case 0x00D8: case 0x00D9: case 0x00DA: case 0x00DB:
 	case 0x00DC: case 0x00DD: case 0x00DE: case 0x00DF:
+		rtc_write(&m->rtc, (uint8_t)(port - 0xD0), val);
 		break;
 	}
 }
@@ -266,6 +392,8 @@ void machine_step(machine_t *m, int cycles)
 			chunk = m->kb_timer_cycles;
 		if (m->f9_timer_cycles > 0 && chunk > m->f9_timer_cycles)
 			chunk = m->f9_timer_cycles;
+		if (chunk > m->rtc_timer_cycles)
+			chunk = m->rtc_timer_cycles;
 		if (chunk <= 0) chunk = 1;
 
 		int ran = v20_exec(&m->cpu, chunk);
@@ -284,6 +412,12 @@ void machine_step(machine_t *m, int cycles)
 				m->irq_active |= 0x40;
 				update_irqs(m);
 			}
+		}
+
+		m->rtc_timer_cycles -= ran;
+		if (m->rtc_timer_cycles <= 0) {
+			rtc_tick(&m->rtc);
+			m->rtc_timer_cycles += CPU_CLOCK;
 		}
 	}
 }

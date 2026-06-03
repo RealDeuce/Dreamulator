@@ -14,6 +14,13 @@
 #define LCD_WIDTH   480
 #define LCD_HEIGHT  64
 
+typedef struct {
+	uint8_t  reg[2][13];
+	uint8_t  ram[13];
+	uint8_t  mode;
+	uint8_t  reset;
+} rtc_t;
+
 typedef struct machine machine_t;
 
 struct machine {
@@ -42,9 +49,12 @@ struct machine {
 
 	uint8_t  uart_control;
 
+	rtc_t    rtc;
+
 	int      kb_timer_cycles;
 	int      kb_timer_period;
 	int      f9_timer_cycles;
+	int      rtc_timer_cycles;
 
 	bool     bank_bit3_selects_ram;
 };
