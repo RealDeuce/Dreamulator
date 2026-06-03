@@ -26,6 +26,7 @@ struct model_t {
 	uint32_t ram_size;
 	int      lcd_height;
 	bool     has_pccard;
+	bool     has_floppy;
 	bool     bank_bit3_selects_ram;
 	bool     power_nmi;
 };

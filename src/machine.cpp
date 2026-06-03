@@ -19,14 +19,15 @@
 /* ---- model table ---- */
 
 const model_t models[] = {
-	{ "wales210", "Walther ES-210",       128*1024, 64,  true,  false, false },
-	{ "dw325",    "DreamWriter 325",      128*1024, 64,  true,  false, false },
-	{ "dator3k",  "Dator 3000",           128*1024, 64,  true,  false, false },
-	{ "es210_es", "Nakajima ES-210 (ES)", 128*1024, 64,  true,  false, false },
-	{ "dwT100",   "DreamWriter T100",     128*1024, 64,  false, true,  false },
-	{ "dwT400",   "DreamWriter T400",     256*1024, 64,  true,  true,  true  },
-	{ "dw450",    "DreamWriter 450",      256*1024, 64,  true,  true,  true  },
-	{ "dwT200",   "DreamWriter T200",     256*1024, 128, true,  true,  true  },
+	//                                    RAM       LCD  card   flop   b3ram  nmi
+	{ "wales210", "Walther ES-210",       128*1024, 64,  true,  false, false, false },
+	{ "dw325",    "DreamWriter 325",      128*1024, 64,  true,  false, false, false },
+	{ "dator3k",  "Dator 3000",           128*1024, 64,  true,  false, false, false },
+	{ "es210_es", "Nakajima ES-210 (ES)", 128*1024, 64,  true,  false, false, false },
+	{ "dwT100",   "DreamWriter T100",     128*1024, 64,  false, false, true,  false },
+	{ "dwT400",   "DreamWriter T400",     256*1024, 64,  true,  false, true,  true  },
+	{ "dw450",    "DreamWriter 450",      256*1024, 64,  true,  false, true,  true  },
+	{ "dwT200",   "DreamWriter T200",     256*1024, 128, true,  true,  true,  true  },
 };
 const int model_count = sizeof(models) / sizeof(models[0]);
 

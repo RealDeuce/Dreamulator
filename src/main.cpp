@@ -563,12 +563,16 @@ int main(int argc, char *argv[])
 	menu->add("&Machine/Main Battery Low", 0,       cb_battery, &g_mach.main_battery_low, FL_MENU_TOGGLE);
 	menu->add("&Machine/Coin Battery Low", 0,       cb_battery, &g_mach.coin_battery_low, FL_MENU_TOGGLE);
 
-	menu->add("M&edia/Insert PC Card...",  0, cb_insert_pccard);
-	menu->add("M&edia/New PC Card...",     0, cb_new_pccard);
-	menu->add("M&edia/Eject PC Card",      0, cb_eject_pccard);
-	menu->add("M&edia/Insert Floppy...",   0, cb_insert_floppy);
-	menu->add("M&edia/New Floppy...",      0, cb_new_floppy);
-	menu->add("M&edia/Eject Floppy",       0, cb_eject_floppy);
+	if (g_model->has_pccard) {
+		menu->add("M&edia/Insert PC Card...",  0, cb_insert_pccard);
+		menu->add("M&edia/New PC Card...",     0, cb_new_pccard);
+		menu->add("M&edia/Eject PC Card",      0, cb_eject_pccard);
+	}
+	if (g_model->has_floppy) {
+		menu->add("M&edia/Insert Floppy...",   0, cb_insert_floppy);
+		menu->add("M&edia/New Floppy...",      0, cb_new_floppy);
+		menu->add("M&edia/Eject Floppy",       0, cb_eject_floppy);
+	}
 	menu->add("M&edia/Printer Output...",  0, cb_printer_file);
 
 	menu->add("&Serial/Connect PTY",       0, cb_serial_pty);
