@@ -183,15 +183,15 @@ static void reconnect_uart(int backend, int port, const char *path) {
 
 /* ---- menu callbacks ---- */
 
-static void cb_save_nvram(Fl_Widget *, void *) {
-	machine_save_nvram(&g_mach, g_nvram_path);
-	fl_message("NVRAM saved.");
-}
-
 static void cb_quit(Fl_Widget *, void *) {
 	machine_save_nvram(&g_mach, g_nvram_path);
 	if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
 	exit(0);
+}
+
+static void cb_quit_nosave(Fl_Widget *, void *) {
+	if (fl_choice("Quit without saving NVRAM?", "Cancel", "Quit", nullptr))
+		exit(0);
 }
 
 static void cb_power(Fl_Widget *, void *) {
@@ -431,8 +431,8 @@ int main(int argc, char *argv[])
 	win->callback([](Fl_Widget *, void *) { cb_quit(nullptr, nullptr); });
 
 	Fl_Menu_Bar *menu = new Fl_Menu_Bar(0, 0, win_w, MENUBAR_H);
-	menu->add("&File/Save NVRAM",    0,            cb_save_nvram);
-	menu->add("&File/Quit",          FL_CTRL+'q',  cb_quit);
+	menu->add("&File/Quit",                FL_CTRL+'q',  cb_quit);
+	menu->add("&File/Quit Without Saving", 0,            cb_quit_nosave);
 
 	menu->add("&Machine/Power Button", FL_End,      cb_power);
 	menu->add("&Machine/Reset",        0,           cb_reset);
