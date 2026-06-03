@@ -20,14 +20,13 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-extern "C" {
 #include "machine.h"
-}
 #include "prefs.h"
 #include "dbg_regs.h"
 #include "dbg_dis.h"
 #include "dbg_mem.h"
 #include "remote.h"
+#include "dbg_periph.h"
 
 #define SCALE       2
 #define MENUBAR_H   25
@@ -46,6 +45,7 @@ static int          g_remote_port = 0;
 static DbgRegsWindow *g_dbg_regs = nullptr;
 static DbgDisWindow  *g_dbg_dis  = nullptr;
 static DbgMemWindow  *g_dbg_mem  = nullptr;
+static DbgPeriphWindow *g_dbg_periph = nullptr;
 static char         g_nvram_path[1024];
 static char         g_pccard_path[1024];
 static char         g_floppy_path[1024];
@@ -225,6 +225,12 @@ static void cb_show_mem(Fl_Widget *, void *) {
 	if (!g_dbg_mem) g_dbg_mem = new DbgMemWindow(&g_mach.cpu);
 	g_dbg_mem->show();
 	g_dbg_mem->refresh();
+}
+
+static void cb_show_periph(Fl_Widget *, void *) {
+	if (!g_dbg_periph) g_dbg_periph = new DbgPeriphWindow(&g_mach);
+	g_dbg_periph->refresh();
+	g_dbg_periph->show();
 }
 
 /* ---- main callbacks ---- */
@@ -538,6 +544,7 @@ int main(int argc, char *argv[])
 	menu->add("&Debug/CPU Registers",  FL_CTRL+'r', cb_show_regs);
 	menu->add("&Debug/Disassembly",    FL_CTRL+'d', cb_show_dis);
 	menu->add("&Debug/Memory Editor",  FL_CTRL+'m', cb_show_mem);
+	menu->add("&Debug/Peripherals",   FL_CTRL+'p', cb_show_periph);
 
 	menu->add("S&peed/Normal (1x)",   0, cb_speed, (void *)1, FL_MENU_RADIO | FL_MENU_VALUE);
 	menu->add("S&peed/Double (2x)",   0, cb_speed, (void *)2, FL_MENU_RADIO);

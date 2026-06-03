@@ -6,14 +6,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 int dis86(const uint8_t *code, int len, uint16_t ip, char *buf, int bufsz);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

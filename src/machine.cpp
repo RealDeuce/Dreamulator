@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
+#include "dbg_periph.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -243,7 +244,7 @@ static void update_bank(machine_t *m, int bank)
 
 static uint8_t mem_read(void *ctx, uint32_t addr)
 {
-	machine_t *m = ctx;
+	machine_t *m = (machine_t *)ctx;
 	addr &= 0xFFFFF;
 	int bank = addr >> 17;
 	int off  = addr & 0x1FFFF;
@@ -252,7 +253,7 @@ static uint8_t mem_read(void *ctx, uint32_t addr)
 
 static void mem_write(void *ctx, uint32_t addr, uint8_t val)
 {
-	machine_t *m = ctx;
+	machine_t *m = (machine_t *)ctx;
 	addr &= 0xFFFFF;
 	int bank = addr >> 17;
 	int off  = addr & 0x1FFFF;
@@ -423,10 +424,8 @@ static void rtc_tick(rtc_t *r)
 
 /* ---- I/O ---- */
 
-static uint8_t io_read(void *ctx, uint16_t port)
+static uint8_t io_read_inner(machine_t *m, uint16_t port)
 {
-	machine_t *m = ctx;
-
 	switch (port) {
 	case 0x0060: return m->irq_enabled;
 
@@ -467,9 +466,17 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	return 0xFF;
 }
 
+static uint8_t io_read(void *ctx, uint16_t port)
+{
+	uint8_t val = io_read_inner((machine_t *)ctx, port);
+	periph_log_io_read(port, val);
+	return val;
+}
+
 static void io_write(void *ctx, uint16_t port, uint8_t val)
 {
-	machine_t *m = ctx;
+	periph_log_io_write(port, val);
+	machine_t *m = (machine_t *)ctx;
 
 	switch (port) {
 	case 0x0000:
@@ -490,6 +497,7 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 		if ((old & 0x08) && !(val & 0x08))
 			uart_reset(&m->uart);
 		if ((old & 0x20) && !(val & 0x20)) {
+			periph_log_parallel(m->cent_data);
 			switch (m->cent_backend) {
 #ifdef __FreeBSD__
 			case CENT_PPI:
@@ -668,7 +676,7 @@ void machine_key_up(machine_t *m, int row, int bit)
 
 static void uart_txrdy_cb(void *ctx, bool state)
 {
-	machine_t *m = ctx;
+	machine_t *m = (machine_t *)ctx;
 	if (state) {
 		m->irq_active |= 0x04;
 		update_irqs(m);
@@ -677,7 +685,7 @@ static void uart_txrdy_cb(void *ctx, bool state)
 
 static void uart_rxrdy_cb(void *ctx, bool state)
 {
-	machine_t *m = ctx;
+	machine_t *m = (machine_t *)ctx;
 	if (state) {
 		m->irq_active |= 0x08;
 		update_irqs(m);

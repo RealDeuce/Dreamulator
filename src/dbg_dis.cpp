@@ -11,10 +11,8 @@
 #include <cstring>
 #include <cstdlib>
 
-extern "C" {
 #include "v20.h"
 #include "dis86.h"
-}
 #include "prefs.h"
 #include "dbg_dis.h"
 

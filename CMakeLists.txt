@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
-project(dreamulator LANGUAGES C CXX)
+project(dreamulator LANGUAGES CXX)
 
-set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
 
 find_package(FLTK REQUIRED)
@@ -10,15 +9,16 @@ pkg_check_modules(PORTAUDIO portaudio-2.0)
 
 add_executable(dreamulator
     src/main.cpp
-    src/v20.c
-    src/machine.c
-    src/uart.c
-    src/fdc.c
-    src/dis86.c
+    src/v20.cpp
+    src/machine.cpp
+    src/uart.cpp
+    src/fdc.cpp
+    src/dis86.cpp
     src/prefs.cpp
     src/dbg_regs.cpp
     src/dbg_dis.cpp
     src/dbg_mem.cpp
+    src/dbg_periph.cpp
     src/remote.cpp
 )
 
@@ -40,10 +40,7 @@ else()
     message(STATUS "PortAudio not found - building without audio")
 endif()
 
-target_compile_options(dreamulator PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra>
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra>
-)
+target_compile_options(dreamulator PRIVATE -Wall -Wextra)
 
 install(TARGETS dreamulator RUNTIME DESTINATION bin)
 install(DIRECTORY roms/ DESTINATION share/dreamulator/roms

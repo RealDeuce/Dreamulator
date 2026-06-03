@@ -4,7 +4,8 @@
 #ifndef REMOTE_H
 #define REMOTE_H
 
-extern "C" { struct v20; struct machine; }
+struct v20;
+struct machine;
 
 void remote_init(struct machine *mach, int port);
 void remote_shutdown(void);

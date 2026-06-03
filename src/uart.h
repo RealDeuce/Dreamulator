@@ -7,14 +7,14 @@
 #include <stdbool.h>
 
 enum { UART_PTY = 0, UART_TCP = 1, UART_SERIAL = 2 };
+enum { I8251_NEXT_MODE, I8251_NEXT_SYNC1, I8251_NEXT_SYNC2, I8251_NEXT_CMD };
 
 typedef void (*uart_signal_fn)(void *ctx, bool state);
 
 typedef struct uart uart_t;
 
 struct uart {
-	enum { I8251_NEXT_MODE, I8251_NEXT_SYNC1, I8251_NEXT_SYNC2,
-	       I8251_NEXT_CMD } prog_state;
+	int      prog_state;
 	uint8_t  mode;
 	uint8_t  command;
 	uint8_t  status;

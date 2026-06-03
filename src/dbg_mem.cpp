@@ -12,9 +12,7 @@
 #include <cstdlib>
 #include <cctype>
 
-extern "C" {
 #include "v20.h"
-}
 #include "prefs.h"
 #include "dbg_mem.h"
 

@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd, MAMEDev (smf, Robbbert)
 #include "uart.h"
+#include "dbg_periph.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -311,6 +312,7 @@ void uart_tick(uart_t *u, int cycles)
 		u->tx_timer -= cycles;
 		if (u->tx_timer <= 0) {
 			u->tx_pending = false;
+			periph_log_serial_tx(u->tx_data);
 			if (u->fd >= 0) {
 				uint8_t b = u->tx_data;
 				ssize_t n = write(u->fd, &b, 1);
@@ -346,6 +348,7 @@ void uart_tick(uart_t *u, int cycles)
 					if (u->status & ST_RXRDY)
 						u->status |= ST_OE;
 					u->rx_data = b;
+					periph_log_serial_rx(b);
 					u->status |= ST_RXRDY;
 					fire_rxrdy(u);
 				} else if (n == 0 && u->backend == UART_TCP) {

@@ -6,7 +6,7 @@
 
 #include <FL/Fl_Double_Window.H>
 
-extern "C" { struct v20; }
+struct v20;
 
 class DbgRegsWindow : public Fl_Double_Window {
 public:

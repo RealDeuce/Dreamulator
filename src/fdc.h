@@ -12,10 +12,12 @@
 #define FDC_SECTOR_SIZE 512
 #define FDC_DISK_SIZE   (FDC_HEADS * FDC_CYLINDERS * FDC_SECTORS * FDC_SECTOR_SIZE)
 
+enum { FDC_CMD, FDC_EXEC, FDC_RESULT };
+
 typedef struct fdc fdc_t;
 
 struct fdc {
-	enum { FDC_CMD, FDC_EXEC, FDC_RESULT } phase;
+	int      phase;
 
 	uint8_t  cmd[9];
 	int      cmd_len, cmd_pos;

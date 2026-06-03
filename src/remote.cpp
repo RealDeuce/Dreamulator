@@ -13,11 +13,9 @@
 #include <netinet/in.h>
 #include <errno.h>
 
-extern "C" {
 #include "v20.h"
 #include "machine.h"
 #include "dis86.h"
-}
 #include "remote.h"
 
 static machine_t *g_mach;
