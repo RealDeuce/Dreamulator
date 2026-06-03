@@ -430,6 +430,8 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	case 0x00A0: {
 		uint8_t st = 0;
 		if (!m->pccard) st |= 0x80;
+		if (m->main_battery_low) st |= 0x08;
+		if (m->coin_battery_low) st |= 0x04;
 #ifdef __FreeBSD__
 		if (m->cent_backend == CENT_PPI && m->cent_fd >= 0) {
 			uint8_t pst = 0;

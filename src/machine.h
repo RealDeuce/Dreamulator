@@ -105,6 +105,8 @@ struct machine {
 	int      rtc_timer_cycles;
 
 	bool     bank_bit3_selects_ram;
+	bool     main_battery_low;
+	bool     coin_battery_low;
 };
 
 enum { CENT_FILE = 0, CENT_LPT = 1, CENT_PPI = 2 };
