@@ -7,7 +7,9 @@
 #include <FL/Fl_File_Chooser.H>
 #include <FL/fl_ask.H>
 #include <FL/fl_draw.H>
+#ifdef HAS_PORTAUDIO
 #include <portaudio.h>
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,7 +33,9 @@ extern "C" {
 /* ---- globals ---- */
 
 static machine_t    g_mach;
+#ifdef HAS_PORTAUDIO
 static PaStream    *g_audio;
+#endif
 static int          g_speed = 1;
 static char         g_nvram_path[1024];
 static char         g_pccard_path[1024];
@@ -123,6 +127,7 @@ public:
 	}
 };
 
+#ifdef HAS_PORTAUDIO
 /* ---- PortAudio callback ---- */
 
 static int pa_callback(const void *, void *out, unsigned long frames,
@@ -146,6 +151,7 @@ static int pa_callback(const void *, void *out, unsigned long frames,
 	}
 	return paContinue;
 }
+#endif
 
 /* ---- emulation tick ---- */
 
@@ -497,8 +503,7 @@ int main(int argc, char *argv[])
 	win->show(fl_argc, argv);
 	lcd->take_focus();
 
-	/* ---- PortAudio ---- */
-
+#ifdef HAS_PORTAUDIO
 	Pa_Initialize();
 	PaError err = Pa_OpenDefaultStream(&g_audio, 0, 1, paFloat32,
 		SAMPLE_RATE, AUDIO_BUF, pa_callback, &g_mach);
@@ -506,6 +511,7 @@ int main(int argc, char *argv[])
 		Pa_StartStream(g_audio);
 	else
 		fprintf(stderr, "PortAudio: %s\n", Pa_GetErrorText(err));
+#endif
 
 	/* ---- run ---- */
 
@@ -514,8 +520,10 @@ int main(int argc, char *argv[])
 
 	/* ---- cleanup ---- */
 
+#ifdef HAS_PORTAUDIO
 	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); }
 	Pa_Terminate();
+#endif
 	machine_close_pccard(&g_mach);
 	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);

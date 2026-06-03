@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 11)
 
 find_package(FLTK REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PORTAUDIO REQUIRED portaudio-2.0)
+pkg_check_modules(PORTAUDIO portaudio-2.0)
 
 add_executable(dreamulator
     src/main.cpp
@@ -18,17 +18,21 @@ add_executable(dreamulator
 
 target_include_directories(dreamulator SYSTEM PRIVATE
     ${FLTK_INCLUDE_DIRS}
-    ${PORTAUDIO_INCLUDE_DIRS}
-)
-
-target_link_directories(dreamulator PRIVATE
-    ${PORTAUDIO_LIBRARY_DIRS}
 )
 
 target_link_libraries(dreamulator PRIVATE
     ${FLTK_LIBRARIES}
-    ${PORTAUDIO_LIBRARIES}
 )
+
+if(PORTAUDIO_FOUND)
+    target_compile_definitions(dreamulator PRIVATE HAS_PORTAUDIO)
+    target_include_directories(dreamulator SYSTEM PRIVATE ${PORTAUDIO_INCLUDE_DIRS})
+    target_link_directories(dreamulator PRIVATE ${PORTAUDIO_LIBRARY_DIRS})
+    target_link_libraries(dreamulator PRIVATE ${PORTAUDIO_LIBRARIES})
+    message(STATUS "PortAudio found - audio enabled")
+else()
+    message(STATUS "PortAudio not found - building without audio")
+endif()
 
 target_compile_options(dreamulator PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra>
