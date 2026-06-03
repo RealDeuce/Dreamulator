@@ -1,5 +1,8 @@
 # dreamulator
 
+> **Disclaimer:** The code in this repository is 100% AI slop.  The "author"
+> has never opened any of the source files to see what horrors lie within.
+
 A standalone emulator for the Nakajima ES-2xx series electronic typewriters,
 sold as the NTS DreamWriter, Walther ES-210, Dator 3000, and others.
 
