@@ -267,11 +267,15 @@ static void final_exit(int code) {
 
 static void shutdown_poll(void *) {
 	static int ticks = 0;
-	if (!g_mach.lcd_on || ++ticks >= 120) {
-		fprintf(stderr, "Shutdown: firmware %s\n",
-			!g_mach.lcd_on ? "acknowledged" : "timed out");
+	if (!g_mach.lcd_on) {
+		fprintf(stderr, "Shutdown: firmware acknowledged\n");
 		machine_power_button(&g_mach, false);
 		final_exit(0);
+	}
+	if (++ticks >= 120) {
+		fprintf(stderr, "Shutdown: firmware did not respond within 2 seconds\n");
+		machine_power_button(&g_mach, false);
+		final_exit(1);
 	}
 	machine_step(&g_mach, CPU_CLOCK / 60);
 	Fl::repeat_timeout(1.0/60.0, shutdown_poll, nullptr);
