@@ -2,6 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#ifdef __FreeBSD__
+#include <dev/ppbus/ppi.h>
+#include <dev/ppbus/ppbconf.h>
+#endif
 
 static uint8_t mem_read(void *ctx, uint32_t addr);
 static void    mem_write(void *ctx, uint32_t addr, uint8_t val);
@@ -15,10 +22,23 @@ static void uart_txrdy_cb(void *ctx, bool state);
 static void uart_rxrdy_cb(void *ctx, bool state);
 
 int machine_init(machine_t *m, int uart_backend, int tcp_port,
-                 const char *serial_path)
+                 const char *serial_path,
+                 int cent_backend, const char *cent_path)
 {
 	memset(m, 0, sizeof(*m));
 	m->bank_bit3_selects_ram = true;
+	m->cent_backend = cent_backend;
+	m->cent_fd = -1;
+
+	if (cent_backend != CENT_FILE && cent_path) {
+		m->cent_fd = open(cent_path, O_RDWR);
+		if (m->cent_fd < 0) {
+			fprintf(stderr, "Centronics: cannot open %s\n", cent_path);
+			m->cent_backend = CENT_FILE;
+		} else {
+			fprintf(stderr, "Centronics: %s\n", cent_path);
+		}
+	}
 
 	v20_init(&m->cpu);
 	m->cpu.mem_read  = mem_read;
@@ -303,7 +323,17 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	switch (port) {
 	case 0x0060: return m->irq_enabled;
 
-	case 0x00A0: return 0x80;
+	case 0x00A0: {
+		uint8_t st = 0x80;
+#ifdef __FreeBSD__
+		if (m->cent_backend == CENT_PPI && m->cent_fd >= 0) {
+			uint8_t pst = 0;
+			if (ioctl(m->cent_fd, PPIGSTATUS, &pst) == 0)
+				st |= (pst & nBUSY) ? 0 : 0x02;
+		}
+#endif
+		return st;
+	}
 
 	case 0x00B0: {
 		uint8_t r = m->keyboard_row;
@@ -346,11 +376,31 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 		if ((old & 0x08) && !(val & 0x08))
 			uart_reset(&m->uart);
 		if ((old & 0x20) && !(val & 0x20)) {
-			if (!m->printer)
-				m->printer = fopen("printer.out", "ab");
-			if (m->printer) {
-				fputc(m->cent_data, (FILE *)m->printer);
-				fflush((FILE *)m->printer);
+			switch (m->cent_backend) {
+#ifdef __FreeBSD__
+			case CENT_PPI:
+				if (m->cent_fd >= 0) {
+					uint8_t d = m->cent_data;
+					ioctl(m->cent_fd, PPISDATA, &d);
+					uint8_t ctl = STROBE | SELECTIN | nINIT;
+					ioctl(m->cent_fd, PPISCTRL, &ctl);
+					ctl &= ~STROBE;
+					ioctl(m->cent_fd, PPISCTRL, &ctl);
+				}
+				break;
+#endif
+			case CENT_LPT:
+				if (m->cent_fd >= 0)
+					(void)write(m->cent_fd, &m->cent_data, 1);
+				break;
+			default:
+				if (!m->printer)
+					m->printer = fopen("printer.out", "ab");
+				if (m->printer) {
+					fputc(m->cent_data, (FILE *)m->printer);
+					fflush((FILE *)m->printer);
+				}
+				break;
 			}
 			m->irq_active |= 0x02;
 			update_irqs(m);

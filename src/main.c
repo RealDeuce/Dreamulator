@@ -122,6 +122,8 @@ int main(int argc, char *argv[])
 	int uart_backend = UART_PTY;
 	int tcp_port = 0;
 	const char *serial_path = NULL;
+	int cent_backend = CENT_FILE;
+	const char *cent_path = NULL;
 	const char *rom_path = NULL;
 
 	for (int i = 1; i < argc; i++) {
@@ -131,20 +133,32 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "--serial") == 0 && i + 1 < argc) {
 			uart_backend = UART_SERIAL;
 			serial_path = argv[++i];
+		} else if (strcmp(argv[i], "--lpt") == 0 && i + 1 < argc) {
+			cent_backend = CENT_LPT;
+			cent_path = argv[++i];
+		} else if (strcmp(argv[i], "--ppi") == 0 && i + 1 < argc) {
+			cent_backend = CENT_PPI;
+			cent_path = argv[++i];
 		} else if (!rom_path) {
 			rom_path = argv[i];
 		}
 	}
 
 	if (!rom_path) {
-		fprintf(stderr, "Usage: %s [--tcp PORT | --serial DEV] <rom>\n", argv[0]);
+		fprintf(stderr, "Usage: %s [options] <rom>\n"
+			"  --tcp PORT        UART via TCP\n"
+			"  --serial DEV      UART via serial device\n"
+			"  --lpt DEV         Centronics via lpt device\n"
+			"  --ppi DEV         Centronics via ppi device\n",
+			argv[0]);
 		return 1;
 	}
 
 	char *nvram_path = make_nvram_path(rom_path);
 
 	machine_t m;
-	if (machine_init(&m, uart_backend, tcp_port, serial_path) != 0) return 1;
+	if (machine_init(&m, uart_backend, tcp_port, serial_path,
+	                 cent_backend, cent_path) != 0) return 1;
 	if (machine_load_rom(&m, rom_path) != 0) return 1;
 	machine_load_nvram(&m, nvram_path);
 	machine_reset(&m);

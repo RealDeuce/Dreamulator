@@ -51,6 +51,8 @@ struct machine {
 
 	uint8_t  port30;
 	uint8_t  cent_data;
+	int      cent_backend;
+	int      cent_fd;
 	void     *printer;
 
 	uart_t   uart;
@@ -65,8 +67,11 @@ struct machine {
 	bool     bank_bit3_selects_ram;
 };
 
+enum { CENT_FILE = 0, CENT_LPT = 1, CENT_PPI = 2 };
+
 int  machine_init(machine_t *m, int uart_backend, int tcp_port,
-                  const char *serial_path);
+                  const char *serial_path,
+                  int cent_backend, const char *cent_path);
 void machine_reset(machine_t *m);
 int  machine_load_rom(machine_t *m, const char *path);
 void machine_step(machine_t *m, int cycles);
