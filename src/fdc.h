@@ -3,8 +3,8 @@
 #ifndef FDC_H
 #define FDC_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <cstdint>
+#include <cstdio>
 
 #define FDC_HEADS       2
 #define FDC_CYLINDERS   80
@@ -14,9 +14,7 @@
 
 enum { FDC_CMD, FDC_EXEC, FDC_RESULT };
 
-typedef struct fdc fdc_t;
-
-struct fdc {
+struct fdc_t {
 	int      phase;
 
 	uint8_t  cmd[9];
@@ -49,7 +47,7 @@ struct fdc {
 	int      shim_cmd_len;
 	int      shim_cmd_pos;
 
-	void     *disk;
+	FILE     *disk;
 	bool     disk_wp;
 };
 

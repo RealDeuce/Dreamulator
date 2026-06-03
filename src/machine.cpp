@@ -2,10 +2,10 @@
 // copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
 #include "dbg_periph.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <time.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <ctime>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -519,8 +519,8 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 				if (!m->printer)
 					m->printer = fopen("printer.out", "ab");
 				if (m->printer) {
-					fputc(m->cent_data, (FILE *)m->printer);
-					fflush((FILE *)m->printer);
+					fputc(m->cent_data, m->printer);
+					fflush(m->printer);
 				}
 				break;
 			}

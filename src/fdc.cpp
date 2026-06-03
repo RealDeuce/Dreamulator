@@ -1,8 +1,8 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd, MAMEDev (Olivier Galibert, Wilbert Pol)
 #include "fdc.h"
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 #define MSR_RQM  0x80
 #define MSR_DIO  0x40
@@ -37,17 +37,17 @@ static void read_sector(fdc_t *f, int cyl, int head, int sect)
 {
 	memset(f->sec_buf, 0, FDC_SECTOR_SIZE);
 	if (f->disk) {
-		fseek((FILE *)f->disk, sector_offset(cyl, head, sect), SEEK_SET);
-		(void)fread(f->sec_buf, 1, FDC_SECTOR_SIZE, (FILE *)f->disk);
+		fseek(f->disk, sector_offset(cyl, head, sect), SEEK_SET);
+		(void)fread(f->sec_buf, 1, FDC_SECTOR_SIZE, f->disk);
 	}
 }
 
 static void write_sector(fdc_t *f, int cyl, int head, int sect)
 {
 	if (f->disk && !f->disk_wp) {
-		fseek((FILE *)f->disk, sector_offset(cyl, head, sect), SEEK_SET);
-		fwrite(f->sec_buf, 1, FDC_SECTOR_SIZE, (FILE *)f->disk);
-		fflush((FILE *)f->disk);
+		fseek(f->disk, sector_offset(cyl, head, sect), SEEK_SET);
+		fwrite(f->sec_buf, 1, FDC_SECTOR_SIZE, f->disk);
+		fflush(f->disk);
 	}
 }
 
@@ -179,7 +179,7 @@ void fdc_init(fdc_t *f)
 
 void fdc_destroy(fdc_t *f)
 {
-	if (f->disk) fclose((FILE *)f->disk);
+	if (f->disk) fclose(f->disk);
 	f->disk = NULL;
 }
 

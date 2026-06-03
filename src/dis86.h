@@ -4,7 +4,7 @@
 #ifndef DIS86_H
 #define DIS86_H
 
-#include <stdint.h>
+#include <cstdint>
 
 int dis86(const uint8_t *code, int len, uint16_t ip, char *buf, int bufsz);
 

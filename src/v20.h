@@ -3,8 +3,7 @@
 #ifndef V20_H
 #define V20_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <cstdint>
 
 #define V20_CF 0x0001
 #define V20_PF 0x0004
@@ -16,14 +15,12 @@
 #define V20_DF 0x0400
 #define V20_OF 0x0800
 
-typedef struct v20_trace {
+struct v20_trace_t {
 	uint16_t cs, ip, ax, bx, cx, dx, si, di, bp, sp, ds, es, ss, flags;
 	uint8_t  opcode;
-} v20_trace_t;
+};
 
-typedef struct v20 v20_t;
-
-struct v20 {
+struct v20_t {
 	union { uint16_t ax; struct { uint8_t al, ah; }; };
 	union { uint16_t cx; struct { uint8_t cl, ch; }; };
 	union { uint16_t dx; struct { uint8_t dl, dh; }; };

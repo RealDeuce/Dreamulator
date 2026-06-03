@@ -3,7 +3,8 @@
 #ifndef MACHINE_H
 #define MACHINE_H
 
-#include <stddef.h>
+#include <cstddef>
+#include <cstdio>
 #include "v20.h"
 #include "uart.h"
 #include "fdc.h"
@@ -19,7 +20,7 @@
 #define LCD_WIDTH   480
 #define MAX_LCD_H   128
 
-typedef struct {
+struct model_t {
 	const char *name;
 	const char *description;
 	uint32_t ram_size;
@@ -27,20 +28,20 @@ typedef struct {
 	bool     has_pccard;
 	bool     bank_bit3_selects_ram;
 	bool     power_nmi;
-} model_t;
+};
 
 extern const model_t models[];
 extern const int     model_count;
 const model_t *model_find(const char *name);
 
-typedef struct {
+struct rom_entry_t {
 	const char *model;
 	const char *bios;
 	const char *filename;
 	uint32_t    crc32;
 	uint32_t    size;
 	uint32_t    load_offset;
-} rom_entry_t;
+};
 
 extern const rom_entry_t rom_db[];
 extern const int          rom_db_count;
@@ -48,16 +49,14 @@ const rom_entry_t *rom_find_by_crc(uint32_t crc);
 const rom_entry_t *rom_find_for_model(const char *model, const char *bios);
 uint32_t crc32_buf(const uint8_t *data, size_t len);
 
-typedef struct {
+struct rtc_t {
 	uint8_t  reg[2][13];
 	uint8_t  ram[13];
 	uint8_t  mode;
 	uint8_t  reset;
-} rtc_t;
+};
 
-typedef struct machine machine_t;
-
-struct machine {
+struct machine_t {
 	const model_t *model;
 	v20_t    cpu;
 
@@ -90,7 +89,7 @@ struct machine {
 	uint8_t  cent_data;
 	int      cent_backend;
 	int      cent_fd;
-	void     *printer;
+	FILE     *printer;
 
 	uint8_t  *pccard;
 	uint32_t pccard_size;

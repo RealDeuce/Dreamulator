@@ -6,16 +6,16 @@
 
 #include <FL/Fl_Double_Window.H>
 
-struct v20;
+struct v20_t;
 
 class DbgMemWindow : public Fl_Double_Window {
 public:
-	DbgMemWindow(struct v20 *cpu);
+	DbgMemWindow(v20_t *cpu);
 	void refresh();
 	void goto_addr(uint32_t addr);
 
 private:
-	struct v20 *m_cpu;
+	v20_t *m_cpu;
 	uint32_t m_base;
 	class Fl_Input *m_addr_input;
 	class Fl_Text_Display *m_text;

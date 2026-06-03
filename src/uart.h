@@ -3,17 +3,15 @@
 #ifndef UART_H
 #define UART_H
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <cstdint>
+#include <string>
 
 enum { UART_PTY = 0, UART_TCP = 1, UART_SERIAL = 2 };
 enum { I8251_NEXT_MODE, I8251_NEXT_SYNC1, I8251_NEXT_SYNC2, I8251_NEXT_CMD };
 
-typedef void (*uart_signal_fn)(void *ctx, bool state);
+using uart_signal_fn = void (*)(void *ctx, bool state);
 
-typedef struct uart uart_t;
-
-struct uart {
+struct uart_t {
 	int      prog_state;
 	uint8_t  mode;
 	uint8_t  command;
@@ -37,7 +35,7 @@ struct uart {
 	int      backend;
 	int      fd;
 	int      listen_fd;
-	char     path[256];
+	std::string path;
 
 	uart_signal_fn txrdy_cb;
 	uart_signal_fn rxrdy_cb;

@@ -2,8 +2,8 @@
 // copyright-holders:Stephen Hurd
 // Inspired by VirtualT (Copyright 2004 Stephen Hurd and Ken Pettit, BSD-2-Clause)
 #include "dis86.h"
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 
 static const char *r8[]  = {"AL","CL","DL","BL","AH","CH","DH","BH"};
 static const char *r16[] = {"AX","CX","DX","BX","SP","BP","SI","DI"};

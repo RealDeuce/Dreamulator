@@ -342,14 +342,14 @@ static void cb_printer_file(Fl_Widget *, void *) {
 
 static void cb_serial_pty(Fl_Widget *, void *) {
 	reconnect_uart(UART_PTY, 0, nullptr);
-	fl_message("Serial PTY: %s", g_mach.uart.path);
+	fl_message("Serial PTY: %s", g_mach.uart.path.c_str());
 }
 
 static void cb_serial_tcp(Fl_Widget *, void *) {
 	const char *port = fl_input("TCP port:", "9600");
 	if (port) {
 		reconnect_uart(UART_TCP, atoi(port), nullptr);
-		fl_message("Serial TCP: %s", g_mach.uart.path);
+		fl_message("Serial TCP: %s", g_mach.uart.path.c_str());
 	}
 }
 
@@ -357,7 +357,7 @@ static void cb_serial_device(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Serial Device", "*", "/dev/cuau0");
 	if (path) {
 		reconnect_uart(UART_SERIAL, 0, path);
-		fl_message("Serial: %s", g_mach.uart.path);
+		fl_message("Serial: %s", g_mach.uart.path.c_str());
 	}
 }
 

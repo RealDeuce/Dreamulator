@@ -6,7 +6,7 @@
 
 #include <FL/Fl_Double_Window.H>
 
-struct machine;
+struct machine_t;
 
 void periph_log_serial_tx(uint8_t byte);
 void periph_log_serial_rx(uint8_t byte);
@@ -16,11 +16,11 @@ void periph_log_io_write(uint16_t port, uint8_t val);
 
 class DbgPeriphWindow : public Fl_Double_Window {
 public:
-	DbgPeriphWindow(struct machine *mach);
+	DbgPeriphWindow(machine_t *mach);
 	void refresh();
 
 private:
-	struct machine *m_mach;
+	machine_t *m_mach;
 	class Fl_Tabs *m_tabs;
 	class Fl_Text_Display *m_serial_log;
 	class Fl_Text_Buffer  *m_serial_buf;

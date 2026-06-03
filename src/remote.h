@@ -4,10 +4,10 @@
 #ifndef REMOTE_H
 #define REMOTE_H
 
-struct v20;
-struct machine;
+struct v20_t;
+struct machine_t;
 
-void remote_init(struct machine *mach, int port);
+void remote_init(machine_t *mach, int port);
 void remote_shutdown(void);
 
 #endif

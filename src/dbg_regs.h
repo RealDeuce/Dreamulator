@@ -6,15 +6,15 @@
 
 #include <FL/Fl_Double_Window.H>
 
-struct v20;
+struct v20_t;
 
 class DbgRegsWindow : public Fl_Double_Window {
 public:
-	DbgRegsWindow(struct v20 *cpu);
+	DbgRegsWindow(v20_t *cpu);
 	void refresh();
 
 private:
-	struct v20 *m_cpu;
+	v20_t *m_cpu;
 
 	class Fl_Input *m_reg[13];
 	class Fl_Check_Button *m_flag[9];

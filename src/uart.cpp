@@ -2,11 +2,11 @@
 // copyright-holders:Stephen Hurd, MAMEDev (smf, Robbbert)
 #include "uart.h"
 #include "dbg_periph.h"
-#include <stdio.h>
-#include <string.h>
+#include <cstdio>
+#include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <errno.h>
 #include <poll.h>
 #include <termios.h>
@@ -42,7 +42,7 @@ static int open_pty(uart_t *u)
 
 	char *name = ptsname(master);
 	if (!name) { close(master); return -1; }
-	snprintf(u->path, sizeof(u->path), "%s", name);
+	u->path = name;
 
 	set_nonblock(master);
 
@@ -57,7 +57,7 @@ static int open_pty(uart_t *u)
 
 	u->fd = master;
 	u->listen_fd = -1;
-	fprintf(stderr, "UART: %s\n", u->path);
+	fprintf(stderr, "UART: %s\n", u->path.c_str());
 	return 0;
 }
 
@@ -84,8 +84,8 @@ static int open_tcp(uart_t *u, int port)
 	set_nonblock(sock);
 	u->listen_fd = sock;
 	u->fd = -1;
-	snprintf(u->path, sizeof(u->path), "tcp://127.0.0.1:%d", port);
-	fprintf(stderr, "UART: %s\n", u->path);
+	u->path = "tcp://127.0.0.1:" + std::to_string(port);
+	fprintf(stderr, "UART: %s\n", u->path.c_str());
 	return 0;
 }
 
@@ -103,10 +103,10 @@ static int open_serial(uart_t *u, const char *path)
 		tcsetattr(fd, TCSANOW, &t);
 	}
 
-	snprintf(u->path, sizeof(u->path), "%s", path);
+	u->path = path;
 	u->fd = fd;
 	u->listen_fd = -1;
-	fprintf(stderr, "UART: %s\n", u->path);
+	fprintf(stderr, "UART: %s\n", u->path.c_str());
 	return 0;
 }
 
