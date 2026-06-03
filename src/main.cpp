@@ -437,8 +437,14 @@ int main(int argc, char *argv[])
 			bios_name = argv[++i];
 		else if (!strcmp(argv[i], "--romdir") && i+1 < argc)
 			romdir = argv[++i];
-		else if (!rom_path)
-			rom_path = argv[i];
+		else if (!strcmp(argv[i], "--rom") && i+1 < argc)
+			rom_path = argv[++i];
+		else if (!rom_path) {
+			if (model_find(argv[i]))
+				model_name = argv[i];
+			else
+				rom_path = argv[i];
+		}
 	}
 
 	/* romdir default */
@@ -486,8 +492,8 @@ int main(int argc, char *argv[])
 				}
 				closedir(d);
 			}
-			fprintf(stderr, "\nUsage: %s [options] [rom]\n"
-				"  --model NAME  --bios VER  --romdir PATH\n"
+			fprintf(stderr, "\nUsage: %s [model | rom] [options]\n"
+				"  --model NAME  --bios VER  --romdir PATH  --rom FILE\n"
 				"  --tcp PORT  --serial DEV  --lpt DEV  --ppi DEV\n"
 				"  --pccard FILE  --floppy FILE\n"
 			"  --remote PORT\n", argv[0]);
