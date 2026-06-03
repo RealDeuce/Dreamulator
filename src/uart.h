@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (smf, Robbbert)
 #ifndef UART_H
 #define UART_H
 

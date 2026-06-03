@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (Bryan McPhail)
 #include "v20.h"
 #include <stdio.h>
 #include <string.h>

@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (smf, Robbbert)
 #include "uart.h"
 #include <stdio.h>
 #include <string.h>

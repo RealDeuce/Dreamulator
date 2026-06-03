@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd
 #include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>

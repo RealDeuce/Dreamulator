@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (Bryan McPhail)
 #ifndef V20_H
 #define V20_H
 

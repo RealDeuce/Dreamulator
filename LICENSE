@@ -1,0 +1,57 @@
+BSD 3-Clause License
+
+Copyright (c) 2026, Stephen Hurd
+Copyright (c) MAMEDev and contributors (see below)
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+
+MAME Attribution
+================
+
+This emulator's design is informed by the MAME nakajies driver and
+associated device emulations, all BSD-3-Clause licensed.  No MAME source
+code was copied; the implementation is original.
+
+MAME copyright holders whose work informed this project:
+
+  Wilbert Pol, Sandro Ronco   - nakajies driver (ES-2xx typewriter family)
+  Bryan McPhail               - NEC V20/V30 CPU core and cycle timing
+  smf, Robbbert               - i8251 USART
+  Curt Coder                  - RP5C01 RTC
+  smf, hap                    - clock device
+  Kevin Thacker               - beeper sound device
+  Dirk Best                   - PC Card SRAM
+  smf                         - PC Card slot interface (GPL-2.0+; see note)
+
+Note on pccard.h (GPL-2.0+)
+----------------------------
+The MAME PC Card slot interface header (bus/pccard/pccard.h) is licensed
+GPL-2.0+, unlike the rest of the referenced MAME sources.  Our PC Card
+implementation does not derive from that code; it is a trivial SRAM buffer
+with file-backed persistence, implementing the hardware banking spec
+directly.  The GPL-licensed header was read for reference only.

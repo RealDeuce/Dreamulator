@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
 #include <stdio.h>
 #include <string.h>

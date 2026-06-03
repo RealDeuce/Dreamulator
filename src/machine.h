@@ -1,3 +1,5 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #ifndef MACHINE_H
 #define MACHINE_H
 
