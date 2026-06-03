@@ -127,6 +127,7 @@ int main(int argc, char *argv[])
 	int cent_backend = CENT_FILE;
 	const char *cent_path = NULL;
 	const char *pccard_path = NULL;
+	const char *floppy_path = NULL;
 	const char *model_name = NULL;
 	const char *bios_name = NULL;
 	const char *romdir = NULL;
@@ -147,6 +148,8 @@ int main(int argc, char *argv[])
 			cent_path = argv[++i];
 		} else if (strcmp(argv[i], "--pccard") == 0 && i + 1 < argc) {
 			pccard_path = argv[++i];
+		} else if (strcmp(argv[i], "--floppy") == 0 && i + 1 < argc) {
+			floppy_path = argv[++i];
 		} else if (strcmp(argv[i], "--model") == 0 && i + 1 < argc) {
 			model_name = argv[++i];
 		} else if (strcmp(argv[i], "--bios") == 0 && i + 1 < argc) {
@@ -235,6 +238,7 @@ usage:
 				"  --lpt DEV         Centronics via lpt device\n"
 				"  --ppi DEV         Centronics via ppi device\n"
 				"  --pccard FILE     PC Card SRAM image\n"
+			"  --floppy FILE     Floppy disk image (T200)\n"
 				"\nModels: ", argv[0]);
 			for (int i = 0; i < model_count; i++)
 				fprintf(stderr, "%s%s", i ? ", " : "", models[i].name);
@@ -292,6 +296,8 @@ usage:
 	                 cent_backend, cent_path) != 0) return 1;
 	if (pccard_path)
 		machine_load_pccard(&m, pccard_path);
+	if (floppy_path)
+		fdc_load_disk(&m.fdc, floppy_path);
 	if (machine_load_rom(&m, rom_path, rom_entry) != 0) return 1;
 	machine_load_nvram(&m, nvram_path);
 	machine_reset(&m);
@@ -381,6 +387,7 @@ usage:
 	if (pccard_path)
 		machine_save_pccard(&m, pccard_path);
 	free(m.pccard);
+	fdc_destroy(&m.fdc);
 	uart_destroy(&m.uart);
 
 	if (audio_dev)

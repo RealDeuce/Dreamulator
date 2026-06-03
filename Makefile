@@ -3,7 +3,7 @@ CFLAGS = -std=c11 -Wall -Wextra -O2 -g
 CFLAGS += $(shell pkg-config --cflags sdl2)
 LDFLAGS = $(shell pkg-config --libs sdl2)
 
-SRCS = src/main.c src/v20.c src/machine.c src/uart.c
+SRCS = src/main.c src/v20.c src/machine.c src/uart.c src/fdc.c
 OBJS = $(SRCS:.c=.o)
 BIN = dreamulator
 

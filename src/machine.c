@@ -127,6 +127,7 @@ int machine_init(machine_t *m, const model_t *model,
 	m->kb_timer_period = CPU_CLOCK / (XTAL / 20480);
 
 	uart_init(&m->uart, uart_backend, tcp_port, serial_path);
+	fdc_init(&m->fdc);
 	m->uart.txrdy_cb = uart_txrdy_cb;
 	m->uart.rxrdy_cb = uart_rxrdy_cb;
 	m->uart.cb_ctx   = m;
@@ -452,6 +453,10 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	case 0x00D8: case 0x00D9: case 0x00DA: case 0x00DB:
 	case 0x00DC: case 0x00DD: case 0x00DE: case 0x00DF:
 		return rtc_read(&m->rtc, (uint8_t)(port - 0xD0));
+
+	case 0x00E0: case 0x00E1: case 0x00E2: case 0x00E3:
+	case 0x00E4: case 0x00E5: case 0x00E7:
+		return fdc_read(&m->fdc, port - 0xE0);
 	}
 
 	return 0xFF;
@@ -560,6 +565,11 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 	case 0x00D8: case 0x00D9: case 0x00DA: case 0x00DB:
 	case 0x00DC: case 0x00DD: case 0x00DE: case 0x00DF:
 		rtc_write(&m->rtc, (uint8_t)(port - 0xD0), val);
+		break;
+
+	case 0x00E0: case 0x00E1: case 0x00E2: case 0x00E3:
+	case 0x00E4: case 0x00E5: case 0x00E7:
+		fdc_write(&m->fdc, port - 0xE0, val);
 		break;
 	}
 }

@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include "v20.h"
 #include "uart.h"
+#include "fdc.h"
 
 #define XTAL        19660000
 #define CPU_CLOCK   (XTAL / 2)
@@ -94,6 +95,7 @@ struct machine {
 	uint32_t pccard_size;
 
 	uart_t   uart;
+	fdc_t    fdc;
 
 	rtc_t    rtc;
 
