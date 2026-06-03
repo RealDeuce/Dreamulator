@@ -2,11 +2,10 @@
 // copyright-holders:Stephen Hurd, MAMEDev (Bryan McPhail)
 #include "v20.h"
 #include <cstdio>
-#include <cstring>
 #include <cstddef>
 
 /* even-parity lookup */
-static const uint8_t ptab[256] = {
+static constexpr uint8_t ptab[256] = {
 	1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0,
 	0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,1,
 	0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0,1,0,0,1,0,1,1,0,0,1,1,0,1,0,0,1,
@@ -21,7 +20,7 @@ static const uint8_t ptab[256] = {
 
 static inline uint8_t  rb(v20_t *c, uint32_t a) { return c->mem_read(c->ctx, a & 0xFFFFF); }
 static inline void     wb(v20_t *c, uint32_t a, uint8_t v) { c->mem_write(c->ctx, a & 0xFFFFF, v); }
-static inline uint16_t rw(v20_t *c, uint32_t a) { return rb(c,a)|((uint16_t)rb(c,a+1)<<8); }
+static inline uint16_t rw(v20_t *c, uint32_t a) { return (uint16_t)(rb(c,a) | (rb(c,a+1) << 8)); }
 static inline void     ww(v20_t *c, uint32_t a, uint16_t v) { wb(c,a,(uint8_t)v); wb(c,a+1,v>>8); }
 
 static inline uint32_t soff(uint16_t s, uint16_t o) { return ((uint32_t)s<<4)+o; }
@@ -36,13 +35,13 @@ static inline uint16_t f16(v20_t *c){ uint16_t v=MRW(c->cs,c->ip); c->ip += 2; r
 /* ---- register access by 8086 encoding ---- */
 
 static inline uint16_t *r16p(v20_t *c, int i) {
-	static const size_t t[]={
+	static constexpr size_t t[]={
 		offsetof(v20_t,ax), offsetof(v20_t,cx), offsetof(v20_t,dx), offsetof(v20_t,bx),
 		offsetof(v20_t,sp), offsetof(v20_t,bp), offsetof(v20_t,si), offsetof(v20_t,di)};
 	return (uint16_t*)((char*)c + t[i&7]);
 }
 static inline uint16_t *srp(v20_t *c, int i) {
-	static const size_t t[]={
+	static constexpr size_t t[]={
 		offsetof(v20_t,es), offsetof(v20_t,cs), offsetof(v20_t,ss), offsetof(v20_t,ds)};
 	return (uint16_t*)((char*)c + t[i&3]);
 }
@@ -52,7 +51,7 @@ static inline uint8_t gr8(v20_t *c, int i) {
 }
 static inline void sr8(v20_t *c, int i, uint8_t v) {
 	uint16_t *r = r16p(c, i&3);
-	if (i&4) *r = (*r & 0x00FF) | ((uint16_t)v<<8);
+	if (i&4) *r = (uint16_t)((*r & 0x00FF) | (v << 8));
 	else     *r = (*r & 0xFF00) | v;
 }
 
@@ -140,7 +139,7 @@ static ea_t decode_ea(v20_t *c)
 	else if (e.mod == 2) off += f16(c);
 
 	e.off = off;
-	e.seg = (c->seg_override >= 0) ? *srp(c, c->seg_override) : *srp(c, ds);
+	e.seg = c->seg_override ? *srp(c, *c->seg_override) : *srp(c, ds);
 	return e;
 }
 
@@ -165,9 +164,9 @@ static uint32_t shf(v20_t *c, int op, uint32_t val, int cnt, int w)
 
 	for (int i = 0; i < cnt; i++) {
 		switch (op) {
-		case 0: cf=(r>>(bits-1))&1; r=((r<<1)|cf)&mask; break;
+		case 0: cf=(r>>(bits-1))&1; r=((r<<1)|(uint32_t)cf)&mask; break;
 		case 1: cf=r&1; r=((r>>1)|((uint32_t)cf<<(bits-1)))&mask; break;
-		case 2: cf=(r>>(bits-1))&1; r=((r<<1)|ocf)&mask; ocf=cf; break;
+		case 2: cf=(r>>(bits-1))&1; r=((r<<1)|(uint32_t)ocf)&mask; ocf=cf; break;
 		case 3: cf=r&1; r=((r>>1)|((uint32_t)ocf<<(bits-1)))&mask; ocf=cf; break;
 		case 4: case 6: cf=(r>>(bits-1))&1; r=(r<<1)&mask; break;
 		case 5: cf=r&1; r=(r>>1)&mask; break;
@@ -187,7 +186,7 @@ static uint32_t shf(v20_t *c, int op, uint32_t val, int cnt, int w)
 
 	if (cnt == 1) {
 		f &= ~V20_OF;
-		if (op==0||op==4||op==6) { if (((r>>(bits-1))^cf)&1) f|=V20_OF; }
+		if (op==0||op==4||op==6) { if (((r>>(bits-1))^(uint32_t)cf)&1) f|=V20_OF; }
 		else if (op==1)          { if (((r>>(bits-1))^((r>>(bits-2))&1))&1) f|=V20_OF; }
 		else if (op==5)          { if (val & sign) f|=V20_OF; }
 	}
@@ -232,14 +231,14 @@ static inline void dec16(v20_t *c, uint16_t *r) {
 /* ---- string operations ---- */
 
 static int s_movsb(v20_t *c, bool rep) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	if (rep && !c->cx) return 5;
 	do { MWB(c->es,c->di,MRB(ss,c->si)); c->si+=d; c->di+=d; n++;
 	     if(!rep) return 7; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_movsw(v20_t *c, bool rep) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
 	if (rep && !c->cx) return 5;
 	do { MWW(c->es,c->di,MRW(ss,c->si)); c->si+=d; c->di+=d; n++;
@@ -258,21 +257,21 @@ static int s_stosw(v20_t *c, bool rep) {
 	     if(!rep) return 3; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_lodsb(v20_t *c, bool rep) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	if (rep && !c->cx) return 5;
 	do { c->al=MRB(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_lodsw(v20_t *c, bool rep) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
 	if (rep && !c->cx) return 5;
 	do { c->ax=MRW(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
 static int s_cmpsb(v20_t *c, bool rep, bool repne) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
 	bool has_rep = rep||repne;
 	if (has_rep && !c->cx) return 5;
@@ -286,7 +285,7 @@ static int s_cmpsb(v20_t *c, bool rep, bool repne) {
 	} while(c->cx); return 5+2*n;
 }
 static int s_cmpsw(v20_t *c, bool rep, bool repne) {
-	uint16_t ss = (c->seg_override>=0)?*srp(c,c->seg_override):c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
 	bool has_rep = rep||repne;
 	if (has_rep && !c->cx) return 5;
@@ -346,7 +345,7 @@ static void v20_bitop(v20_t *c, uint8_t op2)
 
 	if (w) {
 		uint16_t v = ea_rw(c, &e);
-		uint16_t mask = (uint16_t)1 << bit;
+		uint16_t mask = (uint16_t)(1 << bit);
 		switch (fn) {
 		case 0: /* TEST */
 			c->flags &= ~(V20_CF|V20_OF|V20_ZF);
@@ -374,7 +373,7 @@ static void v20_bitop(v20_t *c, uint8_t op2)
 static void v20_add4s(v20_t *c)
 {
 	int n = (c->cl + 1) / 2;
-	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int carry = 0;
 
 	for (int i = 0; i < n; i++) {
@@ -399,7 +398,7 @@ static void v20_add4s(v20_t *c)
 static void v20_sub4s(v20_t *c)
 {
 	int n = (c->cl + 1) / 2;
-	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int borrow = 0;
 
 	for (int i = 0; i < n; i++) {
@@ -424,7 +423,7 @@ static void v20_sub4s(v20_t *c)
 static void v20_cmp4s(v20_t *c)
 {
 	int n = (c->cl + 1) / 2;
-	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int borrow = 0, nz = 0;
 
 	for (int i = 0; i < n; i++) {
@@ -446,19 +445,19 @@ static void v20_cmp4s(v20_t *c)
 
 static void v20_rol4(v20_t *c)
 {
-	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	uint8_t mem = MRB(ss, c->si);
 	uint8_t al_hi = c->al >> 4;
-	c->al = (c->al << 4) | (mem >> 4);
+	c->al = (uint8_t)((c->al << 4) | (mem >> 4));
 	MWB(ss, c->si, (uint8_t)((mem << 4) | al_hi));
 }
 
 static void v20_ror4(v20_t *c)
 {
-	uint16_t ss = (c->seg_override >= 0) ? *srp(c, c->seg_override) : c->ds;
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	uint8_t mem = MRB(ss, c->si);
 	uint8_t al_lo = c->al & 0x0F;
-	c->al = (mem << 4) | (c->al >> 4);
+	c->al = (uint8_t)((mem << 4) | (c->al >> 4));
 	MWB(ss, c->si, (uint8_t)((al_lo << 4) | (mem >> 4)));
 }
 
@@ -512,7 +511,7 @@ static bool jcc(v20_t *c, int cc) {
 
 static int exec_one(v20_t *c)
 {
-	int sov = -1;
+	std::optional<int> sov;
 	bool rep = false, repne = false;
 	uint8_t op;
 	int cyc = 0;
@@ -546,18 +545,18 @@ pfx:
 		if (sub < 4) {
 			ea_t e = decode_ea(c);
 			if (sub & 2) {
-				if (w) { uint16_t r=alu(c,aop,*r16p(c,e.reg),ea_rw(c,&e),1); if(aop!=7) *r16p(c,e.reg)=r; }
-				else   { uint8_t  r=alu(c,aop,gr8(c,e.reg),ea_rb(c,&e),0);   if(aop!=7) sr8(c,e.reg,r); }
+				if (w) { uint16_t r=(uint16_t)alu(c,aop,*r16p(c,e.reg),ea_rw(c,&e),1); if(aop!=7) *r16p(c,e.reg)=r; }
+				else   { uint8_t  r=(uint8_t)alu(c,aop,gr8(c,e.reg),ea_rb(c,&e),0);   if(aop!=7) sr8(c,e.reg,r); }
 				cyc += (e.mod==3) ? 2 : (w ? 15 : 11);
 			} else {
-				if (w) { uint16_t r=alu(c,aop,ea_rw(c,&e),*r16p(c,e.reg),1); if(aop!=7) ea_ww(c,&e,r); }
-				else   { uint8_t  r=alu(c,aop,ea_rb(c,&e),gr8(c,e.reg),0);   if(aop!=7) ea_wb(c,&e,r); }
+				if (w) { uint16_t r=(uint16_t)alu(c,aop,ea_rw(c,&e),*r16p(c,e.reg),1); if(aop!=7) ea_ww(c,&e,r); }
+				else   { uint8_t  r=(uint8_t)alu(c,aop,ea_rb(c,&e),gr8(c,e.reg),0);   if(aop!=7) ea_wb(c,&e,r); }
 				cyc += (e.mod==3) ? 2 : (w ? 24 : 16);
 			}
 		} else if (sub==4) {
-			uint8_t r=alu(c,aop,c->al,f8(c),0); if(aop!=7) c->al=r; cyc+=4;
+			uint8_t r=(uint8_t)alu(c,aop,c->al,f8(c),0); if(aop!=7) c->al=r; cyc+=4;
 		} else {
-			uint16_t r=alu(c,aop,c->ax,f16(c),1); if(aop!=7) c->ax=r; cyc+=4;
+			uint16_t r=(uint16_t)alu(c,aop,c->ax,f16(c),1); if(aop!=7) c->ax=r; cyc+=4;
 		}
 		break;
 	}
@@ -637,7 +636,7 @@ pfx:
 	case 0x61: { for(int i=7;i>=0;i--) { uint16_t v=pop(c); if(i!=4) *r16p(c,i)=v; } cyc+=40; break; }
 
 	/* ---- BOUND ---- */
-	case 0x62: { ea_t e=decode_ea(c); (void)e; cyc+=13; break; }
+	case 0x62: { [[maybe_unused]] ea_t e=decode_ea(c); cyc+=13; break; }
 
 	/* ---- PUSH imm ---- */
 	case 0x68: push(c, f16(c)); cyc+=12; break;
@@ -674,8 +673,8 @@ pfx:
 		if (op==0x81) imm=f16(c);
 		else if (op==0x83) imm=(uint16_t)(int16_t)(int8_t)f8(c);
 		else imm=f8(c);
-		if (w) { uint16_t r=alu(c,e.reg,ea_rw(c,&e),imm,1); if(e.reg!=7) ea_ww(c,&e,r); }
-		else   { uint8_t  r=alu(c,e.reg,ea_rb(c,&e),imm,0); if(e.reg!=7) ea_wb(c,&e,r); }
+		if (w) { uint16_t r=(uint16_t)alu(c,e.reg,ea_rw(c,&e),imm,1); if(e.reg!=7) ea_ww(c,&e,r); }
+		else   { uint8_t  r=(uint8_t)alu(c,e.reg,ea_rb(c,&e),imm,0); if(e.reg!=7) ea_wb(c,&e,r); }
 		cyc += (e.mod==3) ? 4 : (w ? 26 : 18);
 		break;
 	}
@@ -725,10 +724,10 @@ pfx:
 	case 0x9f: c->ah = (uint8_t)((c->flags & 0xD5) | 0x02); cyc+=3; break;
 
 	/* ---- MOV AL/AX, [addr] ---- */
-	case 0xa0: { uint16_t a=f16(c); uint16_t s=(sov>=0)?*srp(c,sov):c->ds; c->al=MRB(s,a); cyc+=10; break; }
-	case 0xa1: { uint16_t a=f16(c); uint16_t s=(sov>=0)?*srp(c,sov):c->ds; c->ax=MRW(s,a); cyc+=10; break; }
-	case 0xa2: { uint16_t a=f16(c); uint16_t s=(sov>=0)?*srp(c,sov):c->ds; MWB(s,a,c->al); cyc+=10; break; }
-	case 0xa3: { uint16_t a=f16(c); uint16_t s=(sov>=0)?*srp(c,sov):c->ds; MWW(s,a,c->ax); cyc+=10; break; }
+	case 0xa0: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al=MRB(s,a); cyc+=10; break; }
+	case 0xa1: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; c->ax=MRW(s,a); cyc+=10; break; }
+	case 0xa2: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; MWB(s,a,c->al); cyc+=10; break; }
+	case 0xa3: { uint16_t a=f16(c); uint16_t s=sov ? *srp(c, *sov) : c->ds; MWW(s,a,c->ax); cyc+=10; break; }
 
 	/* ---- string ops ---- */
 	case 0xa4: cyc+=s_movsb(c, rep); break;
@@ -758,8 +757,8 @@ pfx:
 		*r16p(c, op&7) = f16(c); cyc+=4; break;
 
 	/* ---- shift r/m, imm8 (186) ---- */
-	case 0xc0: { ea_t e=decode_ea(c); uint8_t n=f8(c); ea_wb(c,&e,shf(c,e.reg,ea_rb(c,&e),n,0)); cyc+=(e.mod==3?3:24)+(n&0x1f); break; }
-	case 0xc1: { ea_t e=decode_ea(c); uint8_t n=f8(c); ea_ww(c,&e,shf(c,e.reg,ea_rw(c,&e),n,1)); cyc+=(e.mod==3?3:24)+(n&0x1f); break; }
+	case 0xc0: { ea_t e=decode_ea(c); uint8_t n=f8(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),n,0)); cyc+=(e.mod==3?3:24)+(n&0x1f); break; }
+	case 0xc1: { ea_t e=decode_ea(c); uint8_t n=f8(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),n,1)); cyc+=(e.mod==3?3:24)+(n&0x1f); break; }
 
 	/* ---- RET near ---- */
 	case 0xc2: { uint16_t n=f16(c); c->ip=pop(c); c->sp+=n; cyc+=12; break; }
@@ -800,10 +799,10 @@ pfx:
 	case 0xcf: c->ip=pop(c); c->cs=pop(c); c->flags=pop(c); cyc+=32; break;
 
 	/* ---- shifts r/m, 1 / CL ---- */
-	case 0xd0: { ea_t e=decode_ea(c); ea_wb(c,&e,shf(c,e.reg,ea_rb(c,&e),1,0)); cyc+=(e.mod==3)?3:24; break; }
-	case 0xd1: { ea_t e=decode_ea(c); ea_ww(c,&e,shf(c,e.reg,ea_rw(c,&e),1,1)); cyc+=(e.mod==3)?3:24; break; }
-	case 0xd2: { ea_t e=decode_ea(c); ea_wb(c,&e,shf(c,e.reg,ea_rb(c,&e),c->cl,0)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
-	case 0xd3: { ea_t e=decode_ea(c); ea_ww(c,&e,shf(c,e.reg,ea_rw(c,&e),c->cl,1)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
+	case 0xd0: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),1,0)); cyc+=(e.mod==3)?3:24; break; }
+	case 0xd1: { ea_t e=decode_ea(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),1,1)); cyc+=(e.mod==3)?3:24; break; }
+	case 0xd2: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),c->cl,0)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
+	case 0xd3: { ea_t e=decode_ea(c); ea_ww(c,&e,(uint16_t)shf(c,e.reg,ea_rw(c,&e),c->cl,1)); cyc+=(e.mod==3?3:24)+(c->cl&0x1f); break; }
 
 	/* ---- AAM / AAD ---- */
 	case 0xd4: { uint8_t b=f8(c); if(b) { c->ah=c->al/b; c->al=c->al%b; }
@@ -818,12 +817,12 @@ pfx:
 	case 0xd6: c->al = (c->flags & V20_CF) ? 0xFF : 0x00; cyc+=3; break; /* SALC */
 
 	/* ---- XLAT ---- */
-	case 0xd7: { uint16_t s=(sov>=0)?*srp(c,sov):c->ds; c->al=MRB(s,(uint16_t)(c->bx+c->al)); cyc+=10; break; }
+	case 0xd7: { uint16_t s=sov ? *srp(c, *sov) : c->ds; c->al=MRB(s,(uint16_t)(c->bx+c->al)); cyc+=10; break; }
 
 	/* ---- ESC (FPU, ignore) ---- */
 	case 0xd8: case 0xd9: case 0xda: case 0xdb:
 	case 0xdc: case 0xdd: case 0xde: case 0xdf:
-		{ ea_t e=decode_ea(c); (void)e; cyc+=2; break; }
+		{ [[maybe_unused]] ea_t e=decode_ea(c); cyc+=2; break; }
 
 	/* ---- LOOP / JCXZ ---- */
 	case 0xe0: { int8_t d=(int8_t)f8(c); c->cx--; if(c->cx && !(c->flags&V20_ZF)) c->ip+=d; cyc+=14; break; }
@@ -870,8 +869,8 @@ pfx:
 			cyc += m ? (w?24:16) : 2;
 			break;
 		case 3:
-			if (w) { uint16_t v=ea_rw(c,&e); ea_ww(c,&e,alu(c,5,0,v,1)); if(v) c->flags|=V20_CF; }
-			else   { uint8_t  v=ea_rb(c,&e); ea_wb(c,&e,alu(c,5,0,v,0)); if(v) c->flags|=V20_CF; }
+			if (w) { uint16_t v=ea_rw(c,&e); ea_ww(c,&e,(uint16_t)alu(c,5,0,v,1)); if(v) c->flags|=V20_CF; }
+			else   { uint8_t  v=ea_rb(c,&e); ea_wb(c,&e,(uint8_t)alu(c,5,0,v,0)); if(v) c->flags|=V20_CF; }
 			cyc += m ? (w?24:16) : 2;
 			break;
 		case 4: /* MUL */
@@ -995,8 +994,7 @@ static void check_irq(v20_t *c)
 
 void v20_init(v20_t *c)
 {
-	memset(c, 0, sizeof(*c));
-	c->seg_override = -1;
+	*c = v20_t{};
 }
 
 void v20_reset(v20_t *c)
@@ -1011,12 +1009,12 @@ void v20_reset(v20_t *c)
 	c->irq_line = false;
 	c->nmi_line = false;
 	c->nmi_prev = false;
-	c->seg_override = -1;
+	c->seg_override.reset();
 }
 
 static void record_trace(v20_t *c, uint8_t opcode)
 {
-	v20_trace_t *t = &c->trace_buf[c->trace_head];
+	v20_trace_t *t = &c->trace_buf[(size_t)c->trace_head];
 	t->cs = c->cs; t->ip = c->ip; t->opcode = opcode;
 	t->ax = c->ax; t->bx = c->bx; t->cx = c->cx; t->dx = c->dx;
 	t->si = c->si; t->di = c->di; t->bp = c->bp; t->sp = c->sp;
@@ -1027,7 +1025,7 @@ static void record_trace(v20_t *c, uint8_t opcode)
 
 static bool check_breakpoints(v20_t *c)
 {
-	for (int i = 0; i < V20_MAX_BP; i++)
+	for (size_t i = 0; i < c->bp_enabled.size(); i++)
 		if (c->bp_enabled[i] && c->cs == c->bp_seg[i] && c->ip == c->bp_off[i])
 			return true;
 	return false;

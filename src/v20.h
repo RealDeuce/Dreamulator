@@ -3,7 +3,9 @@
 #ifndef V20_H
 #define V20_H
 
+#include <array>
 #include <cstdint>
+#include <optional>
 
 #define V20_CF 0x0001
 #define V20_PF 0x0004
@@ -15,51 +17,54 @@
 #define V20_DF 0x0400
 #define V20_OF 0x0800
 
+constexpr int V20_MAX_BP    = 8;
+constexpr int V20_TRACE_SIZE = 2048;
+
 struct v20_trace_t {
-	uint16_t cs, ip, ax, bx, cx, dx, si, di, bp, sp, ds, es, ss, flags;
-	uint8_t  opcode;
+	uint16_t cs = 0, ip = 0;
+	uint16_t ax = 0, bx = 0, cx = 0, dx = 0;
+	uint16_t si = 0, di = 0, bp = 0, sp = 0;
+	uint16_t ds = 0, es = 0, ss = 0, flags = 0;
+	uint8_t  opcode = 0;
 };
 
 struct v20_t {
-	union { uint16_t ax; struct { uint8_t al, ah; }; };
-	union { uint16_t cx; struct { uint8_t cl, ch; }; };
-	union { uint16_t dx; struct { uint8_t dl, dh; }; };
-	union { uint16_t bx; struct { uint8_t bl, bh; }; };
-	uint16_t sp, bp, si, di;
-	uint16_t es, cs, ss, ds;
-	uint16_t ip;
-	uint16_t flags;
+	union { uint16_t ax = 0; struct { uint8_t al, ah; }; };
+	union { uint16_t cx = 0; struct { uint8_t cl, ch; }; };
+	union { uint16_t dx = 0; struct { uint8_t dl, dh; }; };
+	union { uint16_t bx = 0; struct { uint8_t bl, bh; }; };
+	uint16_t sp = 0, bp = 0, si = 0, di = 0;
+	uint16_t es = 0, cs = 0, ss = 0, ds = 0;
+	uint16_t ip = 0;
+	uint16_t flags = 0;
 
-	bool     halted;
-	bool     irq_line;
-	uint8_t  irq_vector;
-	bool     nmi_line;
-	bool     nmi_prev;
-	int      seg_override;
+	bool     halted = false;
+	bool     irq_line = false;
+	uint8_t  irq_vector = 0;
+	bool     nmi_line = false;
+	bool     nmi_prev = false;
+	std::optional<int> seg_override;
 
-	uint8_t  (*mem_read)(void *ctx, uint32_t addr);
-	void     (*mem_write)(void *ctx, uint32_t addr, uint8_t val);
-	uint8_t  (*io_read)(void *ctx, uint16_t port);
-	void     (*io_write)(void *ctx, uint16_t port, uint8_t val);
-	void     *ctx;
+	uint8_t  (*mem_read)(void *ctx, uint32_t addr) = nullptr;
+	void     (*mem_write)(void *ctx, uint32_t addr, uint8_t val) = nullptr;
+	uint8_t  (*io_read)(void *ctx, uint16_t port) = nullptr;
+	void     (*io_write)(void *ctx, uint16_t port, uint8_t val) = nullptr;
+	void     *ctx = nullptr;
 
-	/* debug */
-	bool     debug_stop;
-	bool     debug_step;
+	bool     debug_stop = false;
+	bool     debug_step = false;
 
-#define V20_MAX_BP 8
-	uint16_t bp_seg[V20_MAX_BP];
-	uint16_t bp_off[V20_MAX_BP];
-	bool     bp_enabled[V20_MAX_BP];
+	std::array<uint16_t, V20_MAX_BP> bp_seg{};
+	std::array<uint16_t, V20_MAX_BP> bp_off{};
+	std::array<bool, V20_MAX_BP>     bp_enabled{};
 
-#define V20_TRACE_SIZE 2048
-	v20_trace_t trace_buf[V20_TRACE_SIZE];
-	int      trace_head;
-	int      trace_count;
-	bool     trace_enabled;
+	std::array<v20_trace_t, V20_TRACE_SIZE> trace_buf{};
+	int      trace_head = 0;
+	int      trace_count = 0;
+	bool     trace_enabled = false;
 
-	void     (*debug_cb)(void *debug_ctx);
-	void     *debug_ctx;
+	void     (*debug_cb)(void *debug_ctx) = nullptr;
+	void     *debug_ctx = nullptr;
 };
 
 void v20_init(v20_t *cpu);

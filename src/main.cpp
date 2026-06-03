@@ -164,7 +164,7 @@ static int pa_callback(const void *, void *out, unsigned long frames,
 {
 	machine_t *m = (machine_t *)data;
 	float *buf = (float *)out;
-	uint16_t div = m->buzzer_low | ((uint16_t)m->buzzer_high << 8);
+	uint16_t div = (uint16_t)(m->buzzer_low | (m->buzzer_high << 8));
 	float freq = (div && m->buzzer_on) ? (float)(XTAL / 64) / (float)div : 0.0f;
 	float step = freq / (float)SAMPLE_RATE;
 
@@ -204,7 +204,7 @@ static void emu_tick(void *)
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, nullptr);
 }
 
-static bool reconnect_uart(int backend, int port, const char *path) {
+static bool reconnect_uart(UartBackend backend, int port, const char *path) {
 	auto saved_txrdy = g_mach.uart.txrdy_cb;
 	auto saved_rxrdy = g_mach.uart.rxrdy_cb;
 	auto saved_ctx   = g_mach.uart.cb_ctx;
@@ -578,7 +578,7 @@ static void cb_new_pccard(Fl_Widget *, void *) {
 	int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0) { fl_alert("Cannot create %s", path); return; }
 	(void)ftruncate(fd, (off_t)sizes[idx].size);
-	uint8_t *p = (uint8_t *)mmap(NULL, sizes[idx].size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	uint8_t *p = (uint8_t *)mmap(nullptr, sizes[idx].size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
 	if (p != MAP_FAILED) { memset(p, 0xFF, sizes[idx].size); munmap(p, sizes[idx].size); }
 	close(fd);
 
@@ -594,7 +594,8 @@ static void open_floppy(const char *path) {
 	fdc_destroy(&g_mach.fdc);
 	fdc_init(&g_mach.fdc);
 	snprintf(g_floppy_path, sizeof(g_floppy_path), "%s", path);
-	fdc_load_disk(&g_mach.fdc, g_floppy_path);
+	if (fdc_load_disk(&g_mach.fdc, g_floppy_path) < 0)
+		fprintf(stderr, "Failed to load floppy: %s\n", g_floppy_path);
 }
 
 static void cb_insert_floppy(Fl_Widget *, void *) {
@@ -625,13 +626,12 @@ static void cb_eject_floppy(Fl_Widget *, void *) {
 static void cb_printer_file(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Printer Output", "*", "printer.out");
 	if (path) {
-		if (g_mach.printer) fclose((FILE *)g_mach.printer);
-		g_mach.printer = fopen(path, "ab");
+		g_mach.printer.reset(fopen(path, "ab"));
 	}
 }
 
 static void cb_serial_pty(Fl_Widget *, void *) {
-	if (reconnect_uart(UART_PTY, 0, nullptr))
+	if (reconnect_uart(UartBackend::Pty, 0, nullptr))
 		fl_message("Serial PTY: %s", g_mach.uart.path.c_str());
 	else
 		fl_alert("Cannot open serial PTY");
@@ -640,7 +640,7 @@ static void cb_serial_pty(Fl_Widget *, void *) {
 static void cb_serial_tcp(Fl_Widget *, void *) {
 	const char *port = fl_input("TCP port:", "9600");
 	if (port) {
-		if (reconnect_uart(UART_TCP, atoi(port), nullptr))
+		if (reconnect_uart(UartBackend::Tcp, atoi(port), nullptr))
 			fl_message("Serial TCP: %s", g_mach.uart.path.c_str());
 		else
 			fl_alert("Cannot listen on TCP port %s", port);
@@ -650,7 +650,7 @@ static void cb_serial_tcp(Fl_Widget *, void *) {
 static void cb_serial_device(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Serial Device", "*", "/dev/cuau0");
 	if (path) {
-		if (reconnect_uart(UART_SERIAL, 0, path))
+		if (reconnect_uart(UartBackend::Serial, 0, path))
 			fl_message("Serial: %s", g_mach.uart.path.c_str());
 		else
 			fl_alert("Cannot open serial device %s", path);
@@ -677,10 +677,10 @@ int main(int argc, char *argv[])
 {
 	signal(SIGPIPE, SIG_IGN);
 
-	int uart_backend = UART_PTY;
+	auto uart_backend = UartBackend::Pty;
 	int tcp_port = 0;
 	const char *serial_path = nullptr;
-	int cent_backend = CENT_FILE;
+	auto cent_backend = CentBackend::File;
 	const char *cent_path = nullptr;
 	const char *model_name = nullptr;
 	const char *bios_name = nullptr;
@@ -691,13 +691,13 @@ int main(int argc, char *argv[])
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--tcp") && i+1 < argc)
-			{ uart_backend = UART_TCP; tcp_port = atoi(argv[++i]); }
+			{ uart_backend = UartBackend::Tcp; tcp_port = atoi(argv[++i]); }
 		else if (!strcmp(argv[i], "--serial") && i+1 < argc)
-			{ uart_backend = UART_SERIAL; serial_path = argv[++i]; }
+			{ uart_backend = UartBackend::Serial; serial_path = argv[++i]; }
 		else if (!strcmp(argv[i], "--lpt") && i+1 < argc)
-			{ cent_backend = CENT_LPT; cent_path = argv[++i]; }
+			{ cent_backend = CentBackend::Lpt; cent_path = argv[++i]; }
 		else if (!strcmp(argv[i], "--ppi") && i+1 < argc)
-			{ cent_backend = CENT_PPI; cent_path = argv[++i]; }
+			{ cent_backend = CentBackend::Ppi; cent_path = argv[++i]; }
 		else if (!strcmp(argv[i], "--pccard") && i+1 < argc)
 			{ snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", argv[++i]); }
 		else if (!strcmp(argv[i], "--floppy") && i+1 < argc)

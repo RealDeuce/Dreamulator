@@ -180,7 +180,7 @@ void DbgRegsPanel::update_trace()
 
 	for (int i = 0; i < show; i++) {
 		int idx = (begin + i) % V20_TRACE_SIZE;
-		v20_trace_t *t = &m_cpu->trace_buf[idx];
+		v20_trace_t *t = &m_cpu->trace_buf[(size_t)idx];
 
 		uint8_t code[8];
 		for (int j = 0; j < 8; j++)
@@ -216,7 +216,7 @@ void DbgRegsPanel::write_flags()
 
 void DbgRegsPanel::write_breakpoints()
 {
-	for (int i = 0; i < 8; i++) {
+	for (size_t i = 0; i < m_cpu->bp_enabled.size(); i++) {
 		m_cpu->bp_enabled[i] = m_bp_en[i]->value();
 		unsigned seg = 0, off = 0;
 		sscanf(m_bp_addr[i]->value(), "%x:%x", &seg, &off);
@@ -272,7 +272,7 @@ void DbgRegsPanel::cb_step_over(Fl_Widget*, void *data) {
 	if (code[0] == 0xE8 || code[0] == 0x9A || code[0] == 0xCC || code[0] == 0xCD) {
 		uint8_t buf[8];
 		for (int i = 0; i < 8; i++)
-			buf[i] = c->mem_read(c->ctx, ((uint32_t)c->cs << 4) + c->ip + i);
+			buf[i] = c->mem_read(c->ctx, ((uint32_t)c->cs << 4) + c->ip + (uint32_t)i);
 		char dis[80];
 		int len = dis86(buf, 8, c->ip, dis, sizeof(dis));
 		c->bp_seg[V20_MAX_BP - 1] = c->cs;

@@ -99,7 +99,7 @@ void DbgDisPanel::disassemble_region()
 		char hex[32] = "";
 		int hpos = 0;
 		for (int j = 0; j < len && j < 6; j++)
-			hpos += snprintf(hex + hpos, sizeof(hex) - hpos, "%02X ", code[j]);
+			hpos += snprintf(hex + hpos, sizeof(hex) - (size_t)hpos, "%02X ", code[j]);
 
 		char marker = (m_seg == m_cpu->cs && off == m_cpu->ip) ? '>' : ' ';
 		snprintf(line, sizeof(line), "%c%04X:%04X  %-18s %s\n",

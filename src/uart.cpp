@@ -143,7 +143,7 @@ static void fire_rxrdy(uart_t *u)
 
 static void modem_out(uart_t *u)
 {
-	if (u->backend == UART_TCP || u->fd < 0) return;
+	if (u->backend == UartBackend::Tcp || u->fd < 0) return;
 
 	int bits = 0;
 	if (!(u->command & 0x20)) bits |= TIOCM_RTS;
@@ -153,7 +153,7 @@ static void modem_out(uart_t *u)
 
 static void modem_in(uart_t *u)
 {
-	if (u->backend == UART_TCP || u->fd < 0) return;
+	if (u->backend == UartBackend::Tcp || u->fd < 0) return;
 
 	int bits = 0;
 	if (ioctl(u->fd, TIOCMGET, &bits) == 0) {
@@ -164,27 +164,18 @@ static void modem_in(uart_t *u)
 
 /* ---- public API ---- */
 
-int uart_init(uart_t *u, int backend, int tcp_port, const char *serial_path)
+int uart_init(uart_t *u, UartBackend backend, int tcp_port, const char *serial_path)
 {
-	u->path.clear();
-	u->prog_state = I8251_NEXT_MODE;
-	u->mode = 0; u->command = 0; u->status = 0;
-	u->tx_data = 0; u->rx_data = 0; u->tx_pending = false;
-	u->char_cycles = 0; u->tx_timer = 0; u->poll_timer = 0;
-	u->baud_divider = 0;
-	u->prev_txrdy = false; u->prev_rxrdy = false;
-	u->txrdy_cb = nullptr; u->rxrdy_cb = nullptr; u->cb_ctx = nullptr;
+	*u = uart_t{};
 	u->backend = backend;
-	u->fd = -1;
-	u->listen_fd = -1;
 	u->cts = true;
 	u->dsr = true;
 	u->br_factor = 1;
 
 	int rc;
 	switch (backend) {
-	case UART_TCP:    rc = open_tcp(u, tcp_port); break;
-	case UART_SERIAL: rc = open_serial(u, serial_path ? serial_path : "/dev/cuau0"); break;
+	case UartBackend::Tcp:    rc = open_tcp(u, tcp_port); break;
+	case UartBackend::Serial: rc = open_serial(u, serial_path ? serial_path : "/dev/cuau0"); break;
 	default:          rc = open_pty(u); break;
 	}
 
@@ -199,7 +190,7 @@ int uart_init(uart_t *u, int backend, int tcp_port, const char *serial_path)
 
 void uart_reset(uart_t *u)
 {
-	u->prog_state = I8251_NEXT_MODE;
+	u->prog_state = I8251State::NextMode;
 	u->mode = 0;
 	u->command = 0;
 	u->status = ST_TXRDY | ST_TXE;
@@ -247,33 +238,33 @@ uint8_t uart_status_read(uart_t *u)
 void uart_control_write(uart_t *u, uint8_t data)
 {
 	switch (u->prog_state) {
-	case I8251_NEXT_MODE:
+	case I8251State::NextMode:
 		u->mode = data;
 		if ((data & 0x03) == 0) {
 			u->br_factor = 1;
 			u->prog_state = (data & 0x80)
-				? I8251_NEXT_SYNC1
-				: I8251_NEXT_SYNC1;
+				? I8251State::NextSync1
+				: I8251State::NextSync1;
 		} else {
 			switch (data & 0x03) {
 			case 1: u->br_factor = 1;  break;
 			case 2: u->br_factor = 16; break;
 			case 3: u->br_factor = 64; break;
 			}
-			u->prog_state = I8251_NEXT_CMD;
+			u->prog_state = I8251State::NextCmd;
 		}
 		update_char_cycles(u);
 		break;
 
-	case I8251_NEXT_SYNC1:
-		u->prog_state = (u->mode & 0x80) ? I8251_NEXT_SYNC2 : I8251_NEXT_CMD;
+	case I8251State::NextSync1:
+		u->prog_state = (u->mode & 0x80) ? I8251State::NextSync2 : I8251State::NextCmd;
 		break;
 
-	case I8251_NEXT_SYNC2:
-		u->prog_state = I8251_NEXT_CMD;
+	case I8251State::NextSync2:
+		u->prog_state = I8251State::NextCmd;
 		break;
 
-	case I8251_NEXT_CMD:
+	case I8251State::NextCmd:
 		if (data & 0x40) { uart_reset(u); return; }
 		u->command = data;
 		if (data & 0x10)
@@ -290,8 +281,8 @@ void uart_set_baud(uart_t *u, int divider)
 	u->baud_divider = divider;
 	update_char_cycles(u);
 
-	if (u->backend != UART_TCP && u->fd >= 0) {
-		static const speed_t sp[] = { B19200, B9600, B4800, B2400, B1200 };
+	if (u->backend != UartBackend::Tcp && u->fd >= 0) {
+		static constexpr speed_t sp[] = { B19200, B9600, B4800, B2400, B1200 };
 		struct termios t;
 		if (tcgetattr(u->fd, &t) == 0) {
 			cfsetispeed(&t, sp[divider]);
@@ -304,10 +295,10 @@ void uart_set_baud(uart_t *u, int divider)
 void uart_tick(uart_t *u, int cycles)
 {
 	/* TCP: accept pending connections */
-	if (u->backend == UART_TCP && u->fd < 0 && u->listen_fd >= 0) {
+	if (u->backend == UartBackend::Tcp && u->fd < 0 && u->listen_fd >= 0) {
 		struct pollfd pf = { .fd = u->listen_fd, .events = POLLIN, .revents = 0 };
 		if (poll(&pf, 1, 0) > 0 && (pf.revents & POLLIN)) {
-			int c = accept(u->listen_fd, NULL, NULL);
+			int c = accept(u->listen_fd, nullptr, nullptr);
 			if (c >= 0) {
 				set_nonblock(c);
 				u->fd = c;
@@ -324,14 +315,13 @@ void uart_tick(uart_t *u, int cycles)
 			periph_log_serial_tx(u->tx_data);
 			if (u->fd >= 0) {
 				uint8_t b = u->tx_data;
-				ssize_t n = write(u->fd, &b, 1);
+				[[maybe_unused]] ssize_t n = write(u->fd, &b, 1);
 				if (n < 0 && (errno == EPIPE || errno == ECONNRESET) &&
-				    u->backend == UART_TCP) {
+				    u->backend == UartBackend::Tcp) {
 					close(u->fd);
 					u->fd = -1;
 					fprintf(stderr, "UART TCP: client disconnected\n");
 				}
-				(void)n;
 			}
 			u->status |= ST_TXE | ST_TXRDY;
 			fire_txrdy(u);
@@ -360,7 +350,7 @@ void uart_tick(uart_t *u, int cycles)
 					periph_log_serial_rx(b);
 					u->status |= ST_RXRDY;
 					fire_rxrdy(u);
-				} else if (n == 0 && u->backend == UART_TCP) {
+				} else if (n == 0 && u->backend == UartBackend::Tcp) {
 					close(u->fd);
 					u->fd = -1;
 					fprintf(stderr, "UART TCP: client disconnected\n");

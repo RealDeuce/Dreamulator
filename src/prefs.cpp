@@ -61,6 +61,6 @@ void prefs_get_str(const char *group, const char *key, char *buf, int bufsz, con
 	Fl_Preferences grp(g_prefs, group);
 	char *val;
 	grp.get(key, val, def);
-	snprintf(buf, bufsz, "%s", val);
+	snprintf(buf, (size_t)bufsz, "%s", val);
 	free(val);
 }

@@ -29,6 +29,7 @@ static void set_nonblock(int fd)
 	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }
 
+__attribute__((format(printf, 1, 2)))
 static void rsend(const char *fmt, ...)
 {
 	if (g_client_fd < 0) return;
@@ -74,20 +75,20 @@ static void process_command(const char *cmd)
 		unsigned val;
 		char name[8];
 		if (sscanf(arg, "%7[^=]=%x", name, &val) == 2) {
-			if (!strcasecmp(name,"ax")) c->ax=val;
-			else if (!strcasecmp(name,"bx")) c->bx=val;
-			else if (!strcasecmp(name,"cx")) c->cx=val;
-			else if (!strcasecmp(name,"dx")) c->dx=val;
-			else if (!strcasecmp(name,"si")) c->si=val;
-			else if (!strcasecmp(name,"di")) c->di=val;
-			else if (!strcasecmp(name,"bp")) c->bp=val;
-			else if (!strcasecmp(name,"sp")) c->sp=val;
-			else if (!strcasecmp(name,"cs")) c->cs=val;
-			else if (!strcasecmp(name,"ds")) c->ds=val;
-			else if (!strcasecmp(name,"es")) c->es=val;
-			else if (!strcasecmp(name,"ss")) c->ss=val;
-			else if (!strcasecmp(name,"ip")) c->ip=val;
-			else if (!strcasecmp(name,"flags")) c->flags=val;
+			if (!strcasecmp(name,"ax")) c->ax=(uint16_t)val;
+			else if (!strcasecmp(name,"bx")) c->bx=(uint16_t)val;
+			else if (!strcasecmp(name,"cx")) c->cx=(uint16_t)val;
+			else if (!strcasecmp(name,"dx")) c->dx=(uint16_t)val;
+			else if (!strcasecmp(name,"si")) c->si=(uint16_t)val;
+			else if (!strcasecmp(name,"di")) c->di=(uint16_t)val;
+			else if (!strcasecmp(name,"bp")) c->bp=(uint16_t)val;
+			else if (!strcasecmp(name,"sp")) c->sp=(uint16_t)val;
+			else if (!strcasecmp(name,"cs")) c->cs=(uint16_t)val;
+			else if (!strcasecmp(name,"ds")) c->ds=(uint16_t)val;
+			else if (!strcasecmp(name,"es")) c->es=(uint16_t)val;
+			else if (!strcasecmp(name,"ss")) c->ss=(uint16_t)val;
+			else if (!strcasecmp(name,"ip")) c->ip=(uint16_t)val;
+			else if (!strcasecmp(name,"flags")) c->flags=(uint16_t)val;
 			else { rsend("Unknown register: %s\n", name); return; }
 			rsend("OK\n");
 		} else {
@@ -132,22 +133,22 @@ static void process_command(const char *cmd)
 		if (count > 100) count = 100;
 		for (unsigned i = 0; i < count; i++) {
 			uint8_t code[8];
-			for (int j = 0; j < 8; j++)
+			for (unsigned j = 0; j < 8; j++)
 				code[j] = c->mem_read(c->ctx, ((seg<<4)+off+j) & 0xFFFFF);
 			char dis[128];
 			int len = dis86(code, 8, (uint16_t)off, dis, sizeof(dis));
 			rsend("%04X:%04X  %s\n", seg, off, dis);
-			off += len;
+			off += (unsigned)len;
 		}
 	}
 	else if (!strncmp(cmd, "bp ", 3)) {
 		unsigned seg=0, off=0;
 		sscanf(cmd + 3, "%x:%x", &seg, &off);
-		for (int i = 0; i < V20_MAX_BP; i++) {
+		for (size_t i = 0; i < c->bp_enabled.size(); i++) {
 			if (!c->bp_enabled[i]) {
-				c->bp_seg[i] = seg; c->bp_off[i] = off;
+				c->bp_seg[i] = (uint16_t)seg; c->bp_off[i] = (uint16_t)off;
 				c->bp_enabled[i] = true;
-				rsend("Breakpoint %d set at %04X:%04X\n", i, seg, off);
+				rsend("Breakpoint %zu set at %04X:%04X\n", i, seg, off);
 				return;
 			}
 		}
@@ -156,19 +157,19 @@ static void process_command(const char *cmd)
 	else if (!strncmp(cmd, "cbp ", 4)) {
 		unsigned seg=0, off=0;
 		sscanf(cmd + 4, "%x:%x", &seg, &off);
-		for (int i = 0; i < V20_MAX_BP; i++) {
+		for (size_t i = 0; i < c->bp_enabled.size(); i++) {
 			if (c->bp_enabled[i] && c->bp_seg[i]==seg && c->bp_off[i]==off) {
 				c->bp_enabled[i] = false;
-				rsend("Breakpoint %d cleared\n", i);
+				rsend("Breakpoint %zu cleared\n", i);
 				return;
 			}
 		}
 		rsend("No breakpoint at %04X:%04X\n", seg, off);
 	}
 	else if (!strcmp(cmd, "lbp")) {
-		for (int i = 0; i < V20_MAX_BP; i++)
+		for (size_t i = 0; i < c->bp_enabled.size(); i++)
 			if (c->bp_enabled[i])
-				rsend("BP%d: %04X:%04X\n", i, c->bp_seg[i], c->bp_off[i]);
+				rsend("BP%zu: %04X:%04X\n", i, c->bp_seg[i], c->bp_off[i]);
 	}
 	else if (!strcmp(cmd, "run")) {
 		c->debug_stop = false;

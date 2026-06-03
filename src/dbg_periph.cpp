@@ -43,7 +43,7 @@ static double now_secs(void)
 {
 	struct timeval tv;
 	gettimeofday(&tv, nullptr);
-	return tv.tv_sec + tv.tv_usec * 1e-6;
+	return (double)tv.tv_sec + (double)tv.tv_usec * 1e-6;
 }
 
 static void log_add(log_entry *ring, int &head, int &count,

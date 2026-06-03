@@ -36,23 +36,23 @@ const model_t *model_find(const char *name)
 	for (int i = 0; i < model_count; i++)
 		if (strcmp(models[i].name, name) == 0)
 			return &models[i];
-	return NULL;
+	return nullptr;
 }
 
 /* ---- ROM database ---- */
 
 const rom_entry_t rom_db[] = {
-	{ "wales210", NULL,    "wales210.ic303",        0xa8e8d991, 0x80000,  0 },
+	{ "wales210", nullptr,    "wales210.ic303",        0xa8e8d991, 0x80000,  0 },
 	{ "dw325",    "v1.02", "dr3_1_02uk.ic303",     0x027db9fe, 0x80000,  0 },
 	{ "dw325",    "v1.03", "dr3_1_03.ic303",       0x21fd074e, 0x80000,  0 },
 	{ "dw325",    "v2.0",  "nts_325_basic.ic303",  0xfeb40854, 0x80000,  0 },
-	{ "dator3k",  NULL,    "dator3000.ic303",       0xb67fffeb, 0x80000,  0 },
-	{ "es210_es", NULL,    "nakajima_es.ic303",     0x214d73ce, 0x80000,  0 },
+	{ "dator3k",  nullptr,    "dator3000.ic303",       0xb67fffeb, 0x80000,  0 },
+	{ "es210_es", nullptr,    "nakajima_es.ic303",     0x214d73ce, 0x80000,  0 },
 	{ "dwT100",   "v2.3",  "t100_2.3.ic303",       0x8a16f12f, 0x80000,  0 },
-	{ "dwT200",   NULL,    "drwrt200.bin",          0x3c39483c, 0x100000, 0 },
+	{ "dwT200",   nullptr,    "drwrt200.bin",          0x3c39483c, 0x100000, 0 },
 	{ "dwT400",   "v3.1",  "t4_ir_3.1_e588.ic303", 0x1724ceb2, 0x100000, 0 },
 	{ "dwT400",   "v2.1",  "t4_ir_2.1.ic303",      0xf0f45fd2, 0x80000,  0x80000 },
-	{ "dw450",    NULL,    "t4_ir_35ba308.ic303",   0x3b5a580d, 0x100000, 0 },
+	{ "dw450",    nullptr,    "t4_ir_35ba308.ic303",   0x3b5a580d, 0x100000, 0 },
 };
 const int rom_db_count = sizeof(rom_db) / sizeof(rom_db[0]);
 
@@ -61,12 +61,12 @@ const rom_entry_t *rom_find_by_crc(uint32_t crc)
 	for (int i = 0; i < rom_db_count; i++)
 		if (rom_db[i].crc32 == crc)
 			return &rom_db[i];
-	return NULL;
+	return nullptr;
 }
 
 const rom_entry_t *rom_find_for_model(const char *model, const char *bios)
 {
-	const rom_entry_t *fallback = NULL;
+	const rom_entry_t *fallback = nullptr;
 	for (int i = 0; i < rom_db_count; i++) {
 		if (strcmp(rom_db[i].model, model) != 0) continue;
 		if (bios && rom_db[i].bios && strcmp(rom_db[i].bios, bios) == 0)
@@ -99,26 +99,22 @@ static void uart_txrdy_cb(void *ctx, bool state);
 static void uart_rxrdy_cb(void *ctx, bool state);
 
 int machine_init(machine_t *m, const model_t *model,
-                 int uart_backend, int tcp_port,
+                 UartBackend uart_backend, int tcp_port,
                  const char *serial_path,
-                 int cent_backend, const char *cent_path)
+                 CentBackend cent_backend, const char *cent_path)
 {
-	memset(m, 0, sizeof(*m));
+	*m = machine_t{};
 	m->model = model;
 	m->ram_size = model->ram_size;
 	m->lcd_height = model->lcd_height;
-	m->rom = nullptr;
-	m->rom_fd = -1;
-	m->nvram_fd = -1;
 	m->bank_bit3_selects_ram = model->bank_bit3_selects_ram;
 	m->cent_backend = cent_backend;
-	m->cent_fd = -1;
 
-	if (cent_backend != CENT_FILE && cent_path) {
+	if (cent_backend != CentBackend::File && cent_path) {
 		m->cent_fd = open(cent_path, O_RDWR);
 		if (m->cent_fd < 0) {
 			fprintf(stderr, "Centronics: cannot open %s\n", cent_path);
-			m->cent_backend = CENT_FILE;
+			m->cent_backend = CentBackend::File;
 		} else {
 			fprintf(stderr, "Centronics: %s\n", cent_path);
 		}
@@ -164,7 +160,7 @@ void machine_reset(machine_t *m)
 	rtc_init(&m->rtc);
 	uart_reset(&m->uart);
 
-	memset(m->bank_select, 0, sizeof(m->bank_select));
+	m->bank_select.fill(0);
 	for (int i = 0; i < NUM_BANKS; i++)
 		update_bank(m, i);
 }
@@ -238,7 +234,8 @@ int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 
 static void update_bank(machine_t *m, int bank)
 {
-	uint8_t sel = m->bank_select[bank];
+	size_t b = (size_t)bank;
+	uint8_t sel = m->bank_select[b];
 	int ram_pages = m->ram_size / BANK_SIZE;
 
 	if (!(sel & 0x10)) {
@@ -246,27 +243,27 @@ static void update_bank(machine_t *m, int bank)
 			int page = m->bank_bit3_selects_ram
 				? bank % ram_pages
 				: 1 % ram_pages;
-			m->bank_rd[bank] = m->ram + page * BANK_SIZE;
-			m->bank_wr[bank] = m->ram + page * BANK_SIZE;
+			m->bank_rd[b] = m->ram + page * BANK_SIZE;
+			m->bank_wr[b] = m->ram + page * BANK_SIZE;
 		} else {
 			int entry = ((sel & 0x0F) ^ 0x0F) % (ROM_SIZE / BANK_SIZE);
-			m->bank_rd[bank] = m->rom + entry * BANK_SIZE;
-			m->bank_wr[bank] = NULL;
+			m->bank_rd[b] = m->rom + entry * BANK_SIZE;
+			m->bank_wr[b] = nullptr;
 		}
 	} else {
 		if (!(sel & 0x08)) {
 			int page = ((sel & 0x0F) ^ 0x0F) % ram_pages;
-			m->bank_rd[bank] = m->ram + page * BANK_SIZE;
-			m->bank_wr[bank] = m->ram + page * BANK_SIZE;
+			m->bank_rd[b] = m->ram + page * BANK_SIZE;
+			m->bank_wr[b] = m->ram + page * BANK_SIZE;
 		} else {
 			int pc_bank = 0x0F - (sel & 0x0F);
 			uint32_t pc_off = (uint32_t)pc_bank * BANK_SIZE;
 			if (m->pccard && pc_off + BANK_SIZE <= m->pccard_size) {
-				m->bank_rd[bank] = m->pccard + pc_off;
-				m->bank_wr[bank] = m->pccard + pc_off;
+				m->bank_rd[b] = m->pccard + pc_off;
+				m->bank_wr[b] = m->pccard + pc_off;
 			} else {
-				m->bank_rd[bank] = NULL;
-				m->bank_wr[bank] = NULL;
+				m->bank_rd[b] = nullptr;
+				m->bank_wr[b] = nullptr;
 			}
 		}
 	}
@@ -278,7 +275,7 @@ static uint8_t mem_read(void *ctx, uint32_t addr)
 {
 	machine_t *m = (machine_t *)ctx;
 	addr &= 0xFFFFF;
-	int bank = addr >> 17;
+	size_t bank = addr >> 17;
 	int off  = addr & 0x1FFFF;
 	return m->bank_rd[bank] ? m->bank_rd[bank][off] : 0xFF;
 }
@@ -287,7 +284,7 @@ static void mem_write(void *ctx, uint32_t addr, uint8_t val)
 {
 	machine_t *m = (machine_t *)ctx;
 	addr &= 0xFFFFF;
-	int bank = addr >> 17;
+	size_t bank = addr >> 17;
 	int off  = addr & 0x1FFFF;
 	if (m->bank_wr[bank])
 		m->bank_wr[bank][off] = val;
@@ -336,7 +333,7 @@ static void kb_timer_tick(machine_t *m)
 
 /* ---- RTC (RP5C01) ---- */
 
-static const uint8_t rtc_wmask[2][13] = {
+static constexpr uint8_t rtc_wmask[2][13] = {
 	{ 0xF,0x7,0xF,0x7,0xF,0x3,0x7,0xF,0x3,0xF,0x1,0xF,0xF },
 	{ 0x0,0x0,0xF,0x3,0xF,0x3,0x0,0x0,0x0,0x0,0x1,0x3,0x0 },
 };
@@ -346,23 +343,23 @@ static void rtc_init(rtc_t *r)
 	memset(r, 0, sizeof(*r));
 	r->reg[1][10] = 1;
 
-	time_t now = time(NULL);
+	time_t now = time(nullptr);
 	struct tm *t = localtime(&now);
 
-	r->reg[0][0]  = t->tm_sec % 10;
-	r->reg[0][1]  = t->tm_sec / 10;
-	r->reg[0][2]  = t->tm_min % 10;
-	r->reg[0][3]  = t->tm_min / 10;
-	r->reg[0][4]  = t->tm_hour % 10;
-	r->reg[0][5]  = t->tm_hour / 10;
-	r->reg[0][6]  = t->tm_wday;
-	r->reg[0][7]  = t->tm_mday % 10;
-	r->reg[0][8]  = t->tm_mday / 10;
-	r->reg[0][9]  = (t->tm_mon + 1) % 10;
-	r->reg[0][10] = (t->tm_mon + 1) / 10;
-	r->reg[0][11] = (t->tm_year % 100) % 10;
-	r->reg[0][12] = (t->tm_year % 100) / 10;
-	r->reg[1][11] = t->tm_year % 4;
+	r->reg[0][0]  = (uint8_t)(t->tm_sec % 10);
+	r->reg[0][1]  = (uint8_t)(t->tm_sec / 10);
+	r->reg[0][2]  = (uint8_t)(t->tm_min % 10);
+	r->reg[0][3]  = (uint8_t)(t->tm_min / 10);
+	r->reg[0][4]  = (uint8_t)(t->tm_hour % 10);
+	r->reg[0][5]  = (uint8_t)(t->tm_hour / 10);
+	r->reg[0][6]  = (uint8_t)(t->tm_wday);
+	r->reg[0][7]  = (uint8_t)(t->tm_mday % 10);
+	r->reg[0][8]  = (uint8_t)(t->tm_mday / 10);
+	r->reg[0][9]  = (uint8_t)((t->tm_mon + 1) % 10);
+	r->reg[0][10] = (uint8_t)((t->tm_mon + 1) / 10);
+	r->reg[0][11] = (uint8_t)((t->tm_year % 100) % 10);
+	r->reg[0][12] = (uint8_t)((t->tm_year % 100) / 10);
+	r->reg[1][11] = (uint8_t)(t->tm_year % 4);
 }
 
 static uint8_t rtc_read(rtc_t *r, uint8_t offset)
@@ -399,7 +396,7 @@ static void rtc_write(rtc_t *r, uint8_t offset, uint8_t data)
 	case 0: r->reg[0][offset] = data & rtc_wmask[0][offset]; break;
 	case 1: r->reg[1][offset] = data & rtc_wmask[1][offset]; break;
 	case 2: r->ram[offset] = (r->ram[offset] & 0xF0) | data; break;
-	case 3: r->ram[offset] = (r->ram[offset] & 0x0F) | (data << 4); break;
+	case 3: r->ram[offset] = (uint8_t)((r->ram[offset] & 0x0F) | (data << 4)); break;
 	}
 }
 
@@ -407,7 +404,7 @@ static void rtc_tick(rtc_t *r)
 {
 	if (!(r->mode & 0x08)) return;
 
-	static const uint8_t mdays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+	static constexpr uint8_t mdays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
 
 	if (++r->reg[0][0] <= 9) return;
 	r->reg[0][0] = 0;
@@ -467,7 +464,7 @@ static uint8_t io_read_inner(machine_t *m, uint16_t port)
 		if (m->main_battery_low) st |= 0x08;
 		if (m->coin_battery_low) st |= 0x04;
 #ifdef __FreeBSD__
-		if (m->cent_backend == CENT_PPI && m->cent_fd >= 0) {
+		if (m->cent_backend == CentBackend::Ppi && m->cent_fd >= 0) {
 			uint8_t pst = 0;
 			if (ioctl(m->cent_fd, PPIGSTATUS, &pst) == 0)
 				st |= (pst & nBUSY) ? 0 : 0x02;
@@ -532,7 +529,7 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 			periph_log_parallel(m->cent_data);
 			switch (m->cent_backend) {
 #ifdef __FreeBSD__
-			case CENT_PPI:
+			case CentBackend::Ppi:
 				if (m->cent_fd >= 0) {
 					uint8_t d = m->cent_data;
 					ioctl(m->cent_fd, PPISDATA, &d);
@@ -543,16 +540,16 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 				}
 				break;
 #endif
-			case CENT_LPT:
+			case CentBackend::Lpt:
 				if (m->cent_fd >= 0)
 					(void)write(m->cent_fd, &m->cent_data, 1);
 				break;
 			default:
 				if (!m->printer)
-					m->printer = fopen("printer.out", "ab");
+					m->printer.reset(fopen("printer.out", "ab"));
 				if (m->printer) {
-					fputc(m->cent_data, m->printer);
-					fflush(m->printer);
+					fputc(m->cent_data, m->printer.get());
+					fflush(m->printer.get());
 				}
 				break;
 			}
@@ -678,7 +675,7 @@ void machine_render_lcd(machine_t *m, uint32_t *px)
 
 	for (int y = 0; y < m->lcd_height; y++) {
 		for (int x = 0; x < 60; x++) {
-			uint32_t addr = base + y * 64 + x;
+			uint32_t addr = base + (uint32_t)y * 64 + (uint32_t)x;
 			uint8_t d = (addr < m->ram_size) ? m->ram[addr] : 0;
 			for (int p = 0; p < 8; p++) {
 				int idx = y * LCD_WIDTH + x * 8 + p;
@@ -694,14 +691,14 @@ void machine_render_lcd(machine_t *m, uint32_t *px)
 
 void machine_key_down(machine_t *m, int row, int bit)
 {
-	if (row >= 0 && row < 10 && bit >= 0 && bit < 8)
-		m->kb_rows[row] |= (uint8_t)(1 << bit);
+	if (row >= 0 && (size_t)row < m->kb_rows.size() && bit >= 0 && bit < 8)
+		m->kb_rows[(size_t)row] |= (uint8_t)(1 << bit);
 }
 
 void machine_key_up(machine_t *m, int row, int bit)
 {
-	if (row >= 0 && row < 10 && bit >= 0 && bit < 8)
-		m->kb_rows[row] &= (uint8_t)~(1 << bit);
+	if (row >= 0 && (size_t)row < m->kb_rows.size() && bit >= 0 && bit < 8)
+		m->kb_rows[(size_t)row] &= (uint8_t)~(1 << bit);
 }
 
 /* ---- UART IRQ callbacks ---- */
@@ -733,7 +730,7 @@ void machine_power_button(machine_t *m, bool pressed)
 		return;
 	}
 
-	for (int i = 0; i < 10; i++)
+	for (size_t i = 0; i < m->kb_rows.size(); i++)
 		m->ram[0x6D06 + i] = m->kb_rows[i];
 
 	if (!m->lcd_on) {
@@ -744,10 +741,10 @@ void machine_power_button(machine_t *m, bool pressed)
 	}
 
 	if (m->model->power_nmi) {
-		uint16_t nmi_off = mem_read(m, 0x0008) | ((uint16_t)mem_read(m, 0x0009) << 8);
-		uint16_t nmi_seg = mem_read(m, 0x000A) | ((uint16_t)mem_read(m, 0x000B) << 8);
-		uint16_t f8_off  = mem_read(m, 0x03E0) | ((uint16_t)mem_read(m, 0x03E1) << 8);
-		uint16_t f8_seg  = mem_read(m, 0x03E2) | ((uint16_t)mem_read(m, 0x03E3) << 8);
+		uint16_t nmi_off = (uint16_t)(mem_read(m, 0x0008) | (mem_read(m, 0x0009) << 8));
+		uint16_t nmi_seg = (uint16_t)(mem_read(m, 0x000A) | (mem_read(m, 0x000B) << 8));
+		uint16_t f8_off  = (uint16_t)(mem_read(m, 0x03E0) | (mem_read(m, 0x03E1) << 8));
+		uint16_t f8_seg  = (uint16_t)(mem_read(m, 0x03E2) | (mem_read(m, 0x03E3) << 8));
 
 		uint16_t f8_handler = f8_off;
 		uint32_t f8_phys = ((uint32_t)f8_seg << 4) + f8_off;
@@ -783,7 +780,7 @@ int machine_open_nvram(machine_t *m, const char *path)
 	if ((uint32_t)st.st_size < m->ram_size)
 		(void)ftruncate(fd, (off_t)m->ram_size);
 
-	m->ram = (uint8_t *)mmap(NULL, m->ram_size, PROT_READ | PROT_WRITE,
+	m->ram = (uint8_t *)mmap(nullptr, m->ram_size, PROT_READ | PROT_WRITE,
 	                         MAP_SHARED, fd, 0);
 	if (m->ram == MAP_FAILED) {
 		m->ram = (uint8_t *)calloc(1, m->ram_size);
@@ -818,7 +815,7 @@ void machine_close_nvram(machine_t *m)
 	} else {
 		free(m->ram);
 	}
-	m->ram = NULL;
+	m->ram = nullptr;
 	m->nvram_fd = -1;
 }
 
@@ -840,10 +837,10 @@ int machine_open_pccard(machine_t *m, const char *path)
 		(void)ftruncate(fd, (off_t)sz);
 	}
 
-	m->pccard = (uint8_t *)mmap(NULL, sz, PROT_READ | PROT_WRITE,
+	m->pccard = (uint8_t *)mmap(nullptr, sz, PROT_READ | PROT_WRITE,
 	                            MAP_SHARED, fd, 0);
 	if (m->pccard == MAP_FAILED) {
-		m->pccard = NULL;
+		m->pccard = nullptr;
 		close(fd);
 		return -1;
 	}
@@ -873,7 +870,7 @@ void machine_close_pccard(machine_t *m)
 	} else {
 		free(m->pccard);
 	}
-	m->pccard = NULL;
+	m->pccard = nullptr;
 	m->pccard_size = 0;
 	m->pccard_fd = -1;
 

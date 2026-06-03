@@ -37,25 +37,25 @@ static long sector_offset(int cyl, int head, int sect)
 
 static void read_sector(fdc_t *f, int cyl, int head, int sect)
 {
-	memset(f->sec_buf, 0, FDC_SECTOR_SIZE);
+	f->sec_buf.fill(0);
 	if (f->disk) {
-		fseek(f->disk, sector_offset(cyl, head, sect), SEEK_SET);
-		(void)fread(f->sec_buf, 1, FDC_SECTOR_SIZE, f->disk);
+		fseek(f->disk.get(), sector_offset(cyl, head, sect), SEEK_SET);
+		(void)fread(f->sec_buf.data(), 1, FDC_SECTOR_SIZE, f->disk.get());
 	}
 }
 
 static void write_sector(fdc_t *f, int cyl, int head, int sect)
 {
 	if (f->disk && !f->disk_wp) {
-		fseek(f->disk, sector_offset(cyl, head, sect), SEEK_SET);
-		fwrite(f->sec_buf, 1, FDC_SECTOR_SIZE, f->disk);
-		fflush(f->disk);
+		fseek(f->disk.get(), sector_offset(cyl, head, sect), SEEK_SET);
+		fwrite(f->sec_buf.data(), 1, FDC_SECTOR_SIZE, f->disk.get());
+		fflush(f->disk.get());
 	}
 }
 
 static void enter_result(fdc_t *f, int len)
 {
-	f->phase = FDC_RESULT;
+	f->phase = FdcPhase::Result;
 	f->res_len = len;
 	f->res_pos = 0;
 }
@@ -71,7 +71,7 @@ static void finish_command(fdc_t *f)
 	case 0x03: /* SPECIFY */
 	case 0x12: /* PERPENDICULAR MODE */
 	case 0x13: /* CONFIGURE */
-		f->phase = FDC_CMD;
+		f->phase = FdcPhase::Cmd;
 		break;
 
 	case 0x04: /* SENSE DRIVE STATUS */
@@ -84,7 +84,7 @@ static void finish_command(fdc_t *f)
 		f->pcn = 0;
 		f->st0 = 0x20 | (f->cmd[1] & 7);
 		f->irq_pending = true;
-		f->phase = FDC_CMD;
+		f->phase = FdcPhase::Cmd;
 		break;
 
 	case 0x08: /* SENSE INTERRUPT STATUS */
@@ -99,7 +99,7 @@ static void finish_command(fdc_t *f)
 		break;
 
 	case 0x0a: /* READ ID */
-		f->res[0] = (head << 2) | (f->cmd[1] & 3);
+		f->res[0] = (uint8_t)((head << 2) | (f->cmd[1] & 3));
 		f->res[1] = 0;
 		f->res[2] = 0;
 		f->res[3] = (uint8_t)f->pcn;
@@ -113,7 +113,7 @@ static void finish_command(fdc_t *f)
 		f->pcn = f->cmd[2];
 		f->st0 = 0x20 | (f->cmd[1] & 7);
 		f->irq_pending = true;
-		f->phase = FDC_CMD;
+		f->phase = FdcPhase::Cmd;
 		break;
 
 	case 0x06: case 0x0c: /* READ DATA / READ DELETED DATA */
@@ -121,21 +121,21 @@ static void finish_command(fdc_t *f)
 		f->data_pos = 0;
 		f->data_remaining = (int)sector_size(f->cmd[5], f->cmd[8]);
 		f->data_is_read = true;
-		f->phase = FDC_EXEC;
+		f->phase = FdcPhase::Exec;
 		break;
 
 	case 0x05: case 0x09: /* WRITE DATA / WRITE DELETED DATA */
 		f->data_pos = 0;
 		f->data_remaining = (int)sector_size(f->cmd[5], f->cmd[8]);
 		f->data_is_read = false;
-		f->phase = FDC_EXEC;
+		f->phase = FdcPhase::Exec;
 		break;
 
 	case 0x0d: /* FORMAT TRACK */
 		f->data_pos = 0;
 		f->data_remaining = (f->cmd[3] > FDC_SECTORS ? FDC_SECTORS : f->cmd[3]) * 4;
 		f->data_is_read = false;
-		f->phase = FDC_EXEC;
+		f->phase = FdcPhase::Exec;
 		break;
 
 	default:
@@ -155,13 +155,13 @@ static void data_complete(fdc_t *f)
 	if (c == 0x05 || c == 0x09) {
 		write_sector(f, cyl, head, sect);
 	} else if (c == 0x0d) {
-		memset(f->sec_buf, 0, FDC_SECTOR_SIZE);
+		f->sec_buf.fill(0);
 		int sects = f->cmd[3];
 		for (int s = 1; s <= sects && s <= FDC_SECTORS; s++)
 			write_sector(f, cyl, head, s);
 	}
 
-	f->res[0] = (head << 2) | (f->cmd[1] & 3);
+	f->res[0] = (uint8_t)((head << 2) | (f->cmd[1] & 3));
 	f->res[1] = 0;
 	f->res[2] = 0;
 	f->res[3] = (uint8_t)cyl;
@@ -175,32 +175,29 @@ static void data_complete(fdc_t *f)
 
 void fdc_init(fdc_t *f)
 {
-	memset(f, 0, sizeof(*f));
-	f->phase = FDC_CMD;
+	*f = fdc_t{};
 }
 
 void fdc_destroy(fdc_t *f)
 {
-	if (f->disk) fclose(f->disk);
-	f->disk = NULL;
+	f->disk.reset();
 }
 
 int fdc_load_disk(fdc_t *f, const char *path)
 {
-	FILE *fp = fopen(path, "r+b");
+	FilePtr fp{fopen(path, "r+b")};
 	if (!fp) {
-		fp = fopen(path, "w+b");
+		fp.reset(fopen(path, "w+b"));
 		if (!fp) return -1;
-		uint8_t zero[FDC_SECTOR_SIZE];
-		memset(zero, 0, sizeof(zero));
+		std::array<uint8_t, FDC_SECTOR_SIZE> zero{};
 		for (int i = 0; i < FDC_HEADS * FDC_CYLINDERS * FDC_SECTORS; i++)
-			fwrite(zero, 1, FDC_SECTOR_SIZE, fp);
-		fflush(fp);
+			fwrite(zero.data(), 1, FDC_SECTOR_SIZE, fp.get());
+		fflush(fp.get());
 		fprintf(stderr, "FDC: new disk image %s\n", path);
 	} else {
 		fprintf(stderr, "FDC: loaded %s\n", path);
 	}
-	f->disk = fp;
+	f->disk = std::move(fp);
 	return 0;
 }
 
@@ -215,9 +212,9 @@ uint8_t fdc_read(fdc_t *f, int port)
 		if (f->reset_active)
 			return MSR_RQM | MSR_DIO | MSR_CB;
 		switch (f->phase) {
-		case FDC_CMD:    return MSR_RQM;
-		case FDC_EXEC:   return MSR_RQM | (f->data_is_read ? MSR_DIO : 0) | MSR_CB | MSR_NDM;
-		case FDC_RESULT: return MSR_RQM | MSR_DIO | MSR_CB;
+		case FdcPhase::Cmd:    return MSR_RQM;
+		case FdcPhase::Exec:   return MSR_RQM | (f->data_is_read ? MSR_DIO : 0) | MSR_CB | MSR_NDM;
+		case FdcPhase::Result: return MSR_RQM | MSR_DIO | MSR_CB;
 		}
 		return MSR_RQM;
 
@@ -231,16 +228,16 @@ uint8_t fdc_read(fdc_t *f, int port)
 			return d;
 		}
 
-		if (f->phase == FDC_EXEC && f->data_is_read) {
-			uint8_t d = f->sec_buf[f->data_pos++];
+		if (f->phase == FdcPhase::Exec && f->data_is_read) {
+			uint8_t d = f->sec_buf[(size_t)f->data_pos++];
 			f->data_remaining--;
 			if (f->data_remaining <= 0)
 				data_complete(f);
 			return d;
 		}
 
-		if (f->phase == FDC_RESULT && f->res_pos < f->res_len) {
-			uint8_t d = f->res[f->res_pos];
+		if (f->phase == FdcPhase::Result && f->res_pos < f->res_len) {
+			uint8_t d = f->res[(size_t)f->res_pos];
 			if (f->sis_active) {
 				if (f->sis_pos == 0)
 					d &= ~0x04;
@@ -252,7 +249,7 @@ uint8_t fdc_read(fdc_t *f, int port)
 			}
 			f->res_pos++;
 			if (f->res_pos >= f->res_len)
-				f->phase = FDC_CMD;
+				f->phase = FdcPhase::Cmd;
 			return d;
 		}
 		return 0xff;
@@ -270,7 +267,7 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 		bool reset_released = !(f->dor & 0x04) && (data & 0x04);
 		f->dor = data;
 		if (reset_released) {
-			f->phase = FDC_CMD;
+			f->phase = FdcPhase::Cmd;
 			f->shim_cmd_len = 0;
 			f->shim_cmd_pos = 0;
 			f->shim_reads = 0;
@@ -300,9 +297,9 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 		}
 
 		/* data write phase */
-		if (f->phase == FDC_EXEC && !f->data_is_read) {
+		if (f->phase == FdcPhase::Exec && !f->data_is_read) {
 			if ((f->cmd[0] & 0x1f) != 0x0d)
-				f->sec_buf[f->data_pos] = data;
+				f->sec_buf[(size_t)f->data_pos] = data;
 			f->data_pos++;
 			f->data_remaining--;
 			if (f->data_remaining <= 0)
@@ -311,7 +308,7 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 		}
 
 		/* command accumulation */
-		if (f->phase != FDC_CMD) return;
+		if (f->phase != FdcPhase::Cmd) return;
 
 		if (f->shim_cmd_pos == 0) {
 			f->shim_cmd_len = cmd_length(data);
@@ -319,7 +316,7 @@ void fdc_write(fdc_t *f, int port, uint8_t data)
 			f->sis_pos = 0;
 		}
 
-		f->cmd[f->shim_cmd_pos++] = data;
+		f->cmd[(size_t)f->shim_cmd_pos++] = data;
 
 		if (f->shim_cmd_pos >= f->shim_cmd_len) {
 			int c = f->cmd[0] & 0x1f;

@@ -74,18 +74,18 @@ void DbgMemPanel::render()
 	int lines = 32;
 
 	for (int row = 0; row < lines; row++) {
-		uint32_t addr = (m_base + row * 16) & 0xFFFFF;
+		uint32_t addr = (m_base + (uint32_t)row * 16) & 0xFFFFF;
 		int p = snprintf(line, sizeof(line), "%05X  ", addr);
 
 		uint8_t data[16];
 		for (int i = 0; i < 16; i++)
-			data[i] = m_cpu->mem_read(m_cpu->ctx, (addr + i) & 0xFFFFF);
+			data[i] = m_cpu->mem_read(m_cpu->ctx, (addr + (uint32_t)i) & 0xFFFFF);
 
 		for (int i = 0; i < 16; i++) {
-			p += snprintf(line + p, sizeof(line) - p, "%02X ", data[i]);
+			p += snprintf(line + p, sizeof(line) - (size_t)p, "%02X ", data[i]);
 			if (i == 7) line[p++] = ' ';
 		}
-		p += snprintf(line + p, sizeof(line) - p, " ");
+		p += snprintf(line + p, sizeof(line) - (size_t)p, " ");
 		for (int i = 0; i < 16; i++) {
 			char c = (data[i] >= 0x20 && data[i] < 0x7f) ? (char)data[i] : '.';
 			line[p++] = c;
