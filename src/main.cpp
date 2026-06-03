@@ -41,6 +41,7 @@ static machine_t    g_mach;
 static PaStream    *g_audio;
 #endif
 static int          g_speed = 1;
+static bool         g_shutting_down = false;
 static int          g_remote_port = 0;
 static DbgRegsWindow *g_dbg_regs = nullptr;
 static DbgDisWindow  *g_dbg_dis  = nullptr;
@@ -175,6 +176,7 @@ static void emu_tick(void *data)
 	case 2: cycles = CPU_CLOCK / 30; break;
 	case 3: cycles = CPU_CLOCK / 6; break;
 	}
+	if (g_shutting_down) return;
 	g_mach.cpu.trace_enabled = (g_dbg_regs && g_dbg_regs->visible());
 	machine_step(&g_mach, cycles);
 	lcd->redraw();
@@ -248,7 +250,7 @@ static void save_prefs() {
 		                  g_dbg_periph->w(), g_dbg_periph->h());
 }
 
-static void cleanup_and_exit(int code) {
+static void final_exit(int code) {
 	save_prefs();
 	remote_shutdown();
 #ifdef HAS_PORTAUDIO
@@ -263,8 +265,27 @@ static void cleanup_and_exit(int code) {
 	exit(code);
 }
 
+static void shutdown_poll(void *) {
+	static int ticks = 0;
+	if (!g_mach.lcd_on || ++ticks >= 120) {
+		fprintf(stderr, "Shutdown: firmware %s\n",
+			!g_mach.lcd_on ? "acknowledged" : "timed out");
+		machine_power_button(&g_mach, false);
+		final_exit(0);
+	}
+	machine_step(&g_mach, CPU_CLOCK / 60);
+	Fl::repeat_timeout(1.0/60.0, shutdown_poll, nullptr);
+}
+
 static void cb_quit(Fl_Widget *, void *) {
-	cleanup_and_exit(0);
+	if (!g_mach.lcd_on) {
+		final_exit(0);
+		return;
+	}
+	g_shutting_down = true;
+	fprintf(stderr, "Shutdown: pressing power button...\n");
+	machine_power_button(&g_mach, true);
+	Fl::add_timeout(1.0/60.0, shutdown_poll, nullptr);
 }
 
 static void cb_power(Fl_Widget *, void *) {
@@ -554,7 +575,7 @@ int main(int argc, char *argv[])
 
 	Fl_Double_Window *win = new Fl_Double_Window(win_w, win_h, title);
 	g_main_win = win;
-	win->callback([](Fl_Widget *, void *) { cb_quit(nullptr, nullptr); });
+	win->callback(cb_quit);
 
 	Fl_Menu_Bar *menu = new Fl_Menu_Bar(0, 0, win_w, MENUBAR_H);
 	menu->add("&File/Quit",  FL_CTRL+'q',  cb_quit);
@@ -614,5 +635,5 @@ int main(int argc, char *argv[])
 
 	Fl::add_timeout(1.0/60.0, emu_tick, lcd);
 	Fl::run();
-	cleanup_and_exit(0);
+	final_exit(0);
 }
