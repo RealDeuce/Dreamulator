@@ -184,14 +184,11 @@ static void reconnect_uart(int backend, int port, const char *path) {
 /* ---- menu callbacks ---- */
 
 static void cb_quit(Fl_Widget *, void *) {
-	machine_save_nvram(&g_mach, g_nvram_path);
 	if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
+	machine_close_nvram(&g_mach);
+	fdc_destroy(&g_mach.fdc);
+	uart_destroy(&g_mach.uart);
 	exit(0);
-}
-
-static void cb_quit_nosave(Fl_Widget *, void *) {
-	if (fl_choice("Quit without saving NVRAM?", "Cancel", "Quit", nullptr))
-		exit(0);
 }
 
 static void cb_power(Fl_Widget *, void *) {
@@ -415,8 +412,8 @@ int main(int argc, char *argv[])
 	             cent_backend, cent_path);
 	if (g_pccard_path[0]) machine_load_pccard(&g_mach, g_pccard_path);
 	if (g_floppy_path[0]) fdc_load_disk(&g_mach.fdc, g_floppy_path);
+	machine_open_nvram(&g_mach, g_nvram_path);
 	machine_load_rom(&g_mach, rom_path, rom_entry);
-	machine_load_nvram(&g_mach, g_nvram_path);
 	machine_reset(&g_mach);
 
 	/* ---- FLTK window ---- */
@@ -431,8 +428,7 @@ int main(int argc, char *argv[])
 	win->callback([](Fl_Widget *, void *) { cb_quit(nullptr, nullptr); });
 
 	Fl_Menu_Bar *menu = new Fl_Menu_Bar(0, 0, win_w, MENUBAR_H);
-	menu->add("&File/Quit",                FL_CTRL+'q',  cb_quit);
-	menu->add("&File/Quit Without Saving", 0,            cb_quit_nosave);
+	menu->add("&File/Quit",  FL_CTRL+'q',  cb_quit);
 
 	menu->add("&Machine/Power Button", FL_End,      cb_power);
 	menu->add("&Machine/Reset",        0,           cb_reset);
@@ -480,9 +476,9 @@ int main(int argc, char *argv[])
 
 	if (g_audio) { Pa_StopStream(g_audio); Pa_CloseStream(g_audio); }
 	Pa_Terminate();
-	machine_save_nvram(&g_mach, g_nvram_path);
 	if (g_pccard_path[0]) machine_save_pccard(&g_mach, g_pccard_path);
 	free(g_mach.pccard);
+	machine_close_nvram(&g_mach);
 	fdc_destroy(&g_mach.fdc);
 	uart_destroy(&g_mach.uart);
 	return ret;

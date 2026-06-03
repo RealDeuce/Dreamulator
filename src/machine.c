@@ -5,8 +5,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/ioctl.h>
 #ifdef __FreeBSD__
 #include <dev/ppbus/ppi.h>
@@ -103,6 +105,7 @@ int machine_init(machine_t *m, const model_t *model,
 	m->model = model;
 	m->ram_size = model->ram_size;
 	m->lcd_height = model->lcd_height;
+	m->nvram_fd = -1;
 	m->bank_bit3_selects_ram = model->bank_bit3_selects_ram;
 	m->cent_backend = cent_backend;
 	m->cent_fd = -1;
@@ -726,26 +729,45 @@ void machine_power_button(machine_t *m, bool pressed)
 
 /* ---- NVRAM ---- */
 
-int machine_load_nvram(machine_t *m, const char *path)
+int machine_open_nvram(machine_t *m, const char *path)
 {
-	FILE *f = fopen(path, "rb");
-	if (!f) return -1;
+	int fd = open(path, O_RDWR | O_CREAT, 0644);
+	if (fd < 0) {
+		fprintf(stderr, "NVRAM: cannot open %s, using volatile RAM\n", path);
+		m->ram = (uint8_t *)calloc(1, m->ram_size);
+		return m->ram ? 0 : -1;
+	}
 
-	size_t n = fread(m->ram, 1, m->ram_size, f);
-	fclose(f);
-	fprintf(stderr, "Loaded NVRAM: %zu bytes from %s\n", n, path);
+	struct stat st;
+	fstat(fd, &st);
+	if ((uint32_t)st.st_size < m->ram_size)
+		(void)ftruncate(fd, (off_t)m->ram_size);
+
+	m->ram = (uint8_t *)mmap(NULL, m->ram_size, PROT_READ | PROT_WRITE,
+	                         MAP_SHARED, fd, 0);
+	if (m->ram == MAP_FAILED) {
+		m->ram = (uint8_t *)calloc(1, m->ram_size);
+		close(fd);
+		fprintf(stderr, "NVRAM: mmap failed, using volatile RAM\n");
+		return m->ram ? 0 : -1;
+	}
+
+	m->nvram_fd = fd;
+	fprintf(stderr, "NVRAM: %s (%u KB, mmap)\n", path, m->ram_size / 1024);
 	return 0;
 }
 
-int machine_save_nvram(machine_t *m, const char *path)
+void machine_close_nvram(machine_t *m)
 {
-	FILE *f = fopen(path, "wb");
-	if (!f) { fprintf(stderr, "Cannot write NVRAM: %s\n", path); return -1; }
-
-	fwrite(m->ram, 1, m->ram_size, f);
-	fclose(f);
-	fprintf(stderr, "Saved NVRAM: %s\n", path);
-	return 0;
+	if (m->nvram_fd >= 0 && m->ram) {
+		msync(m->ram, m->ram_size, MS_SYNC);
+		munmap(m->ram, m->ram_size);
+		close(m->nvram_fd);
+	} else {
+		free(m->ram);
+	}
+	m->ram = NULL;
+	m->nvram_fd = -1;
 }
 
 /* ---- PC Card ---- */

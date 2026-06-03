@@ -62,8 +62,9 @@ struct machine {
 	v20_t    cpu;
 
 	uint8_t  rom[ROM_SIZE];
-	uint8_t  ram[MAX_RAM];
+	uint8_t  *ram;
 	uint32_t ram_size;
+	int      nvram_fd;
 
 	uint8_t  bank_select[NUM_BANKS];
 	uint8_t  *bank_rd[NUM_BANKS];
@@ -123,8 +124,8 @@ void machine_render_lcd(machine_t *m, uint32_t *pixels);
 void machine_key_down(machine_t *m, int row, int bit);
 void machine_key_up(machine_t *m, int row, int bit);
 void machine_power_button(machine_t *m, bool pressed);
-int  machine_load_nvram(machine_t *m, const char *path);
-int  machine_save_nvram(machine_t *m, const char *path);
+int  machine_open_nvram(machine_t *m, const char *path);
+void machine_close_nvram(machine_t *m);
 int  machine_load_pccard(machine_t *m, const char *path);
 int  machine_save_pccard(machine_t *m, const char *path);
 
