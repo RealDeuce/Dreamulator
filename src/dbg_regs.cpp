@@ -120,7 +120,6 @@ DbgRegsWindow::DbgRegsWindow(v20_t *cpu)
 	end();
 
 	load_breakpoints();
-	m_cpu->trace_enabled = true;
 
 	int wx = 100, wy = 100, ww = 420, wh = 560;
 	prefs_load_window("dbg_regs", wx, wy, ww, wh);

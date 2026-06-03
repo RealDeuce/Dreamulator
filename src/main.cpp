@@ -175,6 +175,7 @@ static void emu_tick(void *data)
 	case 2: cycles = CPU_CLOCK / 30; break;
 	case 3: cycles = CPU_CLOCK / 6; break;
 	}
+	g_mach.cpu.trace_enabled = (g_dbg_regs && g_dbg_regs->visible());
 	machine_step(&g_mach, cycles);
 	lcd->redraw();
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, data);
