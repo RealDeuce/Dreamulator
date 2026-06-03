@@ -222,12 +222,12 @@ static void cb_insert_pccard(Fl_Widget *, void *) {
 static void cb_new_pccard(Fl_Widget *, void *) {
 	static const struct { const char *label; uint32_t size; } sizes[] = {
 		{"128 KB", 128*1024}, {"256 KB", 256*1024}, {"512 KB", 512*1024},
-		{"1 MB", 1024*1024}, {"2 MB", 2*1024*1024}, {"4 MB", 4*1024*1024},
+		{"1 MB", 1024*1024},
 	};
 	Fl_Menu_Item popup[] = {
 		{"128 KB",0,0,0,0,0,0,0,0}, {"256 KB",0,0,0,0,0,0,0,0},
 		{"512 KB",0,0,0,0,0,0,0,0}, {"1 MB",0,0,0,0,0,0,0,0},
-		{"2 MB",0,0,0,0,0,0,0,0},   {"4 MB",0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0}
+		{0,0,0,0,0,0,0,0,0}
 	};
 	const Fl_Menu_Item *pick = popup->popup(Fl::event_x(), Fl::event_y(), "Card Size");
 	if (!pick) return;
