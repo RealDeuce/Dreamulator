@@ -1,6 +1,7 @@
 #include "machine.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <time.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -126,8 +127,15 @@ static void update_bank(machine_t *m, int bank)
 			m->bank_rd[bank] = m->ram + page * BANK_SIZE;
 			m->bank_wr[bank] = m->ram + page * BANK_SIZE;
 		} else {
-			m->bank_rd[bank] = NULL;
-			m->bank_wr[bank] = NULL;
+			int pc_bank = 0x0F - (sel & 0x0F);
+			uint32_t pc_off = (uint32_t)pc_bank * BANK_SIZE;
+			if (m->pccard && pc_off + BANK_SIZE <= m->pccard_size) {
+				m->bank_rd[bank] = m->pccard + pc_off;
+				m->bank_wr[bank] = m->pccard + pc_off;
+			} else {
+				m->bank_rd[bank] = NULL;
+				m->bank_wr[bank] = NULL;
+			}
 		}
 	}
 }
@@ -324,7 +332,8 @@ static uint8_t io_read(void *ctx, uint16_t port)
 	case 0x0060: return m->irq_enabled;
 
 	case 0x00A0: {
-		uint8_t st = 0x80;
+		uint8_t st = 0;
+		if (!m->pccard) st |= 0x80;
 #ifdef __FreeBSD__
 		if (m->cent_backend == CENT_PPI && m->cent_fd >= 0) {
 			uint8_t pst = 0;
@@ -609,5 +618,54 @@ int machine_save_nvram(machine_t *m, const char *path)
 	fwrite(m->ram, 1, RAM_SIZE, f);
 	fclose(f);
 	fprintf(stderr, "Saved NVRAM: %s\n", path);
+	return 0;
+}
+
+/* ---- PC Card ---- */
+
+#define PCCARD_DEFAULT_SIZE (512 * 1024)
+
+int machine_load_pccard(machine_t *m, const char *path)
+{
+	FILE *f = fopen(path, "rb");
+	uint32_t sz;
+
+	if (f) {
+		fseek(f, 0, SEEK_END);
+		sz = (uint32_t)ftell(f);
+		fseek(f, 0, SEEK_SET);
+	} else {
+		sz = PCCARD_DEFAULT_SIZE;
+	}
+
+	m->pccard = calloc(1, sz);
+	if (!m->pccard) { if (f) fclose(f); return -1; }
+	m->pccard_size = sz;
+
+	if (f) {
+		fread(m->pccard, 1, sz, f);
+		fclose(f);
+		fprintf(stderr, "Loaded PC Card: %u KB from %s\n", sz / 1024, path);
+	} else {
+		memset(m->pccard, 0xFF, sz);
+		fprintf(stderr, "New PC Card: %u KB (%s)\n", sz / 1024, path);
+	}
+
+	for (int i = 0; i < NUM_BANKS; i++)
+		update_bank(m, i);
+
+	return 0;
+}
+
+int machine_save_pccard(machine_t *m, const char *path)
+{
+	if (!m->pccard) return 0;
+
+	FILE *f = fopen(path, "wb");
+	if (!f) { fprintf(stderr, "Cannot write PC Card: %s\n", path); return -1; }
+
+	fwrite(m->pccard, 1, m->pccard_size, f);
+	fclose(f);
+	fprintf(stderr, "Saved PC Card: %s\n", path);
 	return 0;
 }

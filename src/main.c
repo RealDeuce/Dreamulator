@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
 	const char *serial_path = NULL;
 	int cent_backend = CENT_FILE;
 	const char *cent_path = NULL;
+	const char *pccard_path = NULL;
 	const char *rom_path = NULL;
 
 	for (int i = 1; i < argc; i++) {
@@ -139,6 +140,8 @@ int main(int argc, char *argv[])
 		} else if (strcmp(argv[i], "--ppi") == 0 && i + 1 < argc) {
 			cent_backend = CENT_PPI;
 			cent_path = argv[++i];
+		} else if (strcmp(argv[i], "--pccard") == 0 && i + 1 < argc) {
+			pccard_path = argv[++i];
 		} else if (!rom_path) {
 			rom_path = argv[i];
 		}
@@ -149,7 +152,8 @@ int main(int argc, char *argv[])
 			"  --tcp PORT        UART via TCP\n"
 			"  --serial DEV      UART via serial device\n"
 			"  --lpt DEV         Centronics via lpt device\n"
-			"  --ppi DEV         Centronics via ppi device\n",
+			"  --ppi DEV         Centronics via ppi device\n"
+			"  --pccard FILE     PC Card SRAM image\n",
 			argv[0]);
 		return 1;
 	}
@@ -159,6 +163,8 @@ int main(int argc, char *argv[])
 	machine_t m;
 	if (machine_init(&m, uart_backend, tcp_port, serial_path,
 	                 cent_backend, cent_path) != 0) return 1;
+	if (pccard_path)
+		machine_load_pccard(&m, pccard_path);
 	if (machine_load_rom(&m, rom_path) != 0) return 1;
 	machine_load_nvram(&m, nvram_path);
 	machine_reset(&m);
@@ -240,6 +246,9 @@ int main(int argc, char *argv[])
 	}
 
 	machine_save_nvram(&m, nvram_path);
+	if (pccard_path)
+		machine_save_pccard(&m, pccard_path);
+	free(m.pccard);
 	uart_destroy(&m.uart);
 
 	if (audio_dev)

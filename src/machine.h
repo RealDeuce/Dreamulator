@@ -55,6 +55,9 @@ struct machine {
 	int      cent_fd;
 	void     *printer;
 
+	uint8_t  *pccard;
+	uint32_t pccard_size;
+
 	uart_t   uart;
 
 	rtc_t    rtc;
@@ -81,5 +84,7 @@ void machine_key_up(machine_t *m, int row, int bit);
 void machine_power_button(machine_t *m, bool pressed);
 int  machine_load_nvram(machine_t *m, const char *path);
 int  machine_save_nvram(machine_t *m, const char *path);
+int  machine_load_pccard(machine_t *m, const char *path);
+int  machine_save_pccard(machine_t *m, const char *path);
 
 #endif
