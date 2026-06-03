@@ -4,7 +4,8 @@ A standalone emulator for the Nakajima ES-2xx series electronic typewriters,
 sold as the NTS DreamWriter, Walther ES-210, Dator 3000, and others.
 
 Built from scratch using the [MAME](https://www.mamedev.org/) nakajies driver
-as a hardware reference.  The emulation core, peripheral devices, and frontend
+as a hardware reference and [VirtualT](https://sourceforge.net/projects/virtualt/)
+as a frontend reference.  The emulation core, peripheral devices, and frontend
 are all original code.
 
 ## Supported Models
@@ -160,3 +161,10 @@ by Wilbert Pol, Sandro Ronco, and others).  Debugging tools are inspired by
 VirtualT (BSD-2-Clause, by Ken Pettit and Stephen Hurd).
 
 No code was copied from either project; the implementation is original.
+
+- [MAME nakajies driver](https://github.com/mamedev/mame/blob/master/src/mame/nakajima/nakajies.cpp)
+- [VirtualT](https://sourceforge.net/projects/virtualt/)
+
+The ROM files in `roms/` are firmware images from Nakajima/NTS hardware.
+Their license status is unknown.  If you are a rights holder and would like
+them removed, please open an issue or contact the maintainer.
