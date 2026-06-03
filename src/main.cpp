@@ -12,8 +12,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 
 extern "C" {
 #include "machine.h"
@@ -205,13 +208,42 @@ static void cb_battery(Fl_Widget *, void *v) {
 	*flag = !*flag;
 }
 
+static void open_pccard(const char *path) {
+	machine_close_pccard(&g_mach);
+	snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", path);
+	machine_open_pccard(&g_mach, g_pccard_path);
+}
+
 static void cb_insert_pccard(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Insert PC Card", "*", g_pccard_path[0] ? g_pccard_path : nullptr);
-	if (path) {
-		machine_close_pccard(&g_mach);
-		snprintf(g_pccard_path, sizeof(g_pccard_path), "%s", path);
-		machine_open_pccard(&g_mach, g_pccard_path);
-	}
+	if (path) open_pccard(path);
+}
+
+static void cb_new_pccard(Fl_Widget *, void *) {
+	static const struct { const char *label; uint32_t size; } sizes[] = {
+		{"128 KB", 128*1024}, {"256 KB", 256*1024}, {"512 KB", 512*1024},
+		{"1 MB", 1024*1024}, {"2 MB", 2*1024*1024}, {"4 MB", 4*1024*1024},
+	};
+	Fl_Menu_Item popup[] = {
+		{"128 KB",0,0,0,0,0,0,0,0}, {"256 KB",0,0,0,0,0,0,0,0},
+		{"512 KB",0,0,0,0,0,0,0,0}, {"1 MB",0,0,0,0,0,0,0,0},
+		{"2 MB",0,0,0,0,0,0,0,0},   {"4 MB",0,0,0,0,0,0,0,0}, {0,0,0,0,0,0,0,0,0}
+	};
+	const Fl_Menu_Item *pick = popup->popup(Fl::event_x(), Fl::event_y(), "Card Size");
+	if (!pick) return;
+	int idx = (int)(pick - popup);
+
+	const char *path = fl_file_chooser("Save New PC Card As", "*", "card.bin");
+	if (!path) return;
+
+	int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) { fl_alert("Cannot create %s", path); return; }
+	(void)ftruncate(fd, (off_t)sizes[idx].size);
+	uint8_t *p = (uint8_t *)mmap(NULL, sizes[idx].size, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+	if (p != MAP_FAILED) { memset(p, 0xFF, sizes[idx].size); munmap(p, sizes[idx].size); }
+	close(fd);
+
+	open_pccard(path);
 }
 
 static void cb_eject_pccard(Fl_Widget *, void *) {
@@ -219,14 +251,37 @@ static void cb_eject_pccard(Fl_Widget *, void *) {
 	g_pccard_path[0] = 0;
 }
 
+static void open_floppy(const char *path) {
+	fdc_destroy(&g_mach.fdc);
+	fdc_init(&g_mach.fdc);
+	snprintf(g_floppy_path, sizeof(g_floppy_path), "%s", path);
+	fdc_load_disk(&g_mach.fdc, g_floppy_path);
+}
+
 static void cb_insert_floppy(Fl_Widget *, void *) {
 	const char *path = fl_file_chooser("Insert Floppy", "*.img\t*", g_floppy_path[0] ? g_floppy_path : nullptr);
-	if (path) {
-		fdc_destroy(&g_mach.fdc);
-		fdc_init(&g_mach.fdc);
-		snprintf(g_floppy_path, sizeof(g_floppy_path), "%s", path);
-		fdc_load_disk(&g_mach.fdc, g_floppy_path);
-	}
+	if (path) open_floppy(path);
+}
+
+static void cb_new_floppy(Fl_Widget *, void *) {
+	static const struct { const char *label; uint32_t size; } fmts[] = {
+		{"1.44 MB HD (18 spt)", 80*2*18*512},
+		{"720 KB DD (9 spt)",   80*2*9*512},
+	};
+	int choice = fl_choice("Floppy format?", "1.44 MB HD", "720 KB DD", nullptr);
+
+	const char *path = fl_file_chooser("Save New Floppy As", "*.img", "floppy.img");
+	if (!path) return;
+
+	FILE *f = fopen(path, "wb");
+	if (!f) { fl_alert("Cannot create %s", path); return; }
+	uint8_t zero[512];
+	memset(zero, 0, sizeof(zero));
+	uint32_t sectors = fmts[choice].size / 512;
+	for (uint32_t i = 0; i < sectors; i++) fwrite(zero, 1, 512, f);
+	fclose(f);
+
+	open_floppy(path);
 }
 
 static void cb_eject_floppy(Fl_Widget *, void *) {
@@ -426,8 +481,10 @@ int main(int argc, char *argv[])
 	menu->add("&Machine/Coin Battery Low", 0,       cb_battery, &g_mach.coin_battery_low, FL_MENU_TOGGLE);
 
 	menu->add("M&edia/Insert PC Card...",  0, cb_insert_pccard);
+	menu->add("M&edia/New PC Card...",     0, cb_new_pccard);
 	menu->add("M&edia/Eject PC Card",      0, cb_eject_pccard);
 	menu->add("M&edia/Insert Floppy...",   0, cb_insert_floppy);
+	menu->add("M&edia/New Floppy...",      0, cb_new_floppy);
 	menu->add("M&edia/Eject Floppy",       0, cb_eject_floppy);
 	menu->add("M&edia/Printer Output...",  0, cb_printer_file);
 
