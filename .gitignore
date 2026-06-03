@@ -1,9 +1,5 @@
 *.o
 *.d
 *.nvram
-dreamulator
 printer.out
-build/
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
+/build/
