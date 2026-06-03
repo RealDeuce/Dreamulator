@@ -11,7 +11,11 @@ static void    update_bank(machine_t *m, int bank);
 static void    update_irqs(machine_t *m);
 static void    rtc_init(rtc_t *r);
 
-int machine_init(machine_t *m)
+static void uart_txrdy_cb(void *ctx, bool state);
+static void uart_rxrdy_cb(void *ctx, bool state);
+
+int machine_init(machine_t *m, int uart_backend, int tcp_port,
+                 const char *serial_path)
 {
 	memset(m, 0, sizeof(*m));
 	m->bank_bit3_selects_ram = true;
@@ -24,6 +28,12 @@ int machine_init(machine_t *m)
 	m->cpu.ctx       = m;
 
 	m->kb_timer_period = CPU_CLOCK / (XTAL / 20480);
+
+	uart_init(&m->uart, uart_backend, tcp_port, serial_path);
+	m->uart.txrdy_cb = uart_txrdy_cb;
+	m->uart.rxrdy_cb = uart_rxrdy_cb;
+	m->uart.cb_ctx   = m;
+
 	return 0;
 }
 
@@ -37,7 +47,7 @@ void machine_reset(machine_t *m)
 	m->lcd_on            = true;
 	m->keyboard_row      = 0;
 	m->keyboard_row_reset = 0xFF;
-	m->uart_control      = 0;
+	m->port30            = 0;
 	m->buzzer_low        = 0;
 	m->buzzer_high       = 0;
 	m->buzzer_on         = false;
@@ -46,6 +56,7 @@ void machine_reset(machine_t *m)
 	m->rtc_timer_cycles  = CPU_CLOCK;
 
 	rtc_init(&m->rtc);
+	uart_reset(&m->uart);
 
 	memset(m->bank_select, 0, sizeof(m->bank_select));
 	for (int i = 0; i < NUM_BANKS; i++)
@@ -299,8 +310,8 @@ static uint8_t io_read(void *ctx, uint16_t port)
 		return (r > 0 && r <= 10) ? m->kb_rows[r - 1] : 0;
 	}
 
-	case 0x00C0: return 0x00;
-	case 0x00C1: return 0x05;
+	case 0x00C0: return uart_data_read(&m->uart);
+	case 0x00C1: return uart_status_read(&m->uart);
 
 	case 0x00D0: case 0x00D1: case 0x00D2: case 0x00D3:
 	case 0x00D4: case 0x00D5: case 0x00D6: case 0x00D7:
@@ -329,8 +340,11 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 		break;
 
 	case 0x0030: {
-		uint8_t old = m->uart_control;
-		m->uart_control = val;
+		uint8_t old = m->port30;
+		m->port30 = val;
+		uart_set_baud(&m->uart, val & 7);
+		if ((old & 0x08) && !(val & 0x08))
+			uart_reset(&m->uart);
 		if ((old & 0x20) && !(val & 0x20)) {
 			if (!m->printer)
 				m->printer = fopen("printer.out", "ab");
@@ -384,7 +398,8 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 		update_irqs(m);
 		break;
 
-	case 0x00C0: case 0x00C1: break;
+	case 0x00C0: uart_data_write(&m->uart, val); break;
+	case 0x00C1: uart_control_write(&m->uart, val); break;
 
 	case 0x00D0: case 0x00D1: case 0x00D2: case 0x00D3:
 	case 0x00D4: case 0x00D5: case 0x00D6: case 0x00D7:
@@ -412,6 +427,8 @@ void machine_step(machine_t *m, int cycles)
 
 		int ran = v20_exec(&m->cpu, chunk);
 		rem -= ran;
+
+		uart_tick(&m->uart, ran);
 
 		m->kb_timer_cycles -= ran;
 		if (m->kb_timer_cycles <= 0) {
@@ -476,6 +493,26 @@ void machine_key_up(machine_t *m, int row, int bit)
 {
 	if (row >= 0 && row < 10 && bit >= 0 && bit < 8)
 		m->kb_rows[row] &= (uint8_t)~(1 << bit);
+}
+
+/* ---- UART IRQ callbacks ---- */
+
+static void uart_txrdy_cb(void *ctx, bool state)
+{
+	machine_t *m = ctx;
+	if (state) {
+		m->irq_active |= 0x04;
+		update_irqs(m);
+	}
+}
+
+static void uart_rxrdy_cb(void *ctx, bool state)
+{
+	machine_t *m = ctx;
+	if (state) {
+		m->irq_active |= 0x08;
+		update_irqs(m);
+	}
 }
 
 /* ---- power ---- */

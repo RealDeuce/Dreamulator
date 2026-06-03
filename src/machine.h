@@ -2,6 +2,7 @@
 #define MACHINE_H
 
 #include "v20.h"
+#include "uart.h"
 
 #define XTAL        19660000
 #define CPU_CLOCK   (XTAL / 2)
@@ -48,9 +49,11 @@ struct machine {
 	bool     buzzer_on;
 	float    beeper_phase;
 
-	uint8_t  uart_control;
+	uint8_t  port30;
 	uint8_t  cent_data;
 	void     *printer;
+
+	uart_t   uart;
 
 	rtc_t    rtc;
 
@@ -62,7 +65,8 @@ struct machine {
 	bool     bank_bit3_selects_ram;
 };
 
-int  machine_init(machine_t *m);
+int  machine_init(machine_t *m, int uart_backend, int tcp_port,
+                  const char *serial_path);
 void machine_reset(machine_t *m);
 int  machine_load_rom(machine_t *m, const char *path);
 void machine_step(machine_t *m, int cycles);
