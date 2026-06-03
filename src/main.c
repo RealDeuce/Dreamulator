@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
 	int cent_backend = CENT_FILE;
 	const char *cent_path = NULL;
 	const char *pccard_path = NULL;
-	const char *model_name = "drwrt400";
+	const char *model_name = "dwT400";
 	const char *rom_path = NULL;
 
 	for (int i = 1; i < argc; i++) {
