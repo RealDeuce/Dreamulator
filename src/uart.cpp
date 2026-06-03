@@ -303,7 +303,7 @@ void uart_tick(uart_t *u, int cycles)
 {
 	/* TCP: accept pending connections */
 	if (u->backend == UART_TCP && u->fd < 0 && u->listen_fd >= 0) {
-		struct pollfd pf = { .fd = u->listen_fd, .events = POLLIN };
+		struct pollfd pf = { .fd = u->listen_fd, .events = POLLIN, .revents = 0 };
 		if (poll(&pf, 1, 0) > 0 && (pf.revents & POLLIN)) {
 			int c = accept(u->listen_fd, NULL, NULL);
 			if (c >= 0) {
@@ -347,7 +347,7 @@ void uart_tick(uart_t *u, int cycles)
 
 		/* receive data */
 		if (u->fd >= 0 && (u->command & 0x04)) {
-			struct pollfd pf = { .fd = u->fd, .events = POLLIN };
+			struct pollfd pf = { .fd = u->fd, .events = POLLIN, .revents = 0 };
 			if (poll(&pf, 1, 0) > 0 && (pf.revents & POLLIN)) {
 				uint8_t b;
 				ssize_t n = read(u->fd, &b, 1);

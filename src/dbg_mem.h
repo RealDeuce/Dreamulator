@@ -4,20 +4,23 @@
 #ifndef DBG_MEM_H
 #define DBG_MEM_H
 
-#include <FL/Fl_Double_Window.H>
+#include <FL/Fl_Group.H>
 
 struct v20_t;
 
-class DbgMemWindow : public Fl_Double_Window {
+class DbgMemPanel : public Fl_Group {
 public:
-	DbgMemWindow(v20_t *cpu);
+	DbgMemPanel(int x, int y, int w, int h, v20_t *cpu);
 	void refresh();
+	void resize(int X, int Y, int W, int H) override;
 	void goto_addr(uint32_t addr);
 
 private:
 	v20_t *m_cpu;
 	uint32_t m_base;
+	class Fl_Box *m_addr_label;
 	class Fl_Input *m_addr_input;
+	class Fl_Button *m_btn_go;
 	class Fl_Text_Display *m_text;
 	class Fl_Text_Buffer *m_buf;
 

@@ -17,40 +17,48 @@
 #include "prefs.h"
 #include "dbg_mem.h"
 
-DbgMemWindow::DbgMemWindow(v20_t *cpu)
-	: Fl_Double_Window(620, 500, "Memory Editor"), m_cpu(cpu), m_base(0)
+DbgMemPanel::DbgMemPanel(int X, int Y, int W, int H, v20_t *cpu)
+	: Fl_Group(X, Y, W, H), m_cpu(cpu), m_base(0)
 {
-	new Fl_Box(10, 10, 60, 24, "Address:");
-	m_addr_input = new Fl_Input(70, 10, 100, 24);
+	box(FL_FLAT_BOX);
+
+	m_addr_label = new Fl_Box(0, 0, 60, 24, "Address:");
+	m_addr_input = new Fl_Input(0, 0, 100, 24);
 	m_addr_input->textfont(FL_COURIER);
 	m_addr_input->textsize(12);
 	m_addr_input->value("00000");
 	m_addr_input->callback(cb_goto, this);
 	m_addr_input->when(FL_WHEN_ENTER_KEY);
 
-	Fl_Button *bgo = new Fl_Button(180, 10, 60, 24, "Go");
-	bgo->callback(cb_goto, this);
+	m_btn_go = new Fl_Button(0, 0, 60, 24, "Go");
+	m_btn_go->callback(cb_goto, this);
 
 	m_buf = new Fl_Text_Buffer();
-	m_text = new Fl_Text_Display(10, 44, 600, 446);
+	m_text = new Fl_Text_Display(0, 0, 100, 100);
 	m_text->buffer(m_buf);
 	m_text->textfont(FL_COURIER);
 	m_text->textsize(12);
 
 	end();
-
-	int wx = 520, wy = 300, ww = 620, wh = 500;
-	prefs_load_window("dbg_mem", wx, wy, ww, wh);
-	position(wx, wy);
-	size(ww, wh);
+	resize(X, Y, W, H);
 }
 
-void DbgMemWindow::refresh()
+void DbgMemPanel::resize(int X, int Y, int W, int H)
+{
+	Fl_Widget::resize(X, Y, W, H);
+	m_addr_label->resize(X + 10, Y + 10, 60, 24);
+	m_addr_input->resize(X + 70, Y + 10, 100, 24);
+	m_btn_go->resize(X + 180, Y + 10, 60, 24);
+	m_text->resize(X + 5, Y + 44, W - 10, H - 49);
+	damage(FL_DAMAGE_ALL);
+}
+
+void DbgMemPanel::refresh()
 {
 	render();
 }
 
-void DbgMemWindow::goto_addr(uint32_t addr)
+void DbgMemPanel::goto_addr(uint32_t addr)
 {
 	m_base = addr & 0xFFFF0;
 	char buf[16];
@@ -59,7 +67,7 @@ void DbgMemWindow::goto_addr(uint32_t addr)
 	render();
 }
 
-void DbgMemWindow::render()
+void DbgMemPanel::render()
 {
 	std::string text;
 	char line[128];
@@ -89,9 +97,9 @@ void DbgMemWindow::render()
 	m_buf->text(text.c_str());
 }
 
-void DbgMemWindow::cb_goto(Fl_Widget*, void *data)
+void DbgMemPanel::cb_goto(Fl_Widget*, void *data)
 {
-	auto *w = (DbgMemWindow *)data;
+	auto *w = (DbgMemPanel *)data;
 	unsigned addr = 0;
 	const char *s = w->m_addr_input->value();
 	unsigned seg, off;

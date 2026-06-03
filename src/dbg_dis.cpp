@@ -17,44 +17,52 @@
 #include "prefs.h"
 #include "dbg_dis.h"
 
-DbgDisWindow::DbgDisWindow(v20_t *cpu)
-	: Fl_Double_Window(500, 500, "Disassembly"), m_cpu(cpu)
+DbgDisPanel::DbgDisPanel(int X, int Y, int W, int H, v20_t *cpu)
+	: Fl_Group(X, Y, W, H), m_cpu(cpu)
 {
+	box(FL_FLAT_BOX);
 	m_seg = cpu->cs;
 	m_off = cpu->ip;
 
-	new Fl_Box(10, 10, 60, 24, "Address:");
-	m_addr_input = new Fl_Input(70, 10, 120, 24);
+	m_addr_label = new Fl_Box(0, 0, 60, 24, "Address:");
+	m_addr_input = new Fl_Input(0, 0, 120, 24);
 	m_addr_input->textfont(FL_COURIER);
 	m_addr_input->textsize(12);
 	m_addr_input->callback(cb_goto, this);
 	m_addr_input->when(FL_WHEN_ENTER_KEY);
 
-	Fl_Button *bgo = new Fl_Button(200, 10, 60, 24, "Go");
-	bgo->callback(cb_goto, this);
+	m_btn_go = new Fl_Button(0, 0, 60, 24, "Go");
+	m_btn_go->callback(cb_goto, this);
 
-	Fl_Button *bpc = new Fl_Button(270, 10, 100, 24, "Follow PC");
-	bpc->callback(cb_follow_pc, this);
+	m_btn_pc = new Fl_Button(0, 0, 100, 24, "Follow PC");
+	m_btn_pc->callback(cb_follow_pc, this);
 
 	m_buf = new Fl_Text_Buffer();
-	m_text = new Fl_Text_Display(10, 44, 480, 446);
+	m_text = new Fl_Text_Display(0, 0, 100, 100);
 	m_text->buffer(m_buf);
 	m_text->textfont(FL_COURIER);
 	m_text->textsize(12);
 
 	end();
-
-	int wx = 520, wy = 100, ww = 500, wh = 500;
-	prefs_load_window("dbg_dis", wx, wy, ww, wh);
-	position(wx, wy);
-	size(ww, wh);
+	resize(X, Y, W, H);
 
 	char buf[16];
 	snprintf(buf, sizeof(buf), "%04X:%04X", m_seg, m_off);
 	m_addr_input->value(buf);
 }
 
-void DbgDisWindow::refresh()
+void DbgDisPanel::resize(int X, int Y, int W, int H)
+{
+	Fl_Widget::resize(X, Y, W, H);
+	m_addr_label->resize(X + 10, Y + 10, 60, 24);
+	m_addr_input->resize(X + 70, Y + 10, 120, 24);
+	m_btn_go->resize(X + 200, Y + 10, 60, 24);
+	m_btn_pc->resize(X + 270, Y + 10, 100, 24);
+	m_text->resize(X + 5, Y + 44, W - 10, H - 49);
+	damage(FL_DAMAGE_ALL);
+}
+
+void DbgDisPanel::refresh()
 {
 	m_seg = m_cpu->cs;
 	m_off = m_cpu->ip;
@@ -64,7 +72,7 @@ void DbgDisWindow::refresh()
 	disassemble_region();
 }
 
-void DbgDisWindow::goto_addr(uint16_t seg, uint16_t off)
+void DbgDisPanel::goto_addr(uint16_t seg, uint16_t off)
 {
 	m_seg = seg;
 	m_off = off;
@@ -74,7 +82,7 @@ void DbgDisWindow::goto_addr(uint16_t seg, uint16_t off)
 	disassemble_region();
 }
 
-void DbgDisWindow::disassemble_region()
+void DbgDisPanel::disassemble_region()
 {
 	std::string text;
 	char line[256], dis[128];
@@ -102,16 +110,16 @@ void DbgDisWindow::disassemble_region()
 	m_buf->text(text.c_str());
 }
 
-void DbgDisWindow::cb_goto(Fl_Widget*, void *data)
+void DbgDisPanel::cb_goto(Fl_Widget*, void *data)
 {
-	auto *w = (DbgDisWindow *)data;
+	auto *w = (DbgDisPanel *)data;
 	unsigned seg = 0, off = 0;
 	sscanf(w->m_addr_input->value(), "%x:%x", &seg, &off);
 	w->goto_addr((uint16_t)seg, (uint16_t)off);
 }
 
-void DbgDisWindow::cb_follow_pc(Fl_Widget*, void *data)
+void DbgDisPanel::cb_follow_pc(Fl_Widget*, void *data)
 {
-	auto *w = (DbgDisWindow *)data;
+	auto *w = (DbgDisPanel *)data;
 	w->goto_addr(w->m_cpu->cs, w->m_cpu->ip);
 }

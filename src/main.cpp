@@ -3,6 +3,7 @@
 #include <FL/Fl.H>
 #include <FL/Fl_Double_Window.H>
 #include <FL/Fl_Menu_Bar.H>
+#include <FL/Fl_Tile.H>
 #include <FL/Fl_Widget.H>
 #include <FL/Fl_File_Chooser.H>
 #include <FL/fl_ask.H>
@@ -34,6 +35,8 @@
 #define AUDIO_BUF   512
 #define BEEP_VOL    0.05f
 
+class LcdWidget;
+
 /* ---- globals ---- */
 
 static machine_t    g_mach;
@@ -43,10 +46,26 @@ static PaStream    *g_audio;
 static int          g_speed = 1;
 static bool         g_shutting_down = false;
 static int          g_remote_port = 0;
-static DbgRegsWindow *g_dbg_regs = nullptr;
-static DbgDisWindow  *g_dbg_dis  = nullptr;
-static DbgMemWindow  *g_dbg_mem  = nullptr;
-static DbgPeriphWindow *g_dbg_periph = nullptr;
+static DbgRegsPanel   *g_dbg_regs   = nullptr;
+static DbgDisPanel    *g_dbg_dis    = nullptr;
+static DbgMemPanel    *g_dbg_mem    = nullptr;
+static DbgPeriphPanel *g_dbg_periph = nullptr;
+
+static Fl_Double_Window *g_win_regs   = nullptr;
+static Fl_Double_Window *g_win_dis    = nullptr;
+static Fl_Double_Window *g_win_mem    = nullptr;
+static Fl_Double_Window *g_win_periph = nullptr;
+
+static Fl_Tile *g_dock       = nullptr;
+static LcdWidget *g_lcd      = nullptr;
+static int g_lcd_h           = 0;
+static int g_dock_h          = 300;
+
+static bool g_docked_regs   = false;
+static bool g_docked_dis    = false;
+static bool g_docked_mem    = false;
+static bool g_docked_periph = false;
+static Fl_Double_Window *g_main_win = nullptr;
 static char         g_nvram_path[1024];
 static char         g_pccard_path[1024];
 static char         g_floppy_path[1024];
@@ -131,7 +150,7 @@ public:
 					return 1;
 				}
 			}
-			return 1;
+			return 0;
 		}
 		return Fl_Widget::handle(event);
 	}
@@ -163,11 +182,12 @@ static int pa_callback(const void *, void *out, unsigned long frames,
 }
 #endif
 
+static void sync_dock_height();
+
 /* ---- emulation tick ---- */
 
-static void emu_tick(void *data)
+static void emu_tick(void *)
 {
-	LcdWidget *lcd = (LcdWidget *)data;
 	int cycles;
 	switch (g_speed) {
 	case 0: cycles = CPU_CLOCK / 120; break;
@@ -177,10 +197,11 @@ static void emu_tick(void *data)
 	case 3: cycles = CPU_CLOCK / 6; break;
 	}
 	if (g_shutting_down) return;
-	g_mach.cpu.trace_enabled = (g_dbg_regs && g_dbg_regs->visible());
+	g_mach.cpu.trace_enabled = (g_dbg_regs && g_dbg_regs->visible_r());
+	sync_dock_height();
 	machine_step(&g_mach, cycles);
-	lcd->redraw();
-	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, data);
+	g_lcd->redraw();
+	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, nullptr);
 }
 
 static void reconnect_uart(int backend, int port, const char *path) {
@@ -200,54 +221,265 @@ static void reconnect_uart(int backend, int port, const char *path) {
 
 static void debug_monitor_cb(void *)
 {
-	if (g_dbg_regs && g_dbg_regs->visible()) g_dbg_regs->refresh();
-	if (g_dbg_dis && g_dbg_dis->visible()) g_dbg_dis->refresh();
+	if (g_dbg_regs && g_dbg_regs->visible_r()) g_dbg_regs->refresh();
+	if (g_dbg_dis && g_dbg_dis->visible_r()) g_dbg_dis->refresh();
 }
 
+/* ---- dock infrastructure ---- */
+
+static void cb_dbg_win_close(Fl_Widget *w, void *) { w->hide(); }
+
+static bool panel_in_dock(Fl_Group *panel, bool docked)
+{
+	return docked && panel && panel->visible() && panel->parent() == g_dock;
+}
+
+static int dock_panel_count()
+{
+	int n = 0;
+	if (panel_in_dock(g_dbg_regs, g_docked_regs)) n++;
+	if (panel_in_dock(g_dbg_dis, g_docked_dis)) n++;
+	if (panel_in_dock(g_dbg_mem, g_docked_mem)) n++;
+	if (panel_in_dock(g_dbg_periph, g_docked_periph)) n++;
+	return n;
+}
+
+static void relayout_dock()
+{
+	if (!g_dock || !g_main_win) return;
+
+	int lcd_bottom = MENUBAR_H + g_lcd_h * SCALE;
+	int n = dock_panel_count();
+	if (n == 0) {
+		g_dock->hide();
+		g_main_win->resizable(nullptr);
+		g_main_win->size(g_main_win->w(), lcd_bottom);
+		g_main_win->size_range(LCD_WIDTH * SCALE, lcd_bottom,
+		                       0, lcd_bottom);
+		g_main_win->redraw();
+		return;
+	}
+
+	int win_w = g_main_win->w();
+	int win_h = lcd_bottom + g_dock_h;
+
+	Fl_Group *panels[4];
+	int count = 0;
+	if (panel_in_dock(g_dbg_regs, g_docked_regs)) panels[count++] = g_dbg_regs;
+	if (panel_in_dock(g_dbg_dis, g_docked_dis)) panels[count++] = g_dbg_dis;
+	if (panel_in_dock(g_dbg_mem, g_docked_mem)) panels[count++] = g_dbg_mem;
+	if (panel_in_dock(g_dbg_periph, g_docked_periph)) panels[count++] = g_dbg_periph;
+
+	int pw = win_w / count;
+	for (int i = 0; i < count; i++) {
+		int px = i * pw;
+		int w = (i == count - 1) ? (win_w - px) : pw;
+		panels[i]->resize(px, lcd_bottom, w, g_dock_h);
+		panels[i]->show();
+	}
+
+	g_dock->Fl_Widget::resize(0, lcd_bottom, win_w, g_dock_h);
+	g_dock->show();
+	g_main_win->resizable(nullptr);
+	g_main_win->size(win_w, win_h);
+	g_main_win->resizable(g_dock);
+	g_main_win->init_sizes();
+	g_main_win->size_range(LCD_WIDTH * SCALE, lcd_bottom + 100);
+	g_dock->init_sizes();
+	g_main_win->redraw();
+}
+
+static void sync_dock_height()
+{
+	int lcd_w = LCD_WIDTH * SCALE;
+	int lcd_x = (g_main_win->w() - lcd_w) / 2;
+	if (lcd_x < 0) lcd_x = 0;
+	if (g_lcd->x() != lcd_x)
+		g_lcd->position(lcd_x, MENUBAR_H);
+
+	if (!g_dock || !g_dock->visible()) return;
+	int lcd_bottom = MENUBAR_H + g_lcd_h * SCALE;
+	int new_h = g_main_win->h() - lcd_bottom;
+	if (new_h < 100) new_h = 100;
+	if (new_h != g_dock_h) {
+		g_dock_h = new_h;
+		relayout_dock();
+	}
+}
+
+static Fl_Double_Window *make_dbg_window(Fl_Group *panel, int dw, int dh,
+                                         int min_w, int min_h,
+                                         const char *title, const char *pref_key)
+{
+	int wx, wy, ww = dw, wh = dh;
+	wx = 100; wy = 100;
+	prefs_load_window(pref_key, wx, wy, ww, wh);
+
+	Fl_Double_Window *win = new Fl_Double_Window(ww, wh, title);
+	win->callback(cb_dbg_win_close);
+	win->size_range(min_w, min_h);
+	panel->resize(0, 0, ww, wh);
+	win->add(panel);
+	win->resizable(panel);
+	win->end();
+	win->position(wx, wy);
+	return win;
+}
+
+static void dock_panel(Fl_Group *panel, Fl_Double_Window *&win)
+{
+	if (win) {
+		win->remove(panel);
+		win->hide();
+		delete win;
+		win = nullptr;
+	}
+	g_dock->add(panel);
+	relayout_dock();
+}
+
+static void undock_panel(Fl_Group *panel, Fl_Double_Window *&win,
+                         int dw, int dh, int min_w, int min_h,
+                         const char *title, const char *pref_key)
+{
+	g_dock->remove(panel);
+	win = make_dbg_window(panel, dw, dh, min_w, min_h, title, pref_key);
+	win->show();
+	relayout_dock();
+}
+
+/* ---- debug show/dock callbacks ---- */
+
+static bool panel_visible(Fl_Group *panel, Fl_Double_Window *win, bool docked) {
+	if (!panel) return false;
+	if (docked) return panel->visible_r();
+	return win && win->visible();
+}
+
+static void toggle_panel(Fl_Group *&panel, Fl_Double_Window *&win, bool docked,
+                         int dw, int dh, int min_w, int min_h,
+                         const char *title, const char *pref_key,
+                         void (*create_fn)(Fl_Group *&))
+{
+	if (panel_visible(panel, win, docked)) {
+		if (docked) {
+			g_dock->remove(panel);
+			panel->hide();
+			relayout_dock();
+		} else {
+			win->hide();
+		}
+		return;
+	}
+	if (!panel) {
+		create_fn(panel);
+		if (docked) {
+			g_dock->add(panel);
+			relayout_dock();
+		} else {
+			win = make_dbg_window(panel, dw, dh, min_w, min_h, title, pref_key);
+		}
+	}
+	if (docked) {
+		g_dock->add(panel);
+		panel->show();
+		relayout_dock();
+	} else {
+		win->show();
+	}
+}
+
+static void create_regs(Fl_Group *&p) { p = (Fl_Group *)new DbgRegsPanel(0,0,420,560,&g_mach.cpu); }
+static void create_dis(Fl_Group *&p)  { p = (Fl_Group *)new DbgDisPanel(0,0,500,500,&g_mach.cpu); }
+static void create_mem(Fl_Group *&p)  { p = (Fl_Group *)new DbgMemPanel(0,0,620,500,&g_mach.cpu); }
+static void create_periph(Fl_Group *&p) { p = (Fl_Group *)new DbgPeriphPanel(0,0,500,450,&g_mach); }
+
 static void cb_show_regs(Fl_Widget *, void *) {
-	if (!g_dbg_regs) g_dbg_regs = new DbgRegsWindow(&g_mach.cpu);
-	g_dbg_regs->show();
-	g_dbg_regs->refresh();
+	toggle_panel((Fl_Group *&)g_dbg_regs, g_win_regs, g_docked_regs,
+	             420, 560, 300, 280, "CPU Registers", "dbg_regs", create_regs);
 }
 
 static void cb_show_dis(Fl_Widget *, void *) {
-	if (!g_dbg_dis) g_dbg_dis = new DbgDisWindow(&g_mach.cpu);
-	g_dbg_dis->show();
-	g_dbg_dis->refresh();
+	toggle_panel((Fl_Group *&)g_dbg_dis, g_win_dis, g_docked_dis,
+	             500, 500, 300, 120, "Disassembly", "dbg_dis", create_dis);
 }
 
 static void cb_show_mem(Fl_Widget *, void *) {
-	if (!g_dbg_mem) g_dbg_mem = new DbgMemWindow(&g_mach.cpu);
-	g_dbg_mem->show();
-	g_dbg_mem->refresh();
+	toggle_panel((Fl_Group *&)g_dbg_mem, g_win_mem, g_docked_mem,
+	             620, 500, 300, 120, "Memory Editor", "dbg_mem", create_mem);
 }
 
 static void cb_show_periph(Fl_Widget *, void *) {
-	if (!g_dbg_periph) g_dbg_periph = new DbgPeriphWindow(&g_mach);
-	g_dbg_periph->refresh();
-	g_dbg_periph->show();
+	toggle_panel((Fl_Group *&)g_dbg_periph, g_win_periph, g_docked_periph,
+	             500, 450, 250, 120, "Peripheral Monitor", "dbg_periph", create_periph);
+}
+
+static void cb_dock_regs(Fl_Widget *, void *) {
+	g_docked_regs = !g_docked_regs;
+	if (!g_dbg_regs) return;
+	if (g_docked_regs)
+		dock_panel(g_dbg_regs, g_win_regs);
+	else
+		undock_panel(g_dbg_regs, g_win_regs, 420, 560, 300, 280,
+		             "CPU Registers", "dbg_regs");
+}
+
+static void cb_dock_dis(Fl_Widget *, void *) {
+	g_docked_dis = !g_docked_dis;
+	if (!g_dbg_dis) return;
+	if (g_docked_dis)
+		dock_panel(g_dbg_dis, g_win_dis);
+	else
+		undock_panel(g_dbg_dis, g_win_dis, 500, 500, 300, 120,
+		             "Disassembly", "dbg_dis");
+}
+
+static void cb_dock_mem(Fl_Widget *, void *) {
+	g_docked_mem = !g_docked_mem;
+	if (!g_dbg_mem) return;
+	if (g_docked_mem)
+		dock_panel(g_dbg_mem, g_win_mem);
+	else
+		undock_panel(g_dbg_mem, g_win_mem, 620, 500, 300, 120,
+		             "Memory Editor", "dbg_mem");
+}
+
+static void cb_dock_periph(Fl_Widget *, void *) {
+	g_docked_periph = !g_docked_periph;
+	if (!g_dbg_periph) return;
+	if (g_docked_periph)
+		dock_panel(g_dbg_periph, g_win_periph);
+	else
+		undock_panel(g_dbg_periph, g_win_periph, 500, 450, 250, 120,
+		             "Peripheral Monitor", "dbg_periph");
 }
 
 /* ---- main callbacks ---- */
 
-static Fl_Double_Window *g_main_win = nullptr;
-
 static void save_prefs() {
-	if (g_main_win)
+	if (g_main_win) {
+		int save_h = MENUBAR_H + g_lcd_h * SCALE;
 		prefs_save_window("main", g_main_win->x(), g_main_win->y(),
-		                  g_main_win->w(), g_main_win->h());
-	if (g_dbg_regs && g_dbg_regs->visible())
-		prefs_save_window("dbg_regs", g_dbg_regs->x(), g_dbg_regs->y(),
-		                  g_dbg_regs->w(), g_dbg_regs->h());
-	if (g_dbg_dis && g_dbg_dis->visible())
-		prefs_save_window("dbg_dis", g_dbg_dis->x(), g_dbg_dis->y(),
-		                  g_dbg_dis->w(), g_dbg_dis->h());
-	if (g_dbg_mem && g_dbg_mem->visible())
-		prefs_save_window("dbg_mem", g_dbg_mem->x(), g_dbg_mem->y(),
-		                  g_dbg_mem->w(), g_dbg_mem->h());
-	if (g_dbg_periph && g_dbg_periph->visible())
-		prefs_save_window("dbg_periph", g_dbg_periph->x(), g_dbg_periph->y(),
-		                  g_dbg_periph->w(), g_dbg_periph->h());
+		                  g_main_win->w(), save_h);
+	}
+	if (g_win_regs && g_win_regs->visible())
+		prefs_save_window("dbg_regs", g_win_regs->x(), g_win_regs->y(),
+		                  g_win_regs->w(), g_win_regs->h());
+	if (g_win_dis && g_win_dis->visible())
+		prefs_save_window("dbg_dis", g_win_dis->x(), g_win_dis->y(),
+		                  g_win_dis->w(), g_win_dis->h());
+	if (g_win_mem && g_win_mem->visible())
+		prefs_save_window("dbg_mem", g_win_mem->x(), g_win_mem->y(),
+		                  g_win_mem->w(), g_win_mem->h());
+	if (g_win_periph && g_win_periph->visible())
+		prefs_save_window("dbg_periph", g_win_periph->x(), g_win_periph->y(),
+		                  g_win_periph->w(), g_win_periph->h());
+	prefs_set_int("dock", "regs", g_docked_regs);
+	prefs_set_int("dock", "dis", g_docked_dis);
+	prefs_set_int("dock", "mem", g_docked_mem);
+	prefs_set_int("dock", "periph", g_docked_periph);
+	if (g_dock && g_dock->visible())
+		prefs_set_int("dock", "height", g_dock_h);
 }
 
 static void final_exit(int code) {
@@ -571,11 +803,17 @@ int main(int argc, char *argv[])
 
 	/* ---- FLTK window ---- */
 
-	int lcd_h = g_mach.lcd_height;
+	g_lcd_h = g_mach.lcd_height;
 	int win_w = LCD_WIDTH * SCALE;
-	int win_h = MENUBAR_H + lcd_h * SCALE;
+	int win_h = MENUBAR_H + g_lcd_h * SCALE;
 	char title[128];
 	snprintf(title, sizeof(title), "dreamulator - %s", g_model->description);
+
+	g_docked_regs = prefs_get_int("dock", "regs", 0);
+	g_docked_dis = prefs_get_int("dock", "dis", 0);
+	g_docked_mem = prefs_get_int("dock", "mem", 0);
+	g_docked_periph = prefs_get_int("dock", "periph", 0);
+	g_dock_h = prefs_get_int("dock", "height", 300);
 
 	Fl_Double_Window *win = new Fl_Double_Window(win_w, win_h, title);
 	g_main_win = win;
@@ -606,21 +844,39 @@ int main(int argc, char *argv[])
 	menu->add("&Serial/Connect Device...", 0, cb_serial_device);
 	menu->add("&Serial/Disconnect",        0, cb_serial_disconnect);
 
-	menu->add("&Debug/CPU Registers",  FL_CTRL+'r', cb_show_regs);
-	menu->add("&Debug/Disassembly",    FL_CTRL+'d', cb_show_dis);
-	menu->add("&Debug/Memory Editor",  FL_CTRL+'m', cb_show_mem);
-	menu->add("&Debug/Peripherals",   FL_CTRL+'p', cb_show_periph);
+	menu->add("&Debug/CPU Registers",      FL_F+1,              cb_show_regs);
+	menu->add("&Debug/Disassembly",        FL_F+2,              cb_show_dis);
+	menu->add("&Debug/Memory Editor",      FL_F+3,              cb_show_mem);
+	menu->add("&Debug/Peripherals",        FL_F+4,              cb_show_periph,
+	          0, FL_MENU_DIVIDER);
+	menu->add("&Debug/Dock Registers",     FL_SHIFT+(FL_F+1),   cb_dock_regs,
+	          0, FL_MENU_TOGGLE | (g_docked_regs ? FL_MENU_VALUE : 0));
+	menu->add("&Debug/Dock Disassembly",   FL_SHIFT+(FL_F+2),   cb_dock_dis,
+	          0, FL_MENU_TOGGLE | (g_docked_dis ? FL_MENU_VALUE : 0));
+	menu->add("&Debug/Dock Memory",        FL_SHIFT+(FL_F+3),   cb_dock_mem,
+	          0, FL_MENU_TOGGLE | (g_docked_mem ? FL_MENU_VALUE : 0));
+	menu->add("&Debug/Dock Peripherals",   FL_SHIFT+(FL_F+4),   cb_dock_periph,
+	          0, FL_MENU_TOGGLE | (g_docked_periph ? FL_MENU_VALUE : 0));
 
 	menu->add("S&peed/Normal (1x)",   0, cb_speed, (void *)1, FL_MENU_RADIO | FL_MENU_VALUE);
 	menu->add("S&peed/Double (2x)",   0, cb_speed, (void *)2, FL_MENU_RADIO);
 	menu->add("S&peed/Half (0.5x)",   0, cb_speed, (void *)0, FL_MENU_RADIO);
 	menu->add("S&peed/Unthrottled",   0, cb_speed, (void *)3, FL_MENU_RADIO);
 
-	LcdWidget *lcd = new LcdWidget(0, MENUBAR_H, win_w, lcd_h * SCALE);
+	g_lcd = new LcdWidget(0, MENUBAR_H, win_w, g_lcd_h * SCALE);
+
+	int dock_y = MENUBAR_H + g_lcd_h * SCALE;
+	g_dock = new Fl_Tile(0, dock_y, win_w, g_dock_h);
+	g_dock->box(FL_FLAT_BOX);
+	g_dock->end();
+	g_dock->hide();
+
+	win->resizable(nullptr);
+	win->size_range(LCD_WIDTH * SCALE, win_h, 0, 0);
 	win->end();
 	int fl_argc = 1;
 	win->show(fl_argc, argv);
-	lcd->take_focus();
+	g_lcd->take_focus();
 
 #ifdef HAS_PORTAUDIO
 	Pa_Initialize();
@@ -634,10 +890,29 @@ int main(int argc, char *argv[])
 
 	/* ---- run ---- */
 
+	Fl::add_handler([](int event) -> int {
+		if (event != FL_SHORTCUT && event != FL_KEYDOWN) return 0;
+		int key = Fl::event_key();
+		if (key < FL_F+1 || key > FL_F+4) return 0;
+		bool shift = Fl::event_state() & FL_SHIFT;
+		if (!shift) {
+			if (key == FL_F+1) { cb_show_regs(nullptr, nullptr); return 1; }
+			if (key == FL_F+2) { cb_show_dis(nullptr, nullptr); return 1; }
+			if (key == FL_F+3) { cb_show_mem(nullptr, nullptr); return 1; }
+			if (key == FL_F+4) { cb_show_periph(nullptr, nullptr); return 1; }
+		} else {
+			if (key == FL_F+1) { cb_dock_regs(nullptr, nullptr); return 1; }
+			if (key == FL_F+2) { cb_dock_dis(nullptr, nullptr); return 1; }
+			if (key == FL_F+3) { cb_dock_mem(nullptr, nullptr); return 1; }
+			if (key == FL_F+4) { cb_dock_periph(nullptr, nullptr); return 1; }
+		}
+		return 0;
+	});
+
 	if (g_remote_port > 0)
 		remote_init(&g_mach, g_remote_port);
 
-	Fl::add_timeout(1.0/60.0, emu_tick, lcd);
+	Fl::add_timeout(1.0/60.0, emu_tick, nullptr);
 	Fl::run();
 	final_exit(0);
 }

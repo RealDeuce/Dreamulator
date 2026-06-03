@@ -27,6 +27,9 @@ static const char *flag_names[] = {
 static const int flag_bits[] = {
 	V20_OF, V20_DF, V20_IF, V20_TF, V20_SF, V20_ZF, V20_AF, V20_PF, V20_CF
 };
+static const char *btn_labels[] = {
+	"Stop (F6)", "Step (F7)", "Over (F8)", "Run (F5)"
+};
 
 static uint16_t *reg_ptr(v20_t *c, int i)
 {
@@ -40,100 +43,118 @@ static uint16_t *reg_ptr(v20_t *c, int i)
 	return nullptr;
 }
 
-DbgRegsWindow::DbgRegsWindow(v20_t *cpu)
-	: Fl_Double_Window(420, 560, "CPU Registers"), m_cpu(cpu)
+DbgRegsPanel::DbgRegsPanel(int X, int Y, int W, int H, v20_t *cpu)
+	: Fl_Group(X, Y, W, H), m_cpu(cpu)
 {
-	int y = 10;
+	box(FL_FLAT_BOX);
 
-	/* registers: 2 columns */
 	for (int i = 0; i < 13; i++) {
-		int col = (i < 7) ? 0 : 1;
-		int row = (i < 7) ? i : i - 7;
-		int lx = 10 + col * 200;
-		int ly = y + row * 28;
-
-		new Fl_Box(lx, ly, 30, 24, reg_names[i]);
-		m_reg[i] = new Fl_Input(lx + 30, ly, 60, 24);
+		m_reg_label[i] = new Fl_Box(0, 0, 30, 24, reg_names[i]);
+		m_reg[i] = new Fl_Input(0, 0, 60, 24);
 		m_reg[i]->textfont(FL_COURIER);
 		m_reg[i]->textsize(12);
 		m_reg[i]->callback(cb_reg_changed, this);
 		m_reg[i]->when(FL_WHEN_ENTER_KEY);
 	}
-	y += 7 * 28 + 8;
 
-	/* flags */
 	for (int i = 0; i < 9; i++) {
-		m_flag[i] = new Fl_Check_Button(10 + i * 44, y, 40, 20, flag_names[i]);
+		m_flag[i] = new Fl_Check_Button(0, 0, 40, 20, flag_names[i]);
 		m_flag[i]->labelsize(11);
 	}
-	y += 28;
 
-	/* control buttons */
-	Fl_Button *bstop = new Fl_Button(10, y, 80, 28, "Stop (F6)");
-	bstop->callback(cb_stop, this);
-	bstop->shortcut(FL_F + 6);
+	Fl_Callback *btn_cbs[] = { cb_stop, cb_step, cb_step_over, cb_run };
+	int btn_keys[] = { FL_F+6, FL_F+7, FL_F+8, FL_F+5 };
+	for (int i = 0; i < 4; i++) {
+		m_btn[i] = new Fl_Button(0, 0, 80, 28, btn_labels[i]);
+		m_btn[i]->callback(btn_cbs[i], this);
+		m_btn[i]->shortcut(btn_keys[i]);
+	}
+	m_btn[2]->size(100, 28);
 
-	Fl_Button *bstep = new Fl_Button(100, y, 80, 28, "Step (F7)");
-	bstep->callback(cb_step, this);
-	bstep->shortcut(FL_F + 7);
-
-	Fl_Button *bover = new Fl_Button(190, y, 100, 28, "Over (F8)");
-	bover->callback(cb_step_over, this);
-	bover->shortcut(FL_F + 8);
-
-	Fl_Button *brun = new Fl_Button(300, y, 80, 28, "Run (F5)");
-	brun->callback(cb_run, this);
-	brun->shortcut(FL_F + 5);
-	y += 36;
-
-	/* breakpoints: 2 columns × 4 rows */
-	new Fl_Box(10, y, 100, 18, "Breakpoints (seg:off):");
-	y += 20;
-	for (int row = 0; row < 4; row++) {
-		int i = row, j = row + 4;
-		m_bp_en[i] = new Fl_Check_Button(10, y, 24, 22);
+	m_bp_label = new Fl_Box(0, 0, 150, 18, "Breakpoints (seg:off):");
+	for (int i = 0; i < 8; i++) {
+		m_bp_en[i] = new Fl_Check_Button(0, 0, 24, 22);
 		m_bp_en[i]->callback(cb_bp_changed, this);
-		m_bp_addr[i] = new Fl_Input(36, y, 90, 22);
-		m_bp_addr[i]->textfont(FL_COURIER); m_bp_addr[i]->textsize(12);
+		m_bp_addr[i] = new Fl_Input(0, 0, 90, 22);
+		m_bp_addr[i]->textfont(FL_COURIER);
+		m_bp_addr[i]->textsize(12);
 		m_bp_addr[i]->callback(cb_bp_changed, this);
 		m_bp_addr[i]->when(FL_WHEN_ENTER_KEY);
-
-		m_bp_en[j] = new Fl_Check_Button(210, y, 24, 22);
-		m_bp_en[j]->callback(cb_bp_changed, this);
-		m_bp_addr[j] = new Fl_Input(236, y, 90, 22);
-		m_bp_addr[j]->textfont(FL_COURIER); m_bp_addr[j]->textsize(12);
-		m_bp_addr[j]->callback(cb_bp_changed, this);
-		m_bp_addr[j]->when(FL_WHEN_ENTER_KEY);
-		y += 24;
 	}
-	y += 8;
 
-	/* trace display */
-	new Fl_Box(10, y, 100, 18, "Instruction Trace:");
-	y += 20;
+	m_trace_label = new Fl_Box(0, 0, 150, 18, "Instruction Trace:");
 	m_trace_buf = new Fl_Text_Buffer();
-	m_trace = new Fl_Text_Display(10, y, 400, 180);
+	m_trace = new Fl_Text_Display(0, 0, 100, 100);
 	m_trace->buffer(m_trace_buf);
 	m_trace->textfont(FL_COURIER);
 	m_trace->textsize(11);
 
 	end();
-
+	layout(X, Y, W, H);
 	load_breakpoints();
-
-	int wx = 100, wy = 100, ww = 420, wh = 560;
-	prefs_load_window("dbg_regs", wx, wy, ww, wh);
-	position(wx, wy);
 }
 
-void DbgRegsWindow::refresh()
+void DbgRegsPanel::layout(int X, int Y, int W, int H)
+{
+	int col_w = (W - 20) / 2;
+	int cy = Y + 10;
+
+	for (int i = 0; i < 13; i++) {
+		int col = (i < 7) ? 0 : 1;
+		int row = (i < 7) ? i : i - 7;
+		int lx = X + 10 + col * col_w;
+		int ly = cy + row * 28;
+		m_reg_label[i]->resize(lx, ly, 30, 24);
+		m_reg[i]->resize(lx + 30, ly, 60, 24);
+	}
+	cy += 7 * 28 + 8;
+
+	int fw = (W - 20) / 9;
+	if (fw < 30) fw = 30;
+	for (int i = 0; i < 9; i++)
+		m_flag[i]->resize(X + 10 + i * fw, cy, fw, 20);
+	cy += 28;
+
+	int bw = (W - 30) / 4;
+	if (bw < 60) bw = 60;
+	for (int i = 0; i < 4; i++)
+		m_btn[i]->resize(X + 10 + i * (bw + 4), cy, bw, 28);
+	cy += 36;
+
+	m_bp_label->resize(X + 10, cy, 150, 18);
+	cy += 20;
+	for (int row = 0; row < 4; row++) {
+		int i = row, j = row + 4;
+		m_bp_en[i]->resize(X + 10, cy, 24, 22);
+		m_bp_addr[i]->resize(X + 36, cy, 90, 22);
+		m_bp_en[j]->resize(X + 10 + col_w, cy, 24, 22);
+		m_bp_addr[j]->resize(X + 36 + col_w, cy, 90, 22);
+		cy += 24;
+	}
+	cy += 8;
+
+	m_trace_label->resize(X + 10, cy, 150, 18);
+	cy += 20;
+	int th = Y + H - cy - 5;
+	if (th < 0) th = 0;
+	m_trace->resize(X + 5, cy, W - 10, th);
+}
+
+void DbgRegsPanel::resize(int X, int Y, int W, int H)
+{
+	Fl_Widget::resize(X, Y, W, H);
+	layout(X, Y, W, H);
+	damage(FL_DAMAGE_ALL);
+}
+
+void DbgRegsPanel::refresh()
 {
 	update_regs();
 	update_flags();
 	update_trace();
 }
 
-void DbgRegsWindow::update_regs()
+void DbgRegsPanel::update_regs()
 {
 	char buf[16];
 	for (int i = 0; i < 13; i++) {
@@ -142,13 +163,13 @@ void DbgRegsWindow::update_regs()
 	}
 }
 
-void DbgRegsWindow::update_flags()
+void DbgRegsPanel::update_flags()
 {
 	for (int i = 0; i < 9; i++)
 		m_flag[i]->value(!!(m_cpu->flags & flag_bits[i]));
 }
 
-void DbgRegsWindow::update_trace()
+void DbgRegsPanel::update_trace()
 {
 	std::string text;
 	char line[256];
@@ -176,7 +197,7 @@ void DbgRegsWindow::update_trace()
 	m_trace_buf->text(text.c_str());
 }
 
-void DbgRegsWindow::write_regs()
+void DbgRegsPanel::write_regs()
 {
 	for (int i = 0; i < 13; i++) {
 		unsigned val;
@@ -185,7 +206,7 @@ void DbgRegsWindow::write_regs()
 	}
 }
 
-void DbgRegsWindow::write_flags()
+void DbgRegsPanel::write_flags()
 {
 	uint16_t f = 0x0002;
 	for (int i = 0; i < 9; i++)
@@ -193,7 +214,7 @@ void DbgRegsWindow::write_flags()
 	m_cpu->flags = f;
 }
 
-void DbgRegsWindow::write_breakpoints()
+void DbgRegsPanel::write_breakpoints()
 {
 	for (int i = 0; i < 8; i++) {
 		m_cpu->bp_enabled[i] = m_bp_en[i]->value();
@@ -205,7 +226,7 @@ void DbgRegsWindow::write_breakpoints()
 	save_breakpoints();
 }
 
-void DbgRegsWindow::load_breakpoints()
+void DbgRegsPanel::load_breakpoints()
 {
 	for (int i = 0; i < 8; i++) {
 		char key[16], buf[32];
@@ -218,7 +239,7 @@ void DbgRegsWindow::load_breakpoints()
 	write_breakpoints();
 }
 
-void DbgRegsWindow::save_breakpoints()
+void DbgRegsPanel::save_breakpoints()
 {
 	for (int i = 0; i < 8; i++) {
 		char key[16];
@@ -229,20 +250,20 @@ void DbgRegsWindow::save_breakpoints()
 	}
 }
 
-void DbgRegsWindow::cb_stop(Fl_Widget*, void *data) {
-	auto *w = (DbgRegsWindow *)data;
+void DbgRegsPanel::cb_stop(Fl_Widget*, void *data) {
+	auto *w = (DbgRegsPanel *)data;
 	w->m_cpu->debug_stop = true;
 	w->refresh();
 }
 
-void DbgRegsWindow::cb_step(Fl_Widget*, void *data) {
-	auto *w = (DbgRegsWindow *)data;
+void DbgRegsPanel::cb_step(Fl_Widget*, void *data) {
+	auto *w = (DbgRegsPanel *)data;
 	w->write_regs();
 	w->m_cpu->debug_step = true;
 }
 
-void DbgRegsWindow::cb_step_over(Fl_Widget*, void *data) {
-	auto *w = (DbgRegsWindow *)data;
+void DbgRegsPanel::cb_step_over(Fl_Widget*, void *data) {
+	auto *w = (DbgRegsPanel *)data;
 	w->write_regs();
 
 	uint8_t code[2];
@@ -263,16 +284,16 @@ void DbgRegsWindow::cb_step_over(Fl_Widget*, void *data) {
 	}
 }
 
-void DbgRegsWindow::cb_run(Fl_Widget*, void *data) {
-	auto *w = (DbgRegsWindow *)data;
+void DbgRegsPanel::cb_run(Fl_Widget*, void *data) {
+	auto *w = (DbgRegsPanel *)data;
 	w->write_regs();
 	w->m_cpu->debug_stop = false;
 }
 
-void DbgRegsWindow::cb_bp_changed(Fl_Widget*, void *data) {
-	((DbgRegsWindow *)data)->write_breakpoints();
+void DbgRegsPanel::cb_bp_changed(Fl_Widget*, void *data) {
+	((DbgRegsPanel *)data)->write_breakpoints();
 }
 
-void DbgRegsWindow::cb_reg_changed(Fl_Widget*, void *data) {
-	((DbgRegsWindow *)data)->write_regs();
+void DbgRegsPanel::cb_reg_changed(Fl_Widget*, void *data) {
+	((DbgRegsPanel *)data)->write_regs();
 }

@@ -136,76 +136,95 @@ static void format_io(Fl_Text_Buffer *buf, log_entry *ring, int head, int count)
 	buf->text(text.c_str());
 }
 
-/* ---- window ---- */
+/* ---- panel ---- */
 
-DbgPeriphWindow::DbgPeriphWindow(machine_t *mach)
-	: Fl_Double_Window(500, 450, "Peripheral Monitor"), m_mach(mach)
+DbgPeriphPanel::DbgPeriphPanel(int X, int Y, int W, int H, machine_t *)
+	: Fl_Group(X, Y, W, H)
 {
-	m_tabs = new Fl_Tabs(0, 0, 500, 420);
+	box(FL_FLAT_BOX);
 
-	{ Fl_Group *g = new Fl_Group(0, 25, 500, 395, "Serial");
-	  m_serial_buf = new Fl_Text_Buffer();
-	  m_serial_log = new Fl_Text_Display(5, 30, 490, 355);
-	  m_serial_log->buffer(m_serial_buf);
-	  m_serial_log->textfont(FL_COURIER);
-	  m_serial_log->textsize(11);
-	  Fl_Button *bc = new Fl_Button(5, 390, 80, 24, "Clear");
-	  bc->callback(cb_clear_serial, this);
-	  g->end();
-	}
+	m_tabs = new Fl_Tabs(0, 0, 10, 10);
 
-	{ Fl_Group *g = new Fl_Group(0, 25, 500, 395, "Parallel");
-	  m_parallel_buf = new Fl_Text_Buffer();
-	  m_parallel_log = new Fl_Text_Display(5, 30, 490, 355);
-	  m_parallel_log->buffer(m_parallel_buf);
-	  m_parallel_log->textfont(FL_COURIER);
-	  m_parallel_log->textsize(11);
-	  Fl_Button *bc = new Fl_Button(5, 390, 80, 24, "Clear");
-	  bc->callback(cb_clear_parallel, this);
-	  g->end();
-	}
+	m_tab_serial = new Fl_Group(0, 0, 10, 10, "Serial");
+	m_serial_buf = new Fl_Text_Buffer();
+	m_serial_log = new Fl_Text_Display(0, 0, 10, 10);
+	m_serial_log->buffer(m_serial_buf);
+	m_serial_log->textfont(FL_COURIER);
+	m_serial_log->textsize(11);
+	m_btn_clr_serial = new Fl_Button(0, 0, 80, 24, "Clear");
+	m_btn_clr_serial->callback(cb_clear_serial, this);
+	m_tab_serial->end();
 
-	{ Fl_Group *g = new Fl_Group(0, 25, 500, 395, "I/O Ports");
-	  m_io_buf = new Fl_Text_Buffer();
-	  m_io_log = new Fl_Text_Display(5, 30, 490, 355);
-	  m_io_log->buffer(m_io_buf);
-	  m_io_log->textfont(FL_COURIER);
-	  m_io_log->textsize(11);
-	  Fl_Button *bc = new Fl_Button(5, 390, 80, 24, "Clear");
-	  bc->callback(cb_clear_io, this);
-	  g->end();
-	}
+	m_tab_parallel = new Fl_Group(0, 0, 10, 10, "Parallel");
+	m_parallel_buf = new Fl_Text_Buffer();
+	m_parallel_log = new Fl_Text_Display(0, 0, 10, 10);
+	m_parallel_log->buffer(m_parallel_buf);
+	m_parallel_log->textfont(FL_COURIER);
+	m_parallel_log->textsize(11);
+	m_btn_clr_parallel = new Fl_Button(0, 0, 80, 24, "Clear");
+	m_btn_clr_parallel->callback(cb_clear_parallel, this);
+	m_tab_parallel->end();
+
+	m_tab_io = new Fl_Group(0, 0, 10, 10, "I/O Ports");
+	m_io_buf = new Fl_Text_Buffer();
+	m_io_log = new Fl_Text_Display(0, 0, 10, 10);
+	m_io_log->buffer(m_io_buf);
+	m_io_log->textfont(FL_COURIER);
+	m_io_log->textsize(11);
+	m_btn_clr_io = new Fl_Button(0, 0, 80, 24, "Clear");
+	m_btn_clr_io->callback(cb_clear_io, this);
+	m_tab_io->end();
 
 	m_tabs->end();
 	end();
-
-	int wx = 100, wy = 400, ww = 500, wh = 450;
-	prefs_load_window("dbg_periph", wx, wy, ww, wh);
-	position(wx, wy);
-	size(ww, wh);
+	resize(X, Y, W, H);
 }
 
-void DbgPeriphWindow::refresh()
+void DbgPeriphPanel::resize(int X, int Y, int W, int H)
+{
+	Fl_Widget::resize(X, Y, W, H);
+	int tab_h = H - 30;
+	int log_h = H - 90;
+	if (log_h < 10) log_h = 10;
+
+	m_tabs->resize(X, Y, W, tab_h);
+	m_tab_serial->resize(X, Y + 25, W, tab_h - 25);
+	m_tab_parallel->resize(X, Y + 25, W, tab_h - 25);
+	m_tab_io->resize(X, Y + 25, W, tab_h - 25);
+
+	m_serial_log->resize(X + 5, Y + 30, W - 10, log_h);
+	m_btn_clr_serial->resize(X + 5, Y + 35 + log_h, 80, 24);
+
+	m_parallel_log->resize(X + 5, Y + 30, W - 10, log_h);
+	m_btn_clr_parallel->resize(X + 5, Y + 35 + log_h, 80, 24);
+
+	m_io_log->resize(X + 5, Y + 30, W - 10, log_h);
+	m_btn_clr_io->resize(X + 5, Y + 35 + log_h, 80, 24);
+
+	damage(FL_DAMAGE_ALL);
+}
+
+void DbgPeriphPanel::refresh()
 {
 	format_serial(m_serial_buf, g_serial_log, g_serial_head, g_serial_count);
 	format_parallel(m_parallel_buf, g_parallel_log, g_parallel_head, g_parallel_count);
 	format_io(m_io_buf, g_io_log, g_io_head, g_io_count);
 }
 
-void DbgPeriphWindow::cb_clear_serial(Fl_Widget*, void *data)
+void DbgPeriphPanel::cb_clear_serial(Fl_Widget*, void *data)
 {
 	g_serial_head = g_serial_count = 0;
-	((DbgPeriphWindow *)data)->m_serial_buf->text("");
+	((DbgPeriphPanel *)data)->m_serial_buf->text("");
 }
 
-void DbgPeriphWindow::cb_clear_parallel(Fl_Widget*, void *data)
+void DbgPeriphPanel::cb_clear_parallel(Fl_Widget*, void *data)
 {
 	g_parallel_head = g_parallel_count = 0;
-	((DbgPeriphWindow *)data)->m_parallel_buf->text("");
+	((DbgPeriphPanel *)data)->m_parallel_buf->text("");
 }
 
-void DbgPeriphWindow::cb_clear_io(Fl_Widget*, void *data)
+void DbgPeriphPanel::cb_clear_io(Fl_Widget*, void *data)
 {
 	g_io_head = g_io_count = 0;
-	((DbgPeriphWindow *)data)->m_io_buf->text("");
+	((DbgPeriphPanel *)data)->m_io_buf->text("");
 }

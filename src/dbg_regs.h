@@ -4,25 +4,31 @@
 #ifndef DBG_REGS_H
 #define DBG_REGS_H
 
-#include <FL/Fl_Double_Window.H>
+#include <FL/Fl_Group.H>
 
 struct v20_t;
 
-class DbgRegsWindow : public Fl_Double_Window {
+class DbgRegsPanel : public Fl_Group {
 public:
-	DbgRegsWindow(v20_t *cpu);
+	DbgRegsPanel(int x, int y, int w, int h, v20_t *cpu);
 	void refresh();
+	void resize(int X, int Y, int W, int H) override;
 
 private:
 	v20_t *m_cpu;
 
+	class Fl_Box *m_reg_label[13];
 	class Fl_Input *m_reg[13];
 	class Fl_Check_Button *m_flag[9];
+	class Fl_Button *m_btn[4];
+	class Fl_Box *m_bp_label;
 	class Fl_Input *m_bp_addr[8];
 	class Fl_Check_Button *m_bp_en[8];
+	class Fl_Box *m_trace_label;
 	class Fl_Text_Display *m_trace;
 	class Fl_Text_Buffer *m_trace_buf;
 
+	void layout(int X, int Y, int W, int H);
 	void update_regs();
 	void update_flags();
 	void update_trace();
