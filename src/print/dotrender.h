@@ -58,5 +58,7 @@ const uint8_t *get_24pin_glyph(uint8_t ch);
 const uint16_t *get_fx80_roman_glyph(uint8_t ch);
 const uint16_t *get_fx80_italic_glyph(uint8_t ch);
 const uint16_t *get_iw2_draft_glyph(uint8_t ch);
+const uint16_t *get_iw2_nlq_glyph(uint8_t ch);
+uint8_t get_iw2_nlq_width(uint8_t ch);
 
 #endif
