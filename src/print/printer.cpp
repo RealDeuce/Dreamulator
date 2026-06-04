@@ -58,6 +58,33 @@ void PrinterSim::new_page_if_needed()
 	}
 }
 
+static uint8_t intl_substitute(uint8_t ch, int charset)
+{
+	static constexpr int8_t tbl[8][12] = {
+	//  #35  $36  @64  [91  \92  ]93  ^94  `96 {123 |124 }125 ~126
+	{   -1,  -1,0x00,0x05,0x0F,0x10,  -1,  -1,0x1E,0x02,0x01,0x16}, // 1 France
+	{   -1,  -1,0x10,0x17,0x18,0x19,  -1,  -1,0x1A,0x1B,0x1C,0x11}, // 2 Germany
+	{ 0x06,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}, // 3 UK
+	{   -1,  -1,  -1,0x12,0x14,0x0D,  -1,  -1,0x13,0x15,0x0E,  -1}, // 4 Denmark
+	{   -1,0x0B,0x1D,0x17,0x18,0x0D,0x19,0x1E,0x1A,0x1B,0x0E,0x1C}, // 5 Sweden
+	{   -1,  -1,  -1,0x05,  -1,0x1E,  -1,0x02,0x00,0x03,0x01,0x04}, // 6 Italy
+	{ 0x0C,  -1,  -1,0x07,0x09,0x08,  -1,  -1,0x16,0x0A,  -1,  -1}, // 7 Spain
+	{   -1,  -1,  -1,  -1,0x1F,  -1,  -1,  -1,  -1,  -1,  -1,  -1}, // 8 Japan
+	};
+	static constexpr uint8_t positions[12] = {
+		35, 36, 64, 91, 92, 93, 94, 96, 123, 124, 125, 126
+	};
+
+	for (int i = 0; i < 12; i++) {
+		if (ch == positions[i]) {
+			int8_t sub = tbl[charset - 1][i];
+			if (sub >= 0) return (uint8_t)sub;
+			break;
+		}
+	}
+	return ch;
+}
+
 void PrinterSim::emit_char(uint8_t ch)
 {
 	new_page_if_needed();
@@ -69,6 +96,12 @@ void PrinterSim::emit_char(uint8_t ch)
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
 
+	if (st_.slashed_zero) {
+		if (ch == 0x30) ch = 0x7F;
+		else if (ch == 0xB0) ch = 0xFF;
+	}
+	if (st_.charset > 0 && st_.charset <= 8)
+		ch = intl_substitute(ch, st_.charset);
 	dots_->render_char(*page_, st_, prof_, ch);
 
 	st_.x_pos += char_w_in;
@@ -82,7 +115,12 @@ void PrinterSim::emit_char(uint8_t ch)
 void PrinterSim::apply_config(const PrinterConfig &cfg)
 {
 	cfg_ = cfg;
-	st_.pitch_cpi = cfg.pitch_cpi;
+	if (cfg.pitch_cpi == 17) {
+		st_.pitch_cpi = 10;
+		st_.condensed = true;
+	} else {
+		st_.pitch_cpi = cfg.pitch_cpi;
+	}
 	st_.bold = cfg.emphasized;
 	st_.auto_lf = cfg.auto_lf;
 	st_.perf_skip_lines = cfg.perf_skip;
