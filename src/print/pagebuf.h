@@ -1,0 +1,35 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd
+#ifndef PAGEBUF_H
+#define PAGEBUF_H
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+
+class PageBitmap {
+public:
+	PageBitmap(int width_px, int height_px);
+
+	int width() const { return w_; }
+	int height() const { return h_; }
+	int stride() const { return w_; }
+	const uint8_t *data() const { return buf_.get(); }
+	uint8_t *data() { return buf_.get(); }
+
+	void clear(uint8_t val = 255);
+
+	uint8_t pixel(int x, int y) const;
+	void set_pixel(int x, int y, uint8_t val);
+
+	void stamp_dot(float cx, float cy, float radius, float intensity,
+	               float sharpness = 2.0f);
+
+	static PageBitmap letter_at_dpi(int dpi);
+
+private:
+	int w_, h_;
+	std::unique_ptr<uint8_t[]> buf_;
+};
+
+#endif

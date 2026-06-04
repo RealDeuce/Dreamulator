@@ -27,6 +27,19 @@ find_package(FLTK REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PORTAUDIO portaudio-2.0)
 
+set(PRINT_SOURCES
+    src/print/printer.cpp
+    src/print/escp.cpp
+    src/print/pcl.cpp
+    src/print/imagewriter.cpp
+    src/print/dotrender.cpp
+    src/print/font9pin.cpp
+    src/print/fontfx80.cpp
+    src/print/font24pin.cpp
+    src/print/pagebuf.cpp
+    src/print/pdfwriter.cpp
+)
+
 add_executable(dreamulator
     src/main.cpp
     src/v20.cpp
@@ -40,6 +53,7 @@ add_executable(dreamulator
     src/dbg_mem.cpp
     src/dbg_periph.cpp
     src/remote.cpp
+    ${PRINT_SOURCES}
 )
 
 target_include_directories(dreamulator SYSTEM PRIVATE
@@ -48,6 +62,7 @@ target_include_directories(dreamulator SYSTEM PRIVATE
 
 target_link_libraries(dreamulator PRIVATE
     ${FLTK_LIBRARIES}
+    ZLIB::ZLIB
 )
 
 if(PORTAUDIO_FOUND)
@@ -110,6 +125,26 @@ try_add_link_option(dreamulator "-Wl,-z,now")
 try_add_link_option(dreamulator "-Wl,--as-needed")
 try_add_link_option(dreamulator "-Wl,--no-copy-dt-needed-entries")
 
-install(TARGETS dreamulator RUNTIME DESTINATION bin)
+# --- dreamprint: printer simulator tool ---
+
+find_package(ZLIB REQUIRED)
+
+add_executable(dreamprint
+    src/print/dreamprint.cpp
+    ${PRINT_SOURCES}
+)
+
+target_link_libraries(dreamprint PRIVATE ZLIB::ZLIB)
+
+# Apply same hardening flags to dreamprint
+target_compile_options(dreamprint PRIVATE -Wall -Wextra)
+try_add_compile_option(dreamprint -Wformat=2)
+try_add_compile_option(dreamprint -Wconversion)
+try_add_compile_option(dreamprint -Wsign-conversion)
+try_add_compile_option(dreamprint -Wimplicit-fallthrough)
+try_add_compile_option(dreamprint -Werror=format-security)
+target_compile_options(dreamprint PRIVATE $<$<CONFIG:Debug>:-Werror>)
+
+install(TARGETS dreamulator dreamprint RUNTIME DESTINATION bin)
 install(DIRECTORY roms/ DESTINATION share/dreamulator/roms
         FILES_MATCHING PATTERN "*.ic303" PATTERN "*.bin")

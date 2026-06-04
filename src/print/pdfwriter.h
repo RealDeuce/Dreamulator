@@ -1,0 +1,42 @@
+// license:BSD-3-Clause
+// copyright-holders:Stephen Hurd
+#ifndef PDFWRITER_H
+#define PDFWRITER_H
+
+#include "pagebuf.h"
+#include <cstdio>
+#include <string>
+#include <vector>
+
+class PdfWriter {
+public:
+	explicit PdfWriter(const std::string &path);
+	~PdfWriter();
+
+	PdfWriter(const PdfWriter &) = delete;
+	PdfWriter &operator=(const PdfWriter &) = delete;
+
+	void add_page(const PageBitmap &bmp, int dpi);
+	void finish();
+
+private:
+	struct ObjPos { int id; long offset; };
+
+	int alloc_obj();
+	void begin_obj(int id);
+	void end_obj();
+	long write_image_stream(const PageBitmap &bmp);
+
+	FILE *fp_ = nullptr;
+	int next_id_ = 1;
+	std::vector<ObjPos> xref_;
+
+	int catalog_id_ = 0;
+	int pages_id_ = 0;
+	std::vector<int> page_ids_;
+
+	float page_w_pt_ = 612.0f;
+	float page_h_pt_ = 792.0f;
+};
+
+#endif

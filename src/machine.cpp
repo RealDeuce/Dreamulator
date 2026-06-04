@@ -2,7 +2,13 @@
 // copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
 #include "dbg_periph.h"
+#include "print/printer.h"
 #include <algorithm>
+
+machine_t::machine_t() = default;
+machine_t::~machine_t() = default;
+machine_t::machine_t(machine_t &&) noexcept = default;
+machine_t &machine_t::operator=(machine_t &&) noexcept = default;
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -545,6 +551,12 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 				if (m->cent_fd >= 0)
 					(void)write(m->cent_fd, &m->cent_data, 1);
 				break;
+			case CentBackend::Pdf:
+				if (m->pdf_printer) {
+					uint8_t b = m->cent_data;
+					m->pdf_printer->feed(&b, 1);
+				}
+				break;
 			default:
 				if (!m->printer)
 					m->printer.reset(fopen("printer.out", "ab"));
@@ -877,4 +889,33 @@ void machine_close_pccard(machine_t *m)
 
 	for (int i = 0; i < NUM_BANKS; i++)
 		update_bank(m, i);
+}
+
+/* ---- PDF printer ---- */
+
+void machine_pdf_start(machine_t *m, const char *path, int model)
+{
+	machine_pdf_finish(m);
+
+	auto pm = static_cast<PrinterModel>(model);
+	const auto &prof = profile_for(pm);
+
+	m->pdf_writer = std::make_unique<PdfWriter>(path);
+	m->pdf_printer = create_printer(pm, *m->pdf_writer);
+	m->pdf_model = model;
+	m->cent_backend = CentBackend::Pdf;
+
+	fprintf(stderr, "PDF printer: %s -> %s\n", prof.name, path);
+}
+
+void machine_pdf_finish(machine_t *m)
+{
+	if (m->pdf_printer) {
+		m->pdf_printer->flush();
+		m->pdf_printer.reset();
+	}
+	if (m->pdf_writer) {
+		m->pdf_writer->finish();
+		m->pdf_writer.reset();
+	}
 }

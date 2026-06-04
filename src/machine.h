@@ -6,9 +6,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <memory>
 #include "v20.h"
 #include "uart.h"
 #include "fdc.h"
+
+class PrinterSim;
+class PdfWriter;
 
 constexpr int XTAL      = 19660000;
 constexpr int CPU_CLOCK = XTAL / 2;
@@ -58,9 +62,16 @@ struct rtc_t {
 	uint8_t  reset = 0;
 };
 
-enum class CentBackend { File, Lpt, Ppi };
+enum class CentBackend { File, Lpt, Ppi, Pdf };
 
 struct machine_t {
+	machine_t();
+	~machine_t();
+	machine_t(machine_t &&) noexcept;
+	machine_t &operator=(machine_t &&) noexcept;
+	machine_t(const machine_t &) = delete;
+	machine_t &operator=(const machine_t &) = delete;
+
 	const model_t *model = nullptr;
 	v20_t    cpu;
 
@@ -95,6 +106,10 @@ struct machine_t {
 	CentBackend cent_backend = CentBackend::File;
 	int      cent_fd = -1;
 	FilePtr  printer;
+
+	std::unique_ptr<PdfWriter>   pdf_writer;
+	std::unique_ptr<PrinterSim>  pdf_printer;
+	int      pdf_model = 3;
 
 	uint8_t  *pccard = nullptr;
 	uint32_t pccard_size = 0;
@@ -132,5 +147,8 @@ void machine_close_rom(machine_t *m);
 void machine_close_nvram(machine_t *m);
 [[nodiscard]] int  machine_open_pccard(machine_t *m, const char *path);
 void machine_close_pccard(machine_t *m);
+
+void machine_pdf_start(machine_t *m, const char *path, int model);
+void machine_pdf_finish(machine_t *m);
 
 #endif
