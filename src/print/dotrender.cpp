@@ -13,9 +13,10 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
 
 	float px = (x_in + jx / 25.4f) * (float)dpi;
 	float py = (y_in + jy / 25.4f) * (float)dpi;
-	float r_px = radius_mm / 25.4f * (float)dpi;
+	std::normal_distribution<float> rdist(radius_mm, radius_mm * 0.075f);
+	float r_px = std::max(radius_mm * 0.7f, rdist(rng_)) / 25.4f * (float)dpi;
 
-	std::normal_distribution<float> idist(intensity, intensity * 0.05f);
+	std::normal_distribution<float> idist(intensity, intensity * 0.075f);
 	float ink = std::max(0.3f, std::min(1.0f, idist(rng_)));
 
 	page.stamp_dot(px, py, r_px, ink, sharpness);
