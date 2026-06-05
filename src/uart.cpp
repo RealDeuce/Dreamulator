@@ -235,7 +235,7 @@ void uart_data_write(uart_t *u, uint8_t data)
 uint8_t uart_status_read(uart_t *u)
 {
 	uint8_t s = u->status;
-	if (!u->dsr) s |= ST_DSR;
+	if (u->dsr) s |= ST_DSR;
 	u->status &= ~ST_SYNDET;
 	return s;
 }
