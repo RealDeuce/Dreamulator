@@ -112,6 +112,7 @@ struct machine_t {
 	int      pdf_model = 3;
 	int      pdf_idle_cycles = 0;
 	bool     pdf_active = false;
+	bool     pdf_via_serial = false;
 
 	uint8_t  *pccard = nullptr;
 	uint32_t pccard_size = 0;
@@ -152,6 +153,7 @@ void machine_close_pccard(machine_t *m);
 
 void machine_pdf_start(machine_t *m, const char *path, int model);
 void machine_pdf_finish(machine_t *m);
+void machine_pdf_start_serial(machine_t *m, const char *path, int model);
 bool machine_pdf_check_idle(machine_t *m, int timeout_seconds = 5);
 
 #endif

@@ -898,6 +898,16 @@ void machine_close_pccard(machine_t *m)
 
 /* ---- PDF printer ---- */
 
+static void uart_pdf_tx(void *ctx, uint8_t byte)
+{
+	auto *m = static_cast<machine_t *>(ctx);
+	if (m->pdf_printer) {
+		m->pdf_printer->feed(&byte, 1);
+		m->pdf_idle_cycles = 0;
+		m->pdf_active = true;
+	}
+}
+
 void machine_pdf_start(machine_t *m, const char *path, int model)
 {
 	machine_pdf_finish(m);
@@ -912,9 +922,31 @@ void machine_pdf_start(machine_t *m, const char *path, int model)
 	m->pdf_model = model;
 	m->pdf_active = false;
 	m->pdf_idle_cycles = 0;
+	m->pdf_via_serial = false;
 	m->cent_backend = CentBackend::Pdf;
 
-	fprintf(stderr, "PDF printer: %s -> %s\n", prof.name, path);
+	fprintf(stderr, "PDF printer (parallel): %s -> %s\n", prof.name, path);
+}
+
+void machine_pdf_start_serial(machine_t *m, const char *path, int model)
+{
+	machine_pdf_finish(m);
+
+	auto pm = static_cast<PrinterModel>(model);
+	const auto &prof = profile_for(pm);
+
+	m->pdf_writer = std::make_unique<PdfWriter>(path);
+	m->pdf_printer = create_printer(pm, *m->pdf_writer);
+	PrinterConfig cfg = default_config_for(pm);
+	m->pdf_printer->apply_config(cfg);
+	m->pdf_model = model;
+	m->pdf_active = false;
+	m->pdf_idle_cycles = 0;
+	m->pdf_via_serial = true;
+	m->uart.tx_byte_cb = uart_pdf_tx;
+	m->uart.tx_byte_ctx = m;
+
+	fprintf(stderr, "PDF printer (serial): %s -> %s\n", prof.name, path);
 }
 
 void machine_pdf_finish(machine_t *m)
@@ -927,8 +959,13 @@ void machine_pdf_finish(machine_t *m)
 		m->pdf_writer->finish();
 		m->pdf_writer.reset();
 	}
+	if (m->pdf_via_serial) {
+		m->uart.tx_byte_cb = nullptr;
+		m->uart.tx_byte_ctx = nullptr;
+	}
 	m->pdf_active = false;
 	m->pdf_idle_cycles = 0;
+	m->pdf_via_serial = false;
 }
 
 bool machine_pdf_check_idle(machine_t *m, int timeout_seconds)

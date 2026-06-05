@@ -874,6 +874,17 @@ static void cb_printer_pdf(Fl_Widget *, void *v) {
 		g_mach.pdf_printer->apply_config(config_for_model(pm));
 }
 
+static void cb_printer_pdf_serial(Fl_Widget *, void *v) {
+	int model = (int)(intptr_t)v;
+	const char *path = fl_file_chooser("PDF Output", "*.pdf", "printer.pdf");
+	if (!path) return;
+
+	auto pm = static_cast<PrinterModel>(model);
+	machine_pdf_start_serial(&g_mach, path, model);
+	if (g_mach.pdf_printer)
+		g_mach.pdf_printer->apply_config(config_for_model(pm));
+}
+
 static void cb_printer_pdf_finish(Fl_Widget *, void *) {
 	machine_pdf_finish(&g_mach);
 	if (g_mach.cent_backend == CentBackend::Pdf)
@@ -1129,6 +1140,8 @@ int main(int argc, char *argv[])
 	menu->add("M&edia/PDF Printer/HP JET...",       0, cb_printer_pdf, (void *)5);
 	menu->add("M&edia/PDF Printer/ImageWriter...",  0, cb_printer_pdf, (void *)6);
 	menu->add("M&edia/PDF Printer/Finish PDF",      0, cb_printer_pdf_finish);
+	menu->add("M&edia/Serial Printer/ImageWriter (serial)...", 0, cb_printer_pdf_serial, (void *)6);
+	menu->add("M&edia/Serial Printer/Finish PDF",              0, cb_printer_pdf_finish);
 	menu->add("M&edia/Printer Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
 	menu->add("M&edia/Printer Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
 

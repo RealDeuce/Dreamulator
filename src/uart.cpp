@@ -313,6 +313,8 @@ void uart_tick(uart_t *u, int cycles)
 		if (u->tx_timer <= 0) {
 			u->tx_pending = false;
 			periph_log_serial_tx(u->tx_data);
+			if (u->tx_byte_cb)
+				u->tx_byte_cb(u->tx_byte_ctx, u->tx_data);
 			if (u->fd >= 0) {
 				uint8_t b = u->tx_data;
 				[[maybe_unused]] ssize_t n = write(u->fd, &b, 1);

@@ -40,6 +40,10 @@ struct uart_t {
 	uart_signal_fn txrdy_cb = nullptr;
 	uart_signal_fn rxrdy_cb = nullptr;
 	void    *cb_ctx = nullptr;
+
+	using tx_byte_fn = void (*)(void *ctx, uint8_t byte);
+	tx_byte_fn tx_byte_cb = nullptr;
+	void      *tx_byte_ctx = nullptr;
 };
 
 [[nodiscard]] int     uart_init(uart_t *u, UartBackend backend, int tcp_port, const char *serial_path);
