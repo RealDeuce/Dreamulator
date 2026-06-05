@@ -32,10 +32,7 @@ PdfWriter::PdfWriter(const std::string &path)
 
 PdfWriter::~PdfWriter()
 {
-	if (fp_) {
-		finish();
-		fclose(fp_);
-	}
+	finish();
 }
 
 int PdfWriter::alloc_obj()
