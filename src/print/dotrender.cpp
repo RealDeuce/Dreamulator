@@ -229,19 +229,57 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 		if (!glyph) return;
 		render_glyph_9pin(*this, page, st, prof, glyph, 12, pin_vib_);
 	} else if (prof.model == PrinterModel::ImageWriter) {
+		// IW II font switching rules per Technical Reference Manual Ch.4:
+		// Draft (font_mode=1) does NOT support bold, expanded, half-height,
+		// super/subscript, or proportional — these force correspondence.
+		// NLQ (font_mode=2) does NOT support half-height or super/subscript
+		// — these force correspondence.
+		int eff_mode = st.font_mode;
+		bool expanded = st.expanded || st.expanded_line;
+		bool script = st.superscript || st.subscript;
+		if (eff_mode == 1) {
+			if (st.bold || expanded || st.half_height || script || st.proportional)
+				eff_mode = 0;
+		} else if (eff_mode == 2) {
+			if (st.half_height || script)
+				eff_mode = 0;
+		}
+
 		const uint16_t *glyph = nullptr;
+		const uint16_t *glyph_p2 = nullptr;
 		int w = 8;
-		if (st.proportional) {
-			glyph = get_iw2_nlq_glyph(ch);
-			if (glyph)
-				w = get_iw2_nlq_width(ch);
+		if (eff_mode == 2) {
+			if (st.proportional) {
+				glyph = get_iw2_nlq_prop_p1_glyph(ch);
+				glyph_p2 = get_iw2_nlq_prop_p2_glyph(ch);
+				if (glyph)
+					w = get_iw2_corr_prop_width(ch);
+			} else {
+				glyph = get_iw2_nlq_fw_p1_glyph(ch);
+				glyph_p2 = get_iw2_nlq_fw_p2_glyph(ch);
+				if (glyph) w = 16;
+			}
+		} else if (eff_mode == 0) {
+			if (st.proportional) {
+				glyph = get_iw2_corr_prop_glyph(ch);
+				if (glyph)
+					w = get_iw2_corr_prop_width(ch);
+			} else {
+				glyph = get_iw2_corr_fw_glyph(ch);
+				w = 8;
+			}
 		}
 		if (!glyph) {
-			glyph = get_iw2_draft_glyph(ch);
+			glyph = get_iw2_corr_fw_glyph(ch);
 			w = 8;
 		}
 		if (!glyph) return;
 		render_glyph_9pin(*this, page, st, prof, glyph, w, pin_vib_);
+		if (glyph_p2) {
+			PrinterState st2 = st;
+			st2.y_pos += 1.0f / 144.0f;
+			render_glyph_9pin(*this, page, st2, prof, glyph_p2, w, pin_vib_);
+		}
 	} else {
 		const uint16_t *glyph = get_9pin_glyph(ch);
 		if (!glyph) return;

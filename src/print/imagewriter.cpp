@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd
-// Apple ImageWriter II command parser per Technical Reference Manual (1986)
+// Apple ImageWriter II emulation per Technical Reference Manual (1986)
+// Appendix A command summary, pages 141-146.
 #include "printer.h"
 #include <cstdio>
 #include <cstring>
@@ -59,24 +60,34 @@ int ImageWriterPrinter::parse_digit_val() const
 void ImageWriterPrinter::dispatch_digits(int val)
 {
 	switch (esc_cmd_) {
-	case 'T':
+	case 'T':  // Table A-15: line spacing nn/144 inch (nn = 01..99)
 		if (val >= 1 && val <= 99)
 			st_.line_spacing_in = static_cast<float>(val) / 144.0f;
 		break;
-	case 'L':
+	case 'L':  // Table A-13: left margin at column nnn
 		st_.left_margin_in = static_cast<float>(val) /
 		                     static_cast<float>(st_.pitch_cpi);
 		break;
-	case 'H':
+	case 'H':  // Table A-13: page length nnnn/144 inch
 		if (val >= 1 && val <= 9999)
 			st_.page_height_in = static_cast<float>(val) / 144.0f;
 		break;
-	case 'u': {
+	case 'F': { // Table A-14/A-17: place head nnnn dot columns from left margin
+		float dpi = st_.proportional
+		    ? static_cast<float>(st_.prop_dpi)
+		    : st_.pitch_cpi * 8.0f;
+		st_.x_pos = st_.left_margin_in + static_cast<float>(val) / dpi;
+		break;
+	}
+	case 's':  // Table A-11: set proportional dot spacing (0-9)
+		st_.prop_spacing = val;
+		break;
+	case 'u': { // Table A-14: add one tab stop at column nnn
 		if (st_.tab_count < 32 && val >= 1)
 			st_.tab_stops[st_.tab_count++] = val;
 		break;
 	}
-	case 'R':
+	case 'R':  // Table A-19: repeat char — switch to collect the char byte
 		esc_cmd_ = 'R';
 		digit_buf_[0] = static_cast<char>(val & 0xFF);
 		digit_buf_[1] = static_cast<char>((val >> 8) & 0xFF);
@@ -90,18 +101,39 @@ void ImageWriterPrinter::dispatch_digits(int val)
 
 void ImageWriterPrinter::dispatch_sw(uint8_t p1, uint8_t p2)
 {
-	if (p1 == 0x00 && p2 == 0x20) {
-		st_.include_8th_bit = sw_is_z_;
-	} else if (p1 == 0x00 && p2 == 0x01) {
+	// Table A-12: slashed zeros
+	if (p1 == 0x00 && p2 == 0x01) {
 		st_.slashed_zero = !sw_is_z_;
-	} else if (p1 == 0x00 && p2 == 0x04) {
+	}
+	// Table A-15: perforation skip
+	else if (p1 == 0x00 && p2 == 0x04) {
 		st_.perf_skip_lines = sw_is_z_ ? 3 : 0;
-	} else if (p1 == 0x40 && p2 == 0x00) {
-		// CR-only printing vs CR+LF+FF printing (stored as flag)
-	} else if (p1 == 0x80 && p2 == 0x00) {
-		st_.auto_lf = sw_is_z_;
-	} else if (p1 == 0x20 && p2 == 0x00) {
-		st_.lf_when_full = sw_is_z_;
+	}
+	// Table A-19: 8th data bit
+	else if (p1 == 0x00 && p2 == 0x20) {
+		st_.include_8th_bit = sw_is_z_;
+	}
+	// Table A-16: CR-only vs CR+LF+FF
+	else if (p1 == 0x40 && p2 == 0x00) {
+		// stored as flag if needed
+	}
+	// Table A-16: auto LF after CR
+	// ESC D = adds auto LF, ESC Z = no auto LF
+	else if (p1 == 0x80 && p2 == 0x00) {
+		st_.auto_lf = !sw_is_z_;
+	}
+	// Table A-16: LF when line is full
+	// ESC D = adds LF, ESC Z = no LF
+	else if (p1 == 0x20 && p2 == 0x00) {
+		st_.lf_when_full = !sw_is_z_;
+	}
+	// International charset bits (p1 = bitmask 0x01..0x07, p2 = 0x00)
+	// Table A-5: ESC Z = open (clear bits), ESC D = closed (set bits)
+	else if (p2 == 0x00 && p1 >= 0x01 && p1 <= 0x07) {
+		if (sw_is_z_)
+			st_.charset &= ~p1;
+		else
+			st_.charset |= p1;
 	}
 }
 
@@ -115,9 +147,10 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 				int val = parse_digit_val();
 				dispatch_digits(val);
 			}
-		} else {
-			state_ = State::Normal;
+			return;
 		}
+		state_ = State::Normal;
+		parse_byte(b);
 		return;
 
 	case State::CollectRepChar:
@@ -148,12 +181,12 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		else if (b == '2') st_.font_mode = 2;
 		return;
 
-	case State::EscCrIns:
+	case State::EscCrIns:  // Table A-16: ESC l 0/1
 		state_ = State::Normal;
 		st_.cr_insertion = (b == '0');
 		return;
 
-	case State::MultiLF: {
+	case State::MultiLF: { // CTRL-_ n: feed 1-15 lines
 		state_ = State::Normal;
 		int n = 0;
 		if (b >= '1' && b <= '9')
@@ -170,27 +203,27 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 	case State::Esc:
 		state_ = State::Normal;
 		switch (b) {
-		// Software reset
+		// Table A-19: reset defaults
 		case 'c': st_ = PrinterState{}; apply_config(cfg_); break;
 
-		// Bold
+		// Table A-12: boldface
 		case '!': st_.bold = true; break;
 		case '"': st_.bold = false; break;
 
-		// Underline
+		// Table A-12: underline
 		case 'X': st_.underline = true; break;
 		case 'Y': st_.underline = false; break;
 
-		// Superscript / subscript
+		// Table A-12: superscript / subscript
 		case 'x': st_.superscript = true; st_.subscript = false; break;
 		case 'y': st_.superscript = false; st_.subscript = true; break;
 		case 'z': st_.superscript = false; st_.subscript = false; break;
 
-		// Half-height
+		// Table A-12: half-height
 		case 'w': st_.half_height = true; break;
 		case 'W': st_.half_height = false; break;
 
-		// Character pitch (Table 4-5)
+		// Table A-10: character pitch
 		case 'n': st_.pitch_cpi = 9; st_.proportional = false; break;
 		case 'N': st_.pitch_cpi = 10; st_.proportional = false; break;
 		case 'E': st_.pitch_cpi = 12; st_.proportional = false; break;
@@ -200,51 +233,75 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		case 'p': st_.proportional = true; st_.prop_dpi = 144; break;
 		case 'P': st_.proportional = true; st_.prop_dpi = 160; break;
 
-		// Line spacing
+		// Table A-15: line spacing
 		case 'A': st_.line_spacing_in = 1.0f / 6.0f; break;
 		case 'B': st_.line_spacing_in = 1.0f / 8.0f; break;
 
-		// Line feed direction
+		// Table A-15: line feed direction
 		case 'f': st_.reverse_lf = false; break;
 		case 'r': st_.reverse_lf = true; break;
 
-		// Unidirectional / bidirectional
+		// Table A-14: unidirectional / bidirectional
 		case '>': st_.unidirectional = true; break;
 		case '<': st_.unidirectional = false; break;
 
-		// TOF set
+		// Table A-15: TOF set
 		case 'v': break;
 
-		// Paper-out sensor
+		// Table A-15: paper-out sensor
 		case 'O': break;
 		case 'o': break;
 
-		// Font selection
+		// Table A-9: user-designed characters
+		case '-': break;  // max custom width 8 dots (no-op)
+		case '+': break;  // max custom width 16 dots (no-op)
+		case '$': st_.mousetext_mode = false; break;  // back to normal font
+
+		// Font selection (IW native)
 		case 'm': st_.font_mode = 0; break;
 		case 'M': st_.font_mode = 2; break;
 		case 'a': state_ = State::EscA; break;
 
-		// MouseText
+		// Table A-9: MouseText / custom font
 		case '&': st_.mousetext_mode = true; break;
-		case '$': st_.mousetext_mode = false; break;
 
-		// Clear all tabs
+		// Table A-18: color select (1 ASCII digit param)
+		case 'K': start_digits('K', 1); break;
+
+		// Table A-14: clear all tabs
 		case '0': st_.tab_count = 0; break;
 
-		// Proportional spacing
+		// Table A-11: proportional dot spacing
 		case 's': start_digits('s', 1); break;
 
-		// CR insertion
+		// Table A-16: CR insertion mode
 		case 'l': state_ = State::EscCrIns; break;
 
-		// Multi-byte parameter commands
+		// Table A-14/A-17: print head position (4 ASCII digits)
+		case 'F': start_digits('F', 4); break;
+
+		// Table A-15: line spacing (2 ASCII digits)
 		case 'T': start_digits('T', 2); break;
+
+		// Table A-13: left margin (3 ASCII digits)
 		case 'L': start_digits('L', 3); break;
+
+		// Table A-13: page length (4 ASCII digits)
 		case 'H': start_digits('H', 4); break;
+
+		// Table A-14: add tab stop (3 ASCII digits)
 		case 'u': start_digits('u', 3); break;
+
+		// Table A-19: repeat character (3 ASCII digits + 1 char)
 		case 'R': start_digits('R', 3); break;
 
-		// Software switches
+		// Table A-17: graphics — ESC G nnnn (4 ASCII digits + data)
+		// Table A-17: graphics — ESC S nnnn (same as ESC G)
+		// Table A-17: graphics — ESC g nnn (3 ASCII digits, nnn*8 data)
+		// Table A-17: graphics — ESC V nnnn c (4 digits + 1 byte)
+		// Not yet implemented — would need GfxData state
+
+		// Table A-16/A-19: software switches
 		case 'Z':
 			sw_is_z_ = true;
 			state_ = State::CollectSw1;
@@ -268,17 +325,17 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 	// Control codes
 	switch (b) {
 	case 0x1B: state_ = State::Esc; return;
-	case 0x0D: carriage_return(); return;
-	case 0x0A: line_feed(); return;
-	case 0x0C: form_feed(); return;
-	case 0x0E: st_.expanded = true; return;
-	case 0x0F: st_.expanded = false; return;
-	case 0x08:
+	case 0x0D: carriage_return(); return;           // Table A-14
+	case 0x0A: line_feed(); return;                 // Table A-15
+	case 0x0C: form_feed(); return;                 // Table A-15
+	case 0x0E: st_.expanded = true; return;         // Table A-10/A-12
+	case 0x0F: st_.expanded = false; return;        // Table A-10/A-12
+	case 0x08:                                      // Table A-14: backspace
 		st_.x_pos -= 1.0f / static_cast<float>(st_.pitch_cpi);
 		if (st_.x_pos < st_.left_margin_in)
 			st_.x_pos = st_.left_margin_in;
 		return;
-	case 0x09:
+	case 0x09:                                      // Table A-14: tab
 		for (int i = 0; i < st_.tab_count; i++) {
 			float tab_pos = st_.left_margin_in +
 			    static_cast<float>(st_.tab_stops[i]) /
@@ -289,10 +346,10 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 			}
 		}
 		return;
-	case 0x18:
+	case 0x18:                                      // Table A-19: CAN
 		st_.x_pos = st_.left_margin_in;
 		return;
-	case 0x1F:
+	case 0x1F:                                      // Table A-15: multi-LF
 		state_ = State::MultiLF;
 		return;
 	default: break;

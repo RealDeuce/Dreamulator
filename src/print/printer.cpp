@@ -59,18 +59,23 @@ void PrinterSim::new_page_if_needed()
 	}
 }
 
-static uint16_t intl_unicode(uint8_t ch, int charset)
+static uint16_t intl_unicode_fx(uint8_t ch, int charset);
+static uint16_t intl_unicode_iw(uint8_t ch, int charset);
+static uint8_t intl_substitute_fx(uint8_t ch, int charset);
+static uint8_t intl_substitute_iw(uint8_t ch, int charset);
+
+static uint16_t intl_unicode_fx(uint8_t ch, int charset)
 {
 	static constexpr uint16_t tbl[8][12] = {
 	//  #35    $36    @64    [91    \92    ]93    ^94    `96   {123   |124   }125   ~126
-	{     0,     0,0x00E0,0x00B0,0x00E7,0x00A7,     0,     0,0x00E9,0x00F9,0x00E8,0x00A8}, // France
-	{     0,     0,0x00A7,0x00C4,0x00D6,0x00DC,     0,     0,0x00E4,0x00F6,0x00FC,0x00DF}, // Germany
-	{0x00A3,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0}, // UK
-	{     0,     0,     0,0x00C6,0x00D8,0x00C5,     0,     0,0x00E6,0x00F8,0x00E5,     0}, // Denmark
-	{     0,0x00A4,0x00C9,0x00C4,0x00D6,0x00C5,0x00DC,0x00E9,0x00E4,0x00F6,0x00E5,0x00FC}, // Sweden
-	{     0,     0,     0,0x00B0,     0,0x00E9,     0,0x00F9,0x00E0,0x00F2,0x00E8,0x00EC}, // Italy
-	{0x20A7,     0,     0,0x00A1,0x00D1,0x00BF,     0,     0,0x00A8,0x00F1,     0,     0}, // Spain
-	{     0,     0,     0,     0,0x00A5,     0,     0,     0,     0,     0,     0,     0}, // Japan
+	{     0,     0,0x00E0,0x00B0,0x00E7,0x00A7,     0,     0,0x00E9,0x00F9,0x00E8,0x00A8}, // 1 France
+	{     0,     0,0x00A7,0x00C4,0x00D6,0x00DC,     0,     0,0x00E4,0x00F6,0x00FC,0x00DF}, // 2 Germany
+	{0x00A3,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0}, // 3 UK
+	{     0,     0,     0,0x00C6,0x00D8,0x00C5,     0,     0,0x00E6,0x00F8,0x00E5,     0}, // 4 Denmark
+	{     0,0x00A4,0x00C9,0x00C4,0x00D6,0x00C5,0x00DC,0x00E9,0x00E4,0x00F6,0x00E5,0x00FC}, // 5 Sweden
+	{     0,     0,     0,0x00B0,     0,0x00E9,     0,0x00F9,0x00E0,0x00F2,0x00E8,0x00EC}, // 6 Italy
+	{0x20A7,     0,     0,0x00A1,0x00D1,0x00BF,     0,     0,0x00A8,0x00F1,     0,     0}, // 7 Spain
+	{     0,     0,     0,     0,0x00A5,     0,     0,     0,     0,     0,     0,     0}, // 8 Japan
 	};
 	static constexpr uint8_t positions[12] = {
 		35, 36, 64, 91, 92, 93, 94, 96, 123, 124, 125, 126
@@ -87,7 +92,36 @@ static uint16_t intl_unicode(uint8_t ch, int charset)
 	return ch;
 }
 
-static uint8_t intl_substitute(uint8_t ch, int charset)
+// IW II charset ordering per Table A-3: 1=Italian,2=Danish,3=British,
+// 4=German,5=Swedish,6=French,7=Spanish.  Figure 2-2 page 24.
+static uint16_t intl_unicode_iw(uint8_t ch, int charset)
+{
+	static constexpr uint16_t tbl[7][12] = {
+	//  #35    $36    @64    [91    \92    ]93    ^94    `96   {123   |124   }125   ~126
+	{0x00A3,     0,0x00A7,0x00B0,0x00E7,0x00E9,     0,0x00F9,0x00E0,0x00F2,0x00E8,0x00EC}, // 1 Italian
+	{     0,     0,     0,0x00C6,0x00D8,0x00C5,     0,     0,0x00E6,0x00F8,0x00E5,     0}, // 2 Danish
+	{0x00A3,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0}, // 3 British
+	{     0,     0,0x00A7,0x00C4,0x00D6,0x00DC,     0,     0,0x00E4,0x00F6,0x00FC,0x00DF}, // 4 German
+	{     0,0x00A4,0x00C9,0x00C4,0x00D6,0x00C5,0x00DC,0x00E9,0x00E4,0x00F6,0x00E5,0x00FC}, // 5 Swedish
+	{0x00A3,     0,0x00E0,0x00B0,0x00E7,0x00A7,     0,     0,0x00E9,0x00F9,0x00E8,0x00A8}, // 6 French
+	{0x00A3,     0,0x00A7,0x00A1,0x00D1,0x00BF,     0,     0,0x00A8,0x00F1,     0,     0}, // 7 Spanish
+	};
+	static constexpr uint8_t positions[12] = {
+		35, 36, 64, 91, 92, 93, 94, 96, 123, 124, 125, 126
+	};
+
+	if (charset < 1 || charset > 7) return ch;
+	for (int i = 0; i < 12; i++) {
+		if (ch == positions[i]) {
+			uint16_t u = tbl[charset - 1][i];
+			if (u != 0) return u;
+			break;
+		}
+	}
+	return ch;
+}
+
+static uint8_t intl_substitute_fx(uint8_t ch, int charset)
 {
 	static constexpr int8_t tbl[8][12] = {
 	//  #35  $36  @64  [91  \92  ]93  ^94  `96 {123 |124 }125 ~126
@@ -114,6 +148,35 @@ static uint8_t intl_substitute(uint8_t ch, int charset)
 	return ch;
 }
 
+// IW II glyph substitution: maps the 12 substitutable ASCII positions to
+// IW2 ROM glyph indices (0x00-0x1F) per the IW charset ordering.
+static uint8_t intl_substitute_iw(uint8_t ch, int charset)
+{
+	static constexpr int8_t tbl[7][12] = {
+	//  #35  $36  @64  [91  \92  ]93  ^94  `96 {123 |124 }125 ~126
+	{ 0x06,  -1,0x10,0x05,0x0F,0x1E,  -1,0x02,0x00,0x03,0x01,0x04}, // 1 Italian
+	{   -1,  -1,  -1,0x12,0x14,0x0D,  -1,  -1,0x13,0x15,0x0E,  -1}, // 2 Danish
+	{ 0x06,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1,  -1}, // 3 British
+	{   -1,  -1,0x10,0x17,0x18,0x19,  -1,  -1,0x1A,0x1B,0x1C,0x11}, // 4 German
+	{   -1,0x0B,0x1D,0x17,0x18,0x0D,0x19,0x1E,0x1A,0x1B,0x0E,0x1C}, // 5 Swedish
+	{ 0x06,  -1,0x00,0x05,0x0F,0x10,  -1,  -1,0x1E,0x02,0x01,0x16}, // 6 French
+	{ 0x06,  -1,0x10,0x07,0x09,0x08,  -1,  -1,0x16,0x0A,  -1,  -1}, // 7 Spanish
+	};
+	static constexpr uint8_t positions[12] = {
+		35, 36, 64, 91, 92, 93, 94, 96, 123, 124, 125, 126
+	};
+
+	if (charset < 1 || charset > 7) return ch;
+	for (int i = 0; i < 12; i++) {
+		if (ch == positions[i]) {
+			int8_t sub = tbl[charset - 1][i];
+			if (sub >= 0) return (uint8_t)sub;
+			break;
+		}
+	}
+	return ch;
+}
+
 void PrinterSim::emit_char(uint8_t ch)
 {
 	new_page_if_needed();
@@ -123,13 +186,13 @@ void PrinterSim::emit_char(uint8_t ch)
 		ch = static_cast<uint8_t>(ch & 0x7F);
 
 	if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F)
-		ch = static_cast<uint8_t>(ch + 0x40);
+		ch = static_cast<uint8_t>(ch + 0x80);
 
 	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
 	if (st_.condensed && st_.pitch_cpi <= 10)
 		char_w_in = 1.0f / 17.16f;
 	if (st_.proportional) {
-		uint8_t gw = get_iw2_nlq_width(ch);
+		uint8_t gw = get_iw2_corr_prop_width(ch);
 		if (gw > 0)
 			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
 			            static_cast<float>(st_.prop_dpi);
@@ -139,7 +202,7 @@ void PrinterSim::emit_char(uint8_t ch)
 
 	{
 		uint16_t cp = ch;
-		if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F) {
+		if (st_.mousetext_mode && ch >= 0xC0 && ch <= 0xDF) {
 			static constexpr uint16_t mt_unicode[32] = {
 				0xF8FF,0xF8FF, // 0x40-41: closed/open apple (PUA)
 				0x2191,0x2193,0x2190,0x2192, // arrows
@@ -150,9 +213,11 @@ void PrinterSim::emit_char(uint8_t ch)
 				0x2518,0x2588,0x25A0,0x25C6, // box + diamond
 				0x2573,0x2592,0x2591,0x2593, // patterns
 			};
-			cp = mt_unicode[ch - 0x40];
+			cp = mt_unicode[ch - 0xC0];
 		} else if (st_.charset > 0 && st_.charset <= 8 && ch >= 0x20) {
-			cp = intl_unicode(ch, st_.charset);
+			cp = (prof_.model == PrinterModel::ImageWriter)
+			    ? intl_unicode_iw(ch, st_.charset)
+			    : intl_unicode_fx(ch, st_.charset);
 		}
 		if (cp >= 0x20) {
 			float sz = char_w_in * 72.0f / 0.6f;
@@ -170,7 +235,9 @@ void PrinterSim::emit_char(uint8_t ch)
 		else if (ch == 0xB0) ch = 0xFF;
 	}
 	if (st_.charset > 0 && st_.charset <= 8)
-		ch = intl_substitute(ch, st_.charset);
+		ch = (prof_.model == PrinterModel::ImageWriter)
+		    ? intl_substitute_iw(ch, st_.charset)
+		    : intl_substitute_fx(ch, st_.charset);
 	dots_->render_char(*page_, st_, prof_, ch);
 
 	st_.x_pos += char_w_in;

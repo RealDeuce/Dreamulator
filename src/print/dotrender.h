@@ -57,9 +57,13 @@ const uint16_t *get_9pin_glyph(uint8_t ch);
 const uint8_t *get_24pin_glyph(uint8_t ch);
 const uint16_t *get_fx80_roman_glyph(uint8_t ch);
 const uint16_t *get_fx80_italic_glyph(uint8_t ch);
+const uint16_t *get_iw2_corr_fw_glyph(uint8_t ch);
+const uint16_t *get_iw2_corr_prop_glyph(uint8_t ch);
+uint8_t get_iw2_corr_prop_width(uint8_t ch);
 const uint16_t *get_iw2_draft_glyph(uint8_t ch);
-const uint16_t *get_iw2_nlq_glyph(uint8_t ch);
-uint8_t get_iw2_nlq_width(uint8_t ch);
-const uint16_t *get_iw2_gs_glyph(uint8_t ch);
+const uint16_t *get_iw2_nlq_prop_p1_glyph(uint8_t ch);
+const uint16_t *get_iw2_nlq_prop_p2_glyph(uint8_t ch);
+const uint16_t *get_iw2_nlq_fw_p1_glyph(uint8_t ch);
+const uint16_t *get_iw2_nlq_fw_p2_glyph(uint8_t ch);
 
 #endif
