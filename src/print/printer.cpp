@@ -90,9 +90,21 @@ void PrinterSim::emit_char(uint8_t ch)
 	new_page_if_needed();
 	page_dirty_ = true;
 
-	float char_w_in = 1.0f / (float)st_.pitch_cpi;
+	if (!st_.include_8th_bit)
+		ch = static_cast<uint8_t>(ch & 0x7F);
+
+	if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F)
+		ch = static_cast<uint8_t>(ch + 0x40);
+
+	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
 	if (st_.condensed && st_.pitch_cpi <= 10)
 		char_w_in = 1.0f / 17.16f;
+	if (st_.proportional) {
+		uint8_t gw = get_iw2_nlq_width(ch);
+		if (gw > 0)
+			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
+			            static_cast<float>(st_.prop_dpi);
+	}
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
 
@@ -106,7 +118,7 @@ void PrinterSim::emit_char(uint8_t ch)
 
 	st_.x_pos += char_w_in;
 
-	if (st_.x_pos >= st_.right_margin_in) {
+	if (st_.x_pos >= st_.right_margin_in - 0.001f) {
 		carriage_return();
 		line_feed();
 	}
@@ -142,13 +154,21 @@ void PrinterSim::line_feed()
 {
 	new_page_if_needed();
 	page_dirty_ = true;
-	st_.y_pos += st_.line_spacing_in;
 
-	float bottom = st_.perf_skip_lines > 0
-		? st_.page_height_in - (float)st_.perf_skip_lines * st_.line_spacing_in
-		: st_.page_height_in - 0.5f;
-	if (st_.y_pos >= bottom)
-		form_feed();
+	float delta = st_.reverse_lf ? -st_.line_spacing_in : st_.line_spacing_in;
+	st_.y_pos += delta;
+
+	if (st_.reverse_lf) {
+		if (st_.y_pos < st_.top_margin_in)
+			st_.y_pos = st_.top_margin_in;
+	} else {
+		float bottom = st_.perf_skip_lines > 0
+			? st_.page_height_in -
+			  static_cast<float>(st_.perf_skip_lines) * st_.line_spacing_in
+			: st_.page_height_in - 0.5f;
+		if (st_.y_pos >= bottom)
+			form_feed();
+	}
 }
 
 void PrinterSim::form_feed()

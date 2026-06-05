@@ -46,7 +46,7 @@ struct PrinterProfile {
 const PrinterProfile &profile_for(PrinterModel m);
 
 struct PrinterConfig {
-	int  pitch_cpi = 10;
+	float pitch_cpi = 10;
 	bool slashed_zero = false;
 	bool emphasized = false;
 	int  charset = 0;
@@ -60,7 +60,7 @@ struct PrinterState {
 	float x_pos = 0;
 	float y_pos = 0;
 
-	int   pitch_cpi = 10;
+	float pitch_cpi = 10;
 	bool  bold = false;
 	bool  underline = false;
 	bool  superscript = false;
@@ -84,6 +84,19 @@ struct PrinterState {
 	int   perf_skip_lines = 0;
 	int   charset = 0;
 	bool  slashed_zero = false;
+
+	bool  mousetext_mode = false;
+	bool  include_8th_bit = false;
+	bool  half_height = false;
+	bool  reverse_lf = false;
+	int   font_mode = 0;
+	bool  cr_insertion = true;
+	bool  lf_when_full = false;
+	bool  proportional = false;
+	int   prop_dpi = 144;
+	int   prop_spacing = 0;
+	int   tab_stops[32] = {};
+	int   tab_count = 0;
 };
 
 class DotRenderer;

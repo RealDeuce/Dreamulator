@@ -27,15 +27,22 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
                                const uint16_t *glyph, int glyph_w,
                                float *pin_vib)
 {
-	float cw_in = 1.0f / (float)st.pitch_cpi;
+	float cw_in = 1.0f / st.pitch_cpi;
 	if (st.condensed && st.pitch_cpi <= 10) cw_in = 1.0f / 17.16f;
+	if (st.proportional && st.prop_dpi > 0)
+		cw_in = static_cast<float>(glyph_w) / static_cast<float>(st.prop_dpi);
 	if (st.expanded || st.expanded_line) cw_in *= 2.0f;
 
 	float dot_h_in = 1.0f / 72.0f;
-	float dot_w_in = cw_in / (float)glyph_w;
-	bool script = st.superscript || st.subscript;
 	bool expanded = st.expanded || st.expanded_line;
-	float expand_dup = expanded ? (1.0f / 60.0f) : 0.0f;
+	float dot_w_in = st.proportional
+	    ? (expanded ? 2.0f : 1.0f) / static_cast<float>(st.prop_dpi)
+	    : (cw_in / static_cast<float>(glyph_w));
+	bool script = st.superscript || st.subscript;
+	float expand_dup = expanded ? (dot_w_in * 0.5f) : 0.0f;
+	float dot_pitch = (prof.model == PrinterModel::ImageWriter)
+	    ? (1.0f / 80.0f) : (1.0f / 60.0f);
+	float bold_off = dot_pitch * 0.5f;
 
 	float ink = prof.dot_intensity;
 	float sharp = prof.dot_sharpness;
@@ -53,15 +60,72 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	static constexpr int script_pass2_rows[] = {0, 2, 4, 6, 8};
 	float script_y_off = st.subscript ? dot_h_in * 4.5f : 0.0f;
 
+	// Half-height: pins 4-7 only (0-indexed: 3-6), two-pass at 144 dpi
+	// Pass 1: even glyph rows (0,2,4,6) → 4 pins at base position
+	// Pass 2: odd glyph rows (1,3,5,7) → 4 pins offset by 1/144"
+	static constexpr int hh_even_rows[] = {0, 2, 4, 6};
+	static constexpr int hh_odd_rows[]  = {1, 3, 5, 7};
+
 	for (int col = 0; col < glyph_w; col++) {
 		uint16_t column = glyph[col];
+		if (st.underline)
+			column = static_cast<uint16_t>(column & ~(1 << 8));
 
 		if (pin_vib) {
 			for (int pin = 0; pin < 9; pin++)
 				pin_vib[pin] *= vib_decay;
 		}
 
-		if (script) {
+		if (st.half_height) {
+			float x = st.x_pos + (float)col * dot_w_in + bidi_offset;
+
+			for (int p = 0; p < 4; p++) {
+				int row = hh_even_rows[p];
+				if (!(column & (1 << row))) continue;
+				float y = st.y_pos + (float)(p + 3) * dot_h_in
+				          - (9.0f * dot_h_in);
+				float jit = prof.jitter_mm;
+				if (pin_vib) {
+					pin_vib[p + 3] = std::min(1.0f, pin_vib[p + 3] + vib_kick);
+					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p + 3];
+				}
+				dr.stamp_pin(page, x, y, prof.render_dpi,
+				             prof.dot_radius_mm, jit, ink, sharp);
+				if (expanded)
+					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
+					             prof.dot_radius_mm, jit, ink, sharp);
+				if (st.bold) {
+					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
+					             prof.dot_radius_mm, jit, ink, sharp);
+					if (expanded)
+						dr.stamp_pin(page, x + expand_dup + bold_off, y,
+						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
+				}
+			}
+			for (int p = 0; p < 4; p++) {
+				int row = hh_odd_rows[p];
+				if (!(column & (1 << row))) continue;
+				float y = st.y_pos + (float)(p + 3) * dot_h_in
+				          + (1.0f / 144.0f) - (9.0f * dot_h_in);
+				float jit = prof.jitter_mm;
+				if (pin_vib) {
+					pin_vib[p + 3] = std::min(1.0f, pin_vib[p + 3] + vib_kick);
+					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p + 3];
+				}
+				dr.stamp_pin(page, x, y, prof.render_dpi,
+				             prof.dot_radius_mm, jit, ink, sharp);
+				if (expanded)
+					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
+					             prof.dot_radius_mm, jit, ink, sharp);
+				if (st.bold) {
+					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
+					             prof.dot_radius_mm, jit, ink, sharp);
+					if (expanded)
+						dr.stamp_pin(page, x + expand_dup + bold_off, y,
+						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
+				}
+			}
+		} else if (script) {
 			float x = st.x_pos + (float)col * dot_w_in + bidi_offset;
 
 			for (int p = 0; p < 4; p++) {
@@ -80,10 +144,10 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
 					             prof.dot_radius_mm, jit, ink, sharp);
 				if (st.bold) {
-					dr.stamp_pin(page, x + 1.0f / 120.0f, y, prof.render_dpi,
+					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
 					             prof.dot_radius_mm, jit, ink, sharp);
 					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + 1.0f / 120.0f, y,
+						dr.stamp_pin(page, x + expand_dup + bold_off, y,
 						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
 				}
 			}
@@ -103,10 +167,10 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
 					             prof.dot_radius_mm, jit, ink, sharp);
 				if (st.bold) {
-					dr.stamp_pin(page, x + 1.0f / 120.0f, y, prof.render_dpi,
+					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
 					             prof.dot_radius_mm, jit, ink, sharp);
 					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + 1.0f / 120.0f, y,
+						dr.stamp_pin(page, x + expand_dup + bold_off, y,
 						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
 				}
 			}
@@ -131,11 +195,11 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					             prof.dot_radius_mm, jit, ink, sharp);
 
 				if (st.bold) {
-					dr.stamp_pin(page, x + 1.0f / 120.0f, y,
+					dr.stamp_pin(page, x + bold_off, y,
 					             prof.render_dpi, prof.dot_radius_mm,
 					             jit, ink, sharp);
 					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + 1.0f / 120.0f, y,
+						dr.stamp_pin(page, x + expand_dup + bold_off, y,
 						             prof.render_dpi, prof.dot_radius_mm,
 						             jit, ink, sharp);
 				}
@@ -144,7 +208,9 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	}
 
 	if (st.underline) {
-		float ul_y = st.y_pos + dot_h_in * 0.5f;
+		float ul_y = (prof.model == PrinterModel::ImageWriter)
+		    ? st.y_pos - dot_h_in
+		    : st.y_pos + dot_h_in * 0.5f;
 		int dots = (int)(cw_in * (float)prof.render_dpi / (1.0f / 120.0f * (float)prof.render_dpi));
 		float step = cw_in / (float)dots;
 		for (int i = 0; i < dots; i++) {
@@ -162,6 +228,20 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 		const uint16_t *glyph = get_fx80_roman_glyph(ch);
 		if (!glyph) return;
 		render_glyph_9pin(*this, page, st, prof, glyph, 12, pin_vib_);
+	} else if (prof.model == PrinterModel::ImageWriter) {
+		const uint16_t *glyph = nullptr;
+		int w = 8;
+		if (st.proportional) {
+			glyph = get_iw2_nlq_glyph(ch);
+			if (glyph)
+				w = get_iw2_nlq_width(ch);
+		}
+		if (!glyph) {
+			glyph = get_iw2_draft_glyph(ch);
+			w = 8;
+		}
+		if (!glyph) return;
+		render_glyph_9pin(*this, page, st, prof, glyph, w, pin_vib_);
 	} else {
 		const uint16_t *glyph = get_9pin_glyph(ch);
 		if (!glyph) return;
