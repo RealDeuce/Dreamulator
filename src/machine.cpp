@@ -904,6 +904,8 @@ static void uart_pdf_tx(void *ctx, uint8_t byte)
 	if (m->pdf_printer) {
 		m->pdf_printer->feed(&byte, 1);
 		m->pdf_idle_cycles = 0;
+		if (!m->pdf_active)
+			fprintf(stderr, "PDF printer (serial): first byte received\n");
 		m->pdf_active = true;
 	}
 }

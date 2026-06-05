@@ -240,6 +240,7 @@ static void debug_monitor_cb(void *)
 {
 	if (g_dbg_regs && g_dbg_regs->visible_r()) g_dbg_regs->refresh();
 	if (g_dbg_dis && g_dbg_dis->visible_r()) g_dbg_dis->refresh();
+	if (g_dbg_periph && g_dbg_periph->visible_r()) g_dbg_periph->refresh();
 }
 
 /* ---- dock infrastructure ---- */
