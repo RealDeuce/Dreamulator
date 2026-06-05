@@ -127,17 +127,25 @@ void PrinterSim::emit_char(uint8_t ch)
 void PrinterSim::apply_config(const PrinterConfig &cfg)
 {
 	cfg_ = cfg;
-	if (cfg.pitch_cpi == 17) {
-		st_.pitch_cpi = 10;
-		st_.condensed = true;
-	} else {
+	if (prof_.model == PrinterModel::ImageWriter) {
 		st_.pitch_cpi = cfg.pitch_cpi;
+		st_.font_mode = cfg.font_mode;
+	} else {
+		if (cfg.pitch_cpi == 17) {
+			st_.pitch_cpi = 10;
+			st_.condensed = true;
+		} else {
+			st_.pitch_cpi = cfg.pitch_cpi;
+		}
+		st_.bold = cfg.emphasized;
 	}
-	st_.bold = cfg.emphasized;
 	st_.auto_lf = cfg.auto_lf;
 	st_.perf_skip_lines = cfg.perf_skip;
 	st_.charset = cfg.charset;
 	st_.slashed_zero = cfg.slashed_zero;
+	if (cfg.page_length_lines > 0)
+		st_.page_height_in = static_cast<float>(cfg.page_length_lines) *
+		                     st_.line_spacing_in;
 }
 
 void PrinterSim::carriage_return()
@@ -200,11 +208,43 @@ static int match_charset(const char *s)
 	return 0;
 }
 
-PrinterConfig load_printer_config(const char *path)
+static float match_iw_pitch(const char *val)
+{
+	if (strcasecmp(val, "extended") == 0)        return 9;
+	if (strcasecmp(val, "pica") == 0)            return 10;
+	if (strcasecmp(val, "elite") == 0)           return 12;
+	if (strcasecmp(val, "semicondensed") == 0)   return 107.0f / 8.0f;
+	if (strcasecmp(val, "condensed") == 0)       return 15;
+	if (strcasecmp(val, "ultracondensed") == 0)  return 17;
+	return 12;
+}
+
+PrinterConfig default_config_for(PrinterModel model)
 {
 	PrinterConfig cfg;
+	if (model == PrinterModel::ImageWriter) {
+		cfg.pitch_cpi = 12;
+		cfg.font_mode = 0;
+		cfg.page_length_lines = 66;
+	}
+	return cfg;
+}
+
+float parse_pitch(const char *val, PrinterModel model)
+{
+	if (model == PrinterModel::ImageWriter)
+		return match_iw_pitch(val);
+	if (strcasecmp(val, "compressed") == 0) return 17;
+	return 10;
+}
+
+PrinterConfig load_printer_config(const char *path, PrinterModel model)
+{
+	PrinterConfig cfg = default_config_for(model);
 	FILE *f = fopen(path, "r");
 	if (!f) { perror(path); return cfg; }
+
+	bool is_iw = (model == PrinterModel::ImageWriter);
 
 	char line[256];
 	while (fgets(line, sizeof(line), f)) {
@@ -218,12 +258,17 @@ PrinterConfig load_printer_config(const char *path)
 		if (!*key || !*val) continue;
 
 		if (strcasecmp(key, "pitch") == 0) {
-			if (strcasecmp(val, "compressed") == 0) cfg.pitch_cpi = 17;
-			else cfg.pitch_cpi = 10;
+			if (is_iw) {
+				cfg.pitch_cpi = match_iw_pitch(val);
+			} else {
+				if (strcasecmp(val, "compressed") == 0) cfg.pitch_cpi = 17;
+				else cfg.pitch_cpi = 10;
+			}
 		} else if (strcasecmp(key, "zero_style") == 0) {
 			cfg.slashed_zero = (strcasecmp(val, "slashed") == 0);
 		} else if (strcasecmp(key, "print_weight") == 0) {
-			cfg.emphasized = (strcasecmp(val, "emphasized") == 0);
+			if (!is_iw)
+				cfg.emphasized = (strcasecmp(val, "emphasized") == 0);
 		} else if (strcasecmp(key, "charset") == 0) {
 			cfg.charset = match_charset(val);
 		} else if (strcasecmp(key, "auto_lf") == 0) {
@@ -232,6 +277,16 @@ PrinterConfig load_printer_config(const char *path)
 			if (strcasecmp(val, "on") == 0) cfg.perf_skip = 6;
 			else if (strcasecmp(val, "off") == 0) cfg.perf_skip = 0;
 			else cfg.perf_skip = atoi(val);
+		} else if (strcasecmp(key, "font") == 0) {
+			if (is_iw) {
+				if (strcasecmp(val, "draft") == 0)          cfg.font_mode = 1;
+				else if (strcasecmp(val, "standard") == 0)  cfg.font_mode = 0;
+				else if (strcasecmp(val, "nlq") == 0)       cfg.font_mode = 2;
+			}
+		} else if (strcasecmp(key, "page_length") == 0) {
+			if (strcasecmp(val, "11") == 0) cfg.page_length_lines = 66;
+			else if (strcasecmp(val, "12") == 0) cfg.page_length_lines = 72;
+			else cfg.page_length_lines = atoi(val);
 		} else {
 			fprintf(stderr, "printer config: unknown key '%s'\n", key);
 		}

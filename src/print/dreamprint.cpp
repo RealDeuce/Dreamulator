@@ -14,6 +14,8 @@ static void usage(const char *argv0)
 		"Options:\n"
 		"  --model MODEL    Printer model (default: FX)\n"
 		"  --config PATH    Printer config file\n"
+		"  --font MODE      Initial font: draft, standard, nlq (ImageWriter)\n"
+		"  --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)\n"
 		"\n"
 		"Models:\n"
 		"  X24E      IBM Proprinter X24E (24-pin)\n"
@@ -45,12 +47,18 @@ int main(int argc, char *argv[])
 	const char *input = nullptr;
 	const char *output = nullptr;
 	const char *config_path = nullptr;
+	const char *font_arg = nullptr;
+	const char *pitch_arg = nullptr;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--model") && i + 1 < argc) {
 			model = parse_model(argv[++i]);
 		} else if (!strcmp(argv[i], "--config") && i + 1 < argc) {
 			config_path = argv[++i];
+		} else if (!strcmp(argv[i], "--font") && i + 1 < argc) {
+			font_arg = argv[++i];
+		} else if (!strcmp(argv[i], "--pitch") && i + 1 < argc) {
+			pitch_arg = argv[++i];
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			usage(argv[0]);
 			return 0;
@@ -81,8 +89,19 @@ int main(int argc, char *argv[])
 	PdfWriter pdf(output);
 	auto printer = create_printer(model, pdf);
 
-	if (config_path) {
-		PrinterConfig cfg = load_printer_config(config_path);
+	{
+		PrinterConfig cfg = config_path
+		    ? load_printer_config(config_path, model)
+		    : default_config_for(model);
+
+		if (font_arg) {
+			if (!strcasecmp(font_arg, "draft"))         cfg.font_mode = 1;
+			else if (!strcasecmp(font_arg, "standard")) cfg.font_mode = 0;
+			else if (!strcasecmp(font_arg, "nlq"))      cfg.font_mode = 2;
+		}
+		if (pitch_arg)
+			cfg.pitch_cpi = parse_pitch(pitch_arg, model);
+
 		printer->apply_config(cfg);
 	}
 

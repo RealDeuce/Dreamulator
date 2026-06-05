@@ -52,9 +52,13 @@ struct PrinterConfig {
 	int  charset = 0;
 	bool auto_lf = false;
 	int  perf_skip = 0;
+	int  font_mode = 0;
+	int  page_length_lines = 66;
 };
 
-PrinterConfig load_printer_config(const char *path);
+PrinterConfig default_config_for(PrinterModel model);
+PrinterConfig load_printer_config(const char *path, PrinterModel model);
+float parse_pitch(const char *val, PrinterModel model);
 
 struct PrinterState {
 	float x_pos = 0;
