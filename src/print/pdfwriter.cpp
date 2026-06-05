@@ -112,6 +112,8 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 
 	if (!text.empty()) {
 		content += "BT\n3 Tr\n";
+		constexpr float base_sz = 10.0f;
+		constexpr float courier_adv = 0.6f;
 
 		size_t i = 0;
 		while (i < text.size()) {
@@ -120,8 +122,12 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 			float py = page_h_pt_ - first.y_in * 72.0f;
 			float px = first.x_in * 72.0f;
 
-			snprintf(buf, sizeof(buf), "/F%d %.2f Tf\n",
-			         font + 1, first.size_pt);
+			float char_w_pt = first.width_in * 72.0f;
+			float natural_adv = courier_adv * base_sz;
+			float hz_scale = char_w_pt / natural_adv * 100.0f;
+
+			snprintf(buf, sizeof(buf), "/F%d %.1f Tf %.1f Tz\n",
+			         font + 1, base_sz, hz_scale);
 			content += buf;
 			snprintf(buf, sizeof(buf),
 				"1 0 0 1 %.2f %.2f Tm\n", px, py);
@@ -133,8 +139,11 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 				auto &g = text[j];
 				int gf = (g.style & TextGlyph::BOLD) ? 1 : 0;
 				float gy = page_h_pt_ - g.y_in * 72.0f;
-				if (gf != font || g.size_pt != first.size_pt ||
-				    gy < py - 0.5f || gy > py + 0.5f)
+				float gw = g.width_in * 72.0f;
+				float gs = gw / natural_adv * 100.0f;
+				if (gf != font ||
+				    gy < py - 0.5f || gy > py + 0.5f ||
+				    gs < hz_scale - 0.5f || gs > hz_scale + 0.5f)
 					break;
 				char esc[8];
 				pdf_escape(esc, sizeof(esc), g.codepoint);
