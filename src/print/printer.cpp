@@ -155,7 +155,7 @@ void PrinterSim::emit_char(uint8_t ch)
 			cp = intl_unicode(ch, st_.charset);
 		}
 		if (cp >= 0x20) {
-			float sz = 72.0f / st_.pitch_cpi / 0.6f;
+			float sz = char_w_in * 72.0f / 0.6f;
 			text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz});
 		}
 	}
