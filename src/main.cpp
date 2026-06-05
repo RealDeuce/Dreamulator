@@ -8,6 +8,11 @@
 #include <FL/Fl_File_Chooser.H>
 #include <FL/fl_ask.H>
 #include <FL/fl_draw.H>
+#include <FL/Fl_Check_Button.H>
+#include <FL/Fl_Choice.H>
+#include <FL/Fl_Return_Button.H>
+#include <FL/Fl_Box.H>
+#include <FL/Fl_Group.H>
 #ifdef HAS_PORTAUDIO
 #include <portaudio.h>
 #endif
@@ -22,6 +27,7 @@
 #include <sys/mman.h>
 
 #include "machine.h"
+#include "print/printer.h"
 #include "prefs.h"
 #include "dbg_regs.h"
 #include "dbg_dis.h"
@@ -637,11 +643,170 @@ static void cb_printer_file(Fl_Widget *, void *) {
 	}
 }
 
+static bool show_iw_dip_dialog(PrinterConfig &cfg)
+{
+	Fl_Window win(340, 360, "ImageWriter II DIP Switches");
+	win.set_modal();
+
+	Fl_Box hdr1(10, 5, 320, 20, "SW1 - Character & Page Settings");
+	hdr1.labelfont(FL_BOLD);
+	hdr1.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+
+	Fl_Choice charset(160, 30, 170, 25, "Character Set:");
+	charset.add("American");
+	charset.add("French");
+	charset.add("German");
+	charset.add("British");
+	charset.add("Danish");
+	charset.add("Swedish");
+	charset.add("Italian");
+	charset.add("Spanish");
+	charset.add("Japanese");
+	charset.value(cfg.charset);
+
+	Fl_Choice pitch(160, 60, 170, 25, "Pitch:");
+	pitch.add("Extended (9 CPI)");
+	pitch.add("Pica (10 CPI)");
+	pitch.add("Elite (12 CPI)");
+	pitch.value(cfg.pitch_cpi <= 9 ? 0 : cfg.pitch_cpi <= 10 ? 1 : 2);
+
+	Fl_Choice pglen(160, 90, 170, 25, "Page Length:");
+	pglen.add("11 inch (66 lines)");
+	pglen.add("12 inch (72 lines)");
+	pglen.value(cfg.page_length_lines > 66 ? 1 : 0);
+
+	Fl_Check_Button perf(10, 120, 320, 25, "Perforation Skip (SW1-5)");
+	perf.value(cfg.perf_skip > 0 ? 1 : 0);
+
+	Fl_Check_Button autolf(10, 145, 320, 25, "Auto LF after CR (SW1-8)");
+	autolf.value(cfg.auto_lf ? 1 : 0);
+
+	Fl_Box hdr2(10, 175, 320, 20, "Front Panel");
+	hdr2.labelfont(FL_BOLD);
+	hdr2.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+
+	Fl_Choice font(160, 200, 170, 25, "Print Quality:");
+	font.add("Draft");
+	font.add("Standard");
+	font.add("Near Letter Quality");
+	font.value(cfg.font_mode);
+
+	Fl_Check_Button slashed(10, 235, 320, 25, "Slashed Zeros");
+	slashed.value(cfg.slashed_zero ? 1 : 0);
+
+	bool ok = false;
+	Fl_Return_Button btn_ok(160, 320, 80, 30, "OK");
+	btn_ok.callback([](Fl_Widget *w, void *d) {
+		*static_cast<bool *>(d) = true;
+		w->window()->hide();
+	}, &ok);
+	Fl_Button btn_cancel(250, 320, 80, 30, "Cancel");
+	btn_cancel.callback([](Fl_Widget *w, void *) {
+		w->window()->hide();
+	});
+
+	win.end();
+	win.show();
+	while (win.shown()) Fl::wait();
+
+	if (!ok) return false;
+
+	cfg.charset = charset.value();
+	static constexpr float pitches[] = {9, 10, 12};
+	cfg.pitch_cpi = pitches[pitch.value()];
+	cfg.page_length_lines = pglen.value() ? 72 : 66;
+	cfg.perf_skip = perf.value() ? 6 : 0;
+	cfg.auto_lf = autolf.value();
+	cfg.font_mode = font.value();
+	cfg.slashed_zero = slashed.value();
+	return true;
+}
+
+static bool show_fx_dip_dialog(PrinterConfig &cfg)
+{
+	Fl_Window win(340, 280, "Epson FX-80 DIP Switches");
+	win.set_modal();
+
+	Fl_Box hdr1(10, 5, 320, 20, "SW1 - Character & Page Settings");
+	hdr1.labelfont(FL_BOLD);
+	hdr1.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+
+	Fl_Choice charset(160, 30, 170, 25, "Character Set:");
+	charset.add("American");
+	charset.add("French");
+	charset.add("German");
+	charset.add("British");
+	charset.add("Danish");
+	charset.add("Swedish");
+	charset.add("Italian");
+	charset.add("Spanish");
+	charset.add("Japanese");
+	charset.value(cfg.charset);
+
+	Fl_Choice pitch(160, 60, 170, 25, "Pitch:");
+	pitch.add("Pica (10 CPI)");
+	pitch.add("Compressed (17 CPI)");
+	pitch.value(cfg.pitch_cpi >= 17 ? 1 : 0);
+
+	Fl_Check_Button perf(10, 90, 320, 25, "Perforation Skip (SW1-5)");
+	perf.value(cfg.perf_skip > 0 ? 1 : 0);
+
+	Fl_Check_Button autolf(10, 115, 320, 25, "Auto LF after CR (SW1-8)");
+	autolf.value(cfg.auto_lf ? 1 : 0);
+
+	Fl_Check_Button emph(10, 140, 320, 25, "Emphasized (Bold)");
+	emph.value(cfg.emphasized ? 1 : 0);
+
+	Fl_Check_Button slashed(10, 165, 320, 25, "Slashed Zeros");
+	slashed.value(cfg.slashed_zero ? 1 : 0);
+
+	bool ok = false;
+	Fl_Return_Button btn_ok(160, 240, 80, 30, "OK");
+	btn_ok.callback([](Fl_Widget *w, void *d) {
+		*static_cast<bool *>(d) = true;
+		w->window()->hide();
+	}, &ok);
+	Fl_Button btn_cancel(250, 240, 80, 30, "Cancel");
+	btn_cancel.callback([](Fl_Widget *w, void *) {
+		w->window()->hide();
+	});
+
+	win.end();
+	win.show();
+	while (win.shown()) Fl::wait();
+
+	if (!ok) return false;
+
+	cfg.charset = charset.value();
+	cfg.pitch_cpi = pitch.value() ? 17 : 10;
+	cfg.perf_skip = perf.value() ? 6 : 0;
+	cfg.auto_lf = autolf.value();
+	cfg.emphasized = emph.value();
+	cfg.slashed_zero = slashed.value();
+	return true;
+}
+
 static void cb_printer_pdf(Fl_Widget *, void *v) {
 	int model = (int)(intptr_t)v;
+	auto pm = static_cast<PrinterModel>(model);
+	PrinterConfig cfg = default_config_for(pm);
+
+	bool ok;
+	if (pm == PrinterModel::ImageWriter)
+		ok = show_iw_dip_dialog(cfg);
+	else if (pm == PrinterModel::EpsonFX)
+		ok = show_fx_dip_dialog(cfg);
+	else
+		ok = true;
+
+	if (!ok) return;
+
 	const char *path = fl_file_chooser("PDF Output", "*.pdf", "printer.pdf");
-	if (path)
-		machine_pdf_start(&g_mach, path, model);
+	if (!path) return;
+
+	machine_pdf_start(&g_mach, path, model);
+	if (g_mach.pdf_printer)
+		g_mach.pdf_printer->apply_config(cfg);
 }
 
 static void cb_printer_pdf_finish(Fl_Widget *, void *) {
