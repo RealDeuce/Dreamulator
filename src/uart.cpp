@@ -153,6 +153,11 @@ static void modem_out(uart_t *u)
 
 static void modem_in(uart_t *u)
 {
+	if (u->tx_byte_cb) {
+		u->cts = true;
+		u->dsr = true;
+		return;
+	}
 	if (u->backend == UartBackend::Tcp || u->fd < 0) return;
 
 	int bits = 0;
