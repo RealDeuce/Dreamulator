@@ -112,24 +112,38 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 
 	if (!text.empty()) {
 		content += "BT\n3 Tr\n";
-		float cur_size = 0;
-		int cur_font = -1;
-		for (auto &g : text) {
-			int font = (g.style & TextGlyph::BOLD) ? 1 : 0;
-			if (g.size_pt != cur_size || font != cur_font) {
-				snprintf(buf, sizeof(buf), "/F%d %.2f Tf\n",
-				         font + 1, g.size_pt);
-				content += buf;
-				cur_size = g.size_pt;
-				cur_font = font;
-			}
-			float px = g.x_in * 72.0f;
-			float py = page_h_pt_ - g.y_in * 72.0f;
-			char esc[8];
-			pdf_escape(esc, sizeof(esc), g.codepoint);
-			snprintf(buf, sizeof(buf),
-				"1 0 0 1 %.2f %.2f Tm (%s) Tj\n", px, py, esc);
+
+		size_t i = 0;
+		while (i < text.size()) {
+			auto &first = text[i];
+			int font = (first.style & TextGlyph::BOLD) ? 1 : 0;
+			float py = page_h_pt_ - first.y_in * 72.0f;
+			float px = first.x_in * 72.0f;
+
+			snprintf(buf, sizeof(buf), "/F%d %.2f Tf\n",
+			         font + 1, first.size_pt);
 			content += buf;
+			snprintf(buf, sizeof(buf),
+				"1 0 0 1 %.2f %.2f Tm\n", px, py);
+			content += buf;
+
+			std::string run = "(";
+			size_t j = i;
+			while (j < text.size()) {
+				auto &g = text[j];
+				int gf = (g.style & TextGlyph::BOLD) ? 1 : 0;
+				float gy = page_h_pt_ - g.y_in * 72.0f;
+				if (gf != font || g.size_pt != first.size_pt ||
+				    gy < py - 0.5f || gy > py + 0.5f)
+					break;
+				char esc[8];
+				pdf_escape(esc, sizeof(esc), g.codepoint);
+				run += esc;
+				j++;
+			}
+			run += ") Tj\n";
+			content += run;
+			i = j;
 		}
 		content += "ET\n";
 	}
