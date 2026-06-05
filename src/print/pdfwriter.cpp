@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd
 #include "pdfwriter.h"
+#include "printer.h"
 #include <cstring>
 #include <stdexcept>
 #include <zlib.h>
@@ -15,6 +16,12 @@ PdfWriter::PdfWriter(const std::string &path)
 
 	catalog_id_ = alloc_obj();
 	pages_id_ = alloc_obj();
+
+	font_id_ = alloc_obj();
+	begin_obj(font_id_);
+	fprintf(fp_, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier\n");
+	fprintf(fp_, "   /Encoding /WinAnsiEncoding >>\n");
+	end_obj();
 }
 
 PdfWriter::~PdfWriter()
@@ -66,25 +73,68 @@ long PdfWriter::write_image_stream(const PageBitmap &bmp)
 	return img_id;
 }
 
-void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi)
+static void pdf_escape(char *out, size_t out_sz, uint16_t codepoint)
+{
+	uint8_t ch;
+	if (codepoint < 0x100)
+		ch = static_cast<uint8_t>(codepoint);
+	else
+		ch = '?';
+
+	if (ch == '(' || ch == ')' || ch == '\\') {
+		snprintf(out, out_sz, "\\%c", ch);
+	} else if (ch < 0x20 || ch > 0x7E) {
+		snprintf(out, out_sz, "\\%03o", ch);
+	} else {
+		out[0] = static_cast<char>(ch);
+		out[1] = '\0';
+	}
+}
+
+void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
+                         const std::vector<TextGlyph> &text)
 {
 	int img_id = (int)write_image_stream(bmp);
 
-	char content[256];
-	int clen = snprintf(content, sizeof(content),
+	std::string content;
+	char buf[256];
+
+	snprintf(buf, sizeof(buf),
 		"q %.2f 0 0 %.2f 0 0 cm /Img Do Q\n",
 		page_w_pt_, page_h_pt_);
+	content += buf;
+
+	if (!text.empty()) {
+		content += "BT\n3 Tr\n";
+		float cur_size = 0;
+		for (auto &g : text) {
+			if (g.size_pt != cur_size) {
+				snprintf(buf, sizeof(buf), "/F1 %.2f Tf\n", g.size_pt);
+				content += buf;
+				cur_size = g.size_pt;
+			}
+			float px = g.x_in * 72.0f;
+			float py = page_h_pt_ - g.y_in * 72.0f;
+			char esc[8];
+			pdf_escape(esc, sizeof(esc), g.codepoint);
+			snprintf(buf, sizeof(buf),
+				"1 0 0 1 %.2f %.2f Tm (%s) Tj\n", px, py, esc);
+			content += buf;
+		}
+		content += "ET\n";
+	}
 
 	int stream_id = alloc_obj();
 	begin_obj(stream_id);
-	fprintf(fp_, "<< /Length %d >>\nstream\n", clen);
-	fwrite(content, 1, (size_t)clen, fp_);
+	fprintf(fp_, "<< /Length %zu >>\nstream\n", content.size());
+	fwrite(content.data(), 1, content.size(), fp_);
 	fprintf(fp_, "\nendstream\n");
 	end_obj();
 
 	int res_id = alloc_obj();
 	begin_obj(res_id);
-	fprintf(fp_, "<< /XObject << /Img %d 0 R >> >>\n", img_id);
+	fprintf(fp_, "<< /XObject << /Img %d 0 R >>\n", img_id);
+	fprintf(fp_, "   /Font << /F1 %d 0 R >> >>\n", font_id_);
 	end_obj();
 
 	int page_id = alloc_obj();

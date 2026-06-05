@@ -42,7 +42,8 @@ void PrinterSim::feed(const uint8_t *data, size_t len)
 void PrinterSim::flush()
 {
 	if (page_dirty_ && page_) {
-		pdf_.add_page(*page_, prof_.render_dpi);
+		pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
+		text_buf_.clear();
 		page_dirty_ = false;
 	}
 }
@@ -56,6 +57,34 @@ void PrinterSim::new_page_if_needed()
 		st_.x_pos = st_.left_margin_in;
 		st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	}
+}
+
+static uint16_t intl_unicode(uint8_t ch, int charset)
+{
+	static constexpr uint16_t tbl[8][12] = {
+	//  #35    $36    @64    [91    \92    ]93    ^94    `96   {123   |124   }125   ~126
+	{     0,     0,0x00E0,0x00B0,0x00E7,0x00A7,     0,     0,0x00E9,0x00F9,0x00E8,0x00A8}, // France
+	{     0,     0,0x00A7,0x00C4,0x00D6,0x00DC,     0,     0,0x00E4,0x00F6,0x00FC,0x00DF}, // Germany
+	{0x00A3,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0,     0}, // UK
+	{     0,     0,     0,0x00C6,0x00D8,0x00C5,     0,     0,0x00E6,0x00F8,0x00E5,     0}, // Denmark
+	{     0,0x00A4,0x00C9,0x00C4,0x00D6,0x00C5,0x00DC,0x00E9,0x00E4,0x00F6,0x00E5,0x00FC}, // Sweden
+	{     0,     0,     0,0x00B0,     0,0x00E9,     0,0x00F9,0x00E0,0x00F2,0x00E8,0x00EC}, // Italy
+	{0x20A7,     0,     0,0x00A1,0x00D1,0x00BF,     0,     0,0x00A8,0x00F1,     0,     0}, // Spain
+	{     0,     0,     0,     0,0x00A5,     0,     0,     0,     0,     0,     0,     0}, // Japan
+	};
+	static constexpr uint8_t positions[12] = {
+		35, 36, 64, 91, 92, 93, 94, 96, 123, 124, 125, 126
+	};
+
+	if (charset < 1 || charset > 8) return ch;
+	for (int i = 0; i < 12; i++) {
+		if (ch == positions[i]) {
+			uint16_t u = tbl[charset - 1][i];
+			if (u != 0) return u;
+			break;
+		}
+	}
+	return ch;
 }
 
 static uint8_t intl_substitute(uint8_t ch, int charset)
@@ -107,6 +136,29 @@ void PrinterSim::emit_char(uint8_t ch)
 	}
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
+
+	{
+		uint16_t cp = ch;
+		if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F) {
+			static constexpr uint16_t mt_unicode[32] = {
+				0xF8FF,0xF8FF, // 0x40-41: closed/open apple (PUA)
+				0x2191,0x2193,0x2190,0x2192, // arrows
+				0x2588,0x2592,0x2590,0x258C, // blocks
+				0x2580,0x2584,0x2502,0x2500, // half blocks + lines
+				0x253C,0x2534,0x252C,0x251C, // box drawing
+				0x2524,0x250C,0x2510,0x2514, // corners
+				0x2518,0x2588,0x25A0,0x25C6, // box + diamond
+				0x2573,0x2592,0x2591,0x2593, // patterns
+			};
+			cp = mt_unicode[ch - 0x40];
+		} else if (st_.charset > 0 && st_.charset <= 8 && ch >= 0x20) {
+			cp = intl_unicode(ch, st_.charset);
+		}
+		if (cp >= 0x20) {
+			float sz = 72.0f / st_.pitch_cpi / 0.6f;
+			text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz});
+		}
+	}
 
 	if (st_.slashed_zero) {
 		if (ch == 0x30) ch = 0x7F;
@@ -182,7 +234,8 @@ void PrinterSim::line_feed()
 void PrinterSim::form_feed()
 {
 	if (page_ && page_dirty_) {
-		pdf_.add_page(*page_, prof_.render_dpi);
+		pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
+		text_buf_.clear();
 		page_dirty_ = false;
 	}
 	page_.reset();

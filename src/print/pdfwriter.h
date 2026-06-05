@@ -5,8 +5,11 @@
 
 #include "pagebuf.h"
 #include <cstdio>
+#include <cstdint>
 #include <string>
 #include <vector>
+
+struct TextGlyph;
 
 class PdfWriter {
 public:
@@ -16,7 +19,8 @@ public:
 	PdfWriter(const PdfWriter &) = delete;
 	PdfWriter &operator=(const PdfWriter &) = delete;
 
-	void add_page(const PageBitmap &bmp, int dpi);
+	void add_page(const PageBitmap &bmp, int dpi,
+	              const std::vector<TextGlyph> &text = {});
 	void finish();
 
 private:
@@ -33,6 +37,7 @@ private:
 
 	int catalog_id_ = 0;
 	int pages_id_ = 0;
+	int font_id_ = 0;
 	std::vector<int> page_ids_;
 
 	float page_w_pt_ = 612.0f;

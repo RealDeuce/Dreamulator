@@ -103,6 +103,13 @@ struct PrinterState {
 	int   tab_count = 0;
 };
 
+struct TextGlyph {
+	float x_in, y_in;
+	uint16_t codepoint;
+	float width_in;
+	float size_pt;
+};
+
 class DotRenderer;
 
 class PrinterSim {
@@ -135,6 +142,7 @@ protected:
 	std::unique_ptr<PageBitmap> page_;
 	std::unique_ptr<DotRenderer> dots_;
 	bool page_dirty_ = false;
+	std::vector<TextGlyph> text_buf_;
 };
 
 std::unique_ptr<PrinterSim> create_printer(PrinterModel model, PdfWriter &pdf);
