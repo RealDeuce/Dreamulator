@@ -17,11 +17,17 @@ PdfWriter::PdfWriter(const std::string &path)
 	catalog_id_ = alloc_obj();
 	pages_id_ = alloc_obj();
 
-	font_id_ = alloc_obj();
-	begin_obj(font_id_);
-	fprintf(fp_, "<< /Type /Font /Subtype /Type1 /BaseFont /Courier\n");
-	fprintf(fp_, "   /Encoding /WinAnsiEncoding >>\n");
-	end_obj();
+	static const char *font_names[4] = {
+		"Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"
+	};
+	for (int i = 0; i < 4; i++) {
+		font_ids_[i] = alloc_obj();
+		begin_obj(font_ids_[i]);
+		fprintf(fp_, "<< /Type /Font /Subtype /Type1 /BaseFont /%s\n",
+		        font_names[i]);
+		fprintf(fp_, "   /Encoding /WinAnsiEncoding >>\n");
+		end_obj();
+	}
 }
 
 PdfWriter::~PdfWriter()
@@ -107,11 +113,15 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 	if (!text.empty()) {
 		content += "BT\n3 Tr\n";
 		float cur_size = 0;
+		int cur_font = -1;
 		for (auto &g : text) {
-			if (g.size_pt != cur_size) {
-				snprintf(buf, sizeof(buf), "/F1 %.2f Tf\n", g.size_pt);
+			int font = (g.style & TextGlyph::BOLD) ? 1 : 0;
+			if (g.size_pt != cur_size || font != cur_font) {
+				snprintf(buf, sizeof(buf), "/F%d %.2f Tf\n",
+				         font + 1, g.size_pt);
 				content += buf;
 				cur_size = g.size_pt;
+				cur_font = font;
 			}
 			float px = g.x_in * 72.0f;
 			float py = page_h_pt_ - g.y_in * 72.0f;
@@ -134,7 +144,8 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 	int res_id = alloc_obj();
 	begin_obj(res_id);
 	fprintf(fp_, "<< /XObject << /Img %d 0 R >>\n", img_id);
-	fprintf(fp_, "   /Font << /F1 %d 0 R >> >>\n", font_id_);
+	fprintf(fp_, "   /Font << /F1 %d 0 R /F2 %d 0 R /F3 %d 0 R /F4 %d 0 R >> >>\n",
+	        font_ids_[0], font_ids_[1], font_ids_[2], font_ids_[3]);
 	end_obj();
 
 	int page_id = alloc_obj();

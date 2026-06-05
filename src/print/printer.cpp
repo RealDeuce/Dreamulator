@@ -156,7 +156,12 @@ void PrinterSim::emit_char(uint8_t ch)
 		}
 		if (cp >= 0x20) {
 			float sz = char_w_in * 72.0f / 0.6f;
-			text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz});
+			uint8_t sty = 0;
+			if (st_.bold) sty |= TextGlyph::BOLD;
+			if (st_.underline) sty |= TextGlyph::UNDERLINE;
+			if (st_.superscript) sty |= TextGlyph::SUPER;
+			if (st_.subscript) sty |= TextGlyph::SUB;
+			text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty});
 		}
 	}
 
