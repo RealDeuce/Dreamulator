@@ -945,6 +945,8 @@ void machine_pdf_start_serial(machine_t *m, const char *path, int model)
 	m->pdf_via_serial = true;
 	m->uart.tx_byte_cb = uart_pdf_tx;
 	m->uart.tx_byte_ctx = m;
+	m->uart.cts = true;
+	m->uart.dsr = true;
 
 	fprintf(stderr, "PDF printer (serial): %s -> %s\n", prof.name, path);
 }
