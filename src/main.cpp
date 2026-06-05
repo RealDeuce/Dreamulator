@@ -786,27 +786,92 @@ static bool show_fx_dip_dialog(PrinterConfig &cfg)
 	return true;
 }
 
+static PrinterConfig g_iw_cfg;
+static PrinterConfig g_fx_cfg;
+static bool g_printer_cfg_loaded = false;
+
+static void printer_cfg_load()
+{
+	if (g_printer_cfg_loaded) return;
+	g_printer_cfg_loaded = true;
+	g_iw_cfg = default_config_for(PrinterModel::ImageWriter);
+	g_fx_cfg = default_config_for(PrinterModel::EpsonFX);
+
+	g_iw_cfg.charset           = prefs_get_int("printer_iw", "charset", g_iw_cfg.charset);
+	int iw_pitch_x100          = prefs_get_int("printer_iw", "pitch", static_cast<int>(g_iw_cfg.pitch_cpi * 100.0f));
+	g_iw_cfg.pitch_cpi         = static_cast<float>(iw_pitch_x100) / 100.0f;
+	g_iw_cfg.page_length_lines = prefs_get_int("printer_iw", "pglen", g_iw_cfg.page_length_lines);
+	g_iw_cfg.perf_skip         = prefs_get_int("printer_iw", "perf_skip", g_iw_cfg.perf_skip);
+	g_iw_cfg.auto_lf           = prefs_get_int("printer_iw", "auto_lf", g_iw_cfg.auto_lf ? 1 : 0);
+	g_iw_cfg.font_mode         = prefs_get_int("printer_iw", "font_mode", g_iw_cfg.font_mode);
+	g_iw_cfg.slashed_zero      = prefs_get_int("printer_iw", "slashed", g_iw_cfg.slashed_zero ? 1 : 0);
+
+	g_fx_cfg.charset           = prefs_get_int("printer_fx", "charset", g_fx_cfg.charset);
+	int fx_pitch_x100          = prefs_get_int("printer_fx", "pitch", static_cast<int>(g_fx_cfg.pitch_cpi * 100.0f));
+	g_fx_cfg.pitch_cpi         = static_cast<float>(fx_pitch_x100) / 100.0f;
+	g_fx_cfg.perf_skip         = prefs_get_int("printer_fx", "perf_skip", g_fx_cfg.perf_skip);
+	g_fx_cfg.auto_lf           = prefs_get_int("printer_fx", "auto_lf", g_fx_cfg.auto_lf ? 1 : 0);
+	g_fx_cfg.emphasized        = prefs_get_int("printer_fx", "emph", g_fx_cfg.emphasized ? 1 : 0);
+	g_fx_cfg.slashed_zero      = prefs_get_int("printer_fx", "slashed", g_fx_cfg.slashed_zero ? 1 : 0);
+}
+
+static void printer_cfg_save_iw()
+{
+	prefs_set_int("printer_iw", "charset", g_iw_cfg.charset);
+	prefs_set_int("printer_iw", "pitch", static_cast<int>(g_iw_cfg.pitch_cpi * 100.0f));
+	prefs_set_int("printer_iw", "pglen", g_iw_cfg.page_length_lines);
+	prefs_set_int("printer_iw", "perf_skip", g_iw_cfg.perf_skip);
+	prefs_set_int("printer_iw", "auto_lf", g_iw_cfg.auto_lf ? 1 : 0);
+	prefs_set_int("printer_iw", "font_mode", g_iw_cfg.font_mode);
+	prefs_set_int("printer_iw", "slashed", g_iw_cfg.slashed_zero ? 1 : 0);
+}
+
+static void printer_cfg_save_fx()
+{
+	prefs_set_int("printer_fx", "charset", g_fx_cfg.charset);
+	prefs_set_int("printer_fx", "pitch", static_cast<int>(g_fx_cfg.pitch_cpi * 100.0f));
+	prefs_set_int("printer_fx", "perf_skip", g_fx_cfg.perf_skip);
+	prefs_set_int("printer_fx", "auto_lf", g_fx_cfg.auto_lf ? 1 : 0);
+	prefs_set_int("printer_fx", "emph", g_fx_cfg.emphasized ? 1 : 0);
+	prefs_set_int("printer_fx", "slashed", g_fx_cfg.slashed_zero ? 1 : 0);
+}
+
+static void cb_iw_dip_switches(Fl_Widget *, void *) {
+	printer_cfg_load();
+	if (show_iw_dip_dialog(g_iw_cfg)) {
+		printer_cfg_save_iw();
+		if (g_mach.pdf_printer &&
+		    g_mach.pdf_model == static_cast<int>(PrinterModel::ImageWriter))
+			g_mach.pdf_printer->apply_config(g_iw_cfg);
+	}
+}
+
+static void cb_fx_dip_switches(Fl_Widget *, void *) {
+	printer_cfg_load();
+	if (show_fx_dip_dialog(g_fx_cfg)) {
+		printer_cfg_save_fx();
+		if (g_mach.pdf_printer &&
+		    g_mach.pdf_model == static_cast<int>(PrinterModel::EpsonFX))
+			g_mach.pdf_printer->apply_config(g_fx_cfg);
+	}
+}
+
+static PrinterConfig &config_for_model(PrinterModel pm)
+{
+	printer_cfg_load();
+	if (pm == PrinterModel::ImageWriter) return g_iw_cfg;
+	return g_fx_cfg;
+}
+
 static void cb_printer_pdf(Fl_Widget *, void *v) {
 	int model = (int)(intptr_t)v;
-	auto pm = static_cast<PrinterModel>(model);
-	PrinterConfig cfg = default_config_for(pm);
-
-	bool ok;
-	if (pm == PrinterModel::ImageWriter)
-		ok = show_iw_dip_dialog(cfg);
-	else if (pm == PrinterModel::EpsonFX)
-		ok = show_fx_dip_dialog(cfg);
-	else
-		ok = true;
-
-	if (!ok) return;
-
 	const char *path = fl_file_chooser("PDF Output", "*.pdf", "printer.pdf");
 	if (!path) return;
 
+	auto pm = static_cast<PrinterModel>(model);
 	machine_pdf_start(&g_mach, path, model);
 	if (g_mach.pdf_printer)
-		g_mach.pdf_printer->apply_config(cfg);
+		g_mach.pdf_printer->apply_config(config_for_model(pm));
 }
 
 static void cb_printer_pdf_finish(Fl_Widget *, void *) {
@@ -1064,6 +1129,8 @@ int main(int argc, char *argv[])
 	menu->add("M&edia/PDF Printer/HP JET...",       0, cb_printer_pdf, (void *)5);
 	menu->add("M&edia/PDF Printer/ImageWriter...",  0, cb_printer_pdf, (void *)6);
 	menu->add("M&edia/PDF Printer/Finish PDF",      0, cb_printer_pdf_finish);
+	menu->add("M&edia/Printer Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
+	menu->add("M&edia/Printer Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
 
 	menu->add("&Serial/Connect PTY",       0, cb_serial_pty);
 	menu->add("&Serial/Connect TCP...",    0, cb_serial_tcp);
