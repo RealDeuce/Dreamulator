@@ -200,6 +200,11 @@ static void emu_tick(void *)
 	g_mach.cpu.trace_enabled = (g_dbg_regs && g_dbg_regs->visible_r());
 	sync_dock_height();
 	machine_step(&g_mach, cycles);
+	if (machine_pdf_check_idle(&g_mach, 5)) {
+		if (g_mach.cent_backend == CentBackend::Pdf)
+			g_mach.cent_backend = CentBackend::File;
+		fprintf(stderr, "PDF printer: auto-finished (idle timeout)\n");
+	}
 	g_lcd->redraw();
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, nullptr);
 }

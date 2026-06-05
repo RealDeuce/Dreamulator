@@ -555,6 +555,8 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 				if (m->pdf_printer) {
 					uint8_t b = m->cent_data;
 					m->pdf_printer->feed(&b, 1);
+					m->pdf_idle_cycles = 0;
+					m->pdf_active = true;
 				}
 				break;
 			default:
@@ -669,6 +671,9 @@ void machine_step(machine_t *m, int cycles)
 			rtc_tick(&m->rtc);
 			m->rtc_timer_cycles += CPU_CLOCK;
 		}
+
+		if (m->pdf_active)
+			m->pdf_idle_cycles += ran;
 	}
 }
 
@@ -902,7 +907,11 @@ void machine_pdf_start(machine_t *m, const char *path, int model)
 
 	m->pdf_writer = std::make_unique<PdfWriter>(path);
 	m->pdf_printer = create_printer(pm, *m->pdf_writer);
+	PrinterConfig cfg = default_config_for(pm);
+	m->pdf_printer->apply_config(cfg);
 	m->pdf_model = model;
+	m->pdf_active = false;
+	m->pdf_idle_cycles = 0;
 	m->cent_backend = CentBackend::Pdf;
 
 	fprintf(stderr, "PDF printer: %s -> %s\n", prof.name, path);
@@ -918,4 +927,17 @@ void machine_pdf_finish(machine_t *m)
 		m->pdf_writer->finish();
 		m->pdf_writer.reset();
 	}
+	m->pdf_active = false;
+	m->pdf_idle_cycles = 0;
+}
+
+bool machine_pdf_check_idle(machine_t *m, int timeout_seconds)
+{
+	if (!m->pdf_active || !m->pdf_printer)
+		return false;
+	if (m->pdf_idle_cycles > CPU_CLOCK * timeout_seconds) {
+		machine_pdf_finish(m);
+		return true;
+	}
+	return false;
 }

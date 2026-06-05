@@ -110,6 +110,8 @@ struct machine_t {
 	std::unique_ptr<PdfWriter>   pdf_writer;
 	std::unique_ptr<PrinterSim>  pdf_printer;
 	int      pdf_model = 3;
+	int      pdf_idle_cycles = 0;
+	bool     pdf_active = false;
 
 	uint8_t  *pccard = nullptr;
 	uint32_t pccard_size = 0;
@@ -150,5 +152,6 @@ void machine_close_pccard(machine_t *m);
 
 void machine_pdf_start(machine_t *m, const char *path, int model);
 void machine_pdf_finish(machine_t *m);
+bool machine_pdf_check_idle(machine_t *m, int timeout_seconds = 5);
 
 #endif
