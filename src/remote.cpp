@@ -219,7 +219,7 @@ static void process_command(const char *cmd)
 	}
 	else if (!strcmp(cmd, "quit")) {
 		close(g_client_fd);
-		Fl::remove_fd(g_client_fd);
+		Fl::remove_fd((FL_SOCKET)g_client_fd);
 		g_client_fd = -1;
 		g_linepos = 0;
 		fprintf(stderr, "Remote: client disconnected\n");
@@ -229,13 +229,13 @@ static void process_command(const char *cmd)
 	}
 }
 
-static void client_cb(int fd, void *)
+static void client_cb(FL_SOCKET fd, void *)
 {
 	char buf[256];
 	ssize_t n = read(fd, buf, sizeof(buf));
 	if (n <= 0) {
 		close(fd);
-		Fl::remove_fd(fd);
+		Fl::remove_fd((FL_SOCKET)fd);
 		g_client_fd = -1;
 		g_linepos = 0;
 		fprintf(stderr, "Remote: client disconnected\n");
@@ -255,7 +255,7 @@ static void client_cb(int fd, void *)
 	}
 }
 
-static void listen_cb(int fd, void *)
+static void listen_cb(FL_SOCKET fd, void *)
 {
 	if (g_client_fd >= 0) {
 		int tmp = accept(fd, nullptr, nullptr);
@@ -271,7 +271,7 @@ static void listen_cb(int fd, void *)
 	if (g_client_fd < 0) return;
 
 	set_nonblock(g_client_fd);
-	Fl::add_fd(g_client_fd, FL_READ, client_cb, nullptr);
+	Fl::add_fd((FL_SOCKET)g_client_fd, FL_READ, client_cb, nullptr);
 	g_linepos = 0;
 	fprintf(stderr, "Remote: client connected\n");
 	rsend("dreamulator remote control. Type 'help' for commands.\n");
@@ -302,12 +302,12 @@ void remote_init(machine_t *mach, int port)
 
 	set_nonblock(fd);
 	g_listen_fd = fd;
-	Fl::add_fd(fd, FL_READ, listen_cb, nullptr);
+	Fl::add_fd((FL_SOCKET)fd, FL_READ, listen_cb, nullptr);
 	fprintf(stderr, "Remote: listening on port %d\n", port);
 }
 
 void remote_shutdown(void)
 {
-	if (g_client_fd >= 0) { Fl::remove_fd(g_client_fd); close(g_client_fd); g_client_fd = -1; }
-	if (g_listen_fd >= 0) { Fl::remove_fd(g_listen_fd); close(g_listen_fd); g_listen_fd = -1; }
+	if (g_client_fd >= 0) { Fl::remove_fd((FL_SOCKET)g_client_fd); close(g_client_fd); g_client_fd = -1; }
+	if (g_listen_fd >= 0) { Fl::remove_fd((FL_SOCKET)g_listen_fd); close(g_listen_fd); g_listen_fd = -1; }
 }

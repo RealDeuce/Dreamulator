@@ -2,6 +2,10 @@
 #ifndef COMPAT_UNISTD_H
 #define COMPAT_UNISTD_H
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
 #include <io.h>
 #include <process.h>
 #include <stdint.h>
@@ -10,6 +14,7 @@
 
 #ifdef _MSC_VER
 typedef SSIZE_T ssize_t;
+typedef long off_t;
 #define strcasecmp  _stricmp
 #define strncasecmp _strnicmp
 #endif
@@ -50,13 +55,13 @@ static inline int ftruncate(int fd, off_t length)
 
 static inline unsigned int sleep(unsigned int seconds)
 {
-    _sleep(seconds * 1000);
+    Sleep(seconds * 1000);
     return 0;
 }
 
 static inline void usleep(unsigned long usec)
 {
-    _sleep((unsigned long)(usec / 1000));
+    Sleep((DWORD)(usec / 1000));
 }
 
 #ifdef __cplusplus

@@ -9,7 +9,17 @@
 #include <string>
 #include <vector>
 
-struct TextGlyph;
+struct TextGlyph {
+	float x_in, y_in;
+	uint16_t codepoint;
+	float width_in;
+	float size_pt;
+	uint8_t style;
+	static constexpr uint8_t BOLD      = 1;
+	static constexpr uint8_t UNDERLINE = 2;
+	static constexpr uint8_t SUPER     = 4;
+	static constexpr uint8_t SUB       = 8;
+};
 
 class PdfWriter {
 public:
