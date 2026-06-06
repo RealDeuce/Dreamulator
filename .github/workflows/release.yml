@@ -49,14 +49,14 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/cache@v5
         with:
-          path: .fetchcontent
+          path: ${{ github.workspace }}/.fetchcontent
           key: fetchcontent-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
           restore-keys: fetchcontent-${{ runner.os }}-
 
       - name: Configure
         run: >
           cmake -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev
-          ${{ runner.os == 'Windows' && '-DFETCHCONTENT_BASE_DIR=.fetchcontent' || '' }}
+          ${{ runner.os == 'Windows' && format('-DFETCHCONTENT_BASE_DIR={0}/.fetchcontent', github.workspace) || '' }}
 
       - name: Build
         run: cmake --build build --config Release
