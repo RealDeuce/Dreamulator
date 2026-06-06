@@ -212,6 +212,7 @@ static void emu_tick(void *)
 		fprintf(stderr, "PDF printer: auto-finished (idle timeout)\n");
 	}
 	g_lcd->redraw();
+	if (g_dbg_periph && g_dbg_periph->visible_r()) g_dbg_periph->refresh();
 	Fl::repeat_timeout((g_speed == 3) ? 0.001 : 1.0/60.0, emu_tick, nullptr);
 }
 
