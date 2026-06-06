@@ -45,6 +45,10 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install fltk portaudio zlib
 
+      - name: Install NSIS (Windows)
+        if: runner.os == 'Windows'
+        run: choco install nsis -y
+
       - name: Cache FetchContent (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v5
