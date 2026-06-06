@@ -120,7 +120,12 @@ target_link_libraries(dreamulator PRIVATE
 )
 
 if(WIN32)
+    target_compile_definitions(dreamulator PRIVATE WIN32_LEAN_AND_MEAN)
     target_link_libraries(dreamulator PRIVATE ws2_32 ole32 uuid comctl32 comdlg32)
+endif()
+if(MSVC)
+    target_compile_definitions(dreamulator PRIVATE
+        strcasecmp=_stricmp strncasecmp=_strnicmp)
 endif()
 
 if(PORTAUDIO_FOUND)
@@ -205,9 +210,14 @@ add_executable(dreamprint ${DREAMPRINT_SOURCES})
 target_link_libraries(dreamprint PRIVATE ZLIB::ZLIB)
 
 if(WIN32)
+    target_compile_definitions(dreamprint PRIVATE WIN32_LEAN_AND_MEAN)
     target_include_directories(dreamprint BEFORE PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/compat)
     target_link_libraries(dreamprint PRIVATE ws2_32)
+endif()
+if(MSVC)
+    target_compile_definitions(dreamprint PRIVATE
+        strcasecmp=_stricmp strncasecmp=_strnicmp)
 endif()
 
 # Apply same hardening flags to dreamprint

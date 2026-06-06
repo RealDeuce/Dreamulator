@@ -10,6 +10,8 @@
 
 #ifdef _MSC_VER
 typedef SSIZE_T ssize_t;
+#define strcasecmp  _stricmp
+#define strncasecmp _strnicmp
 #endif
 
 #ifndef O_NONBLOCK

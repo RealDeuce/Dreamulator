@@ -21,7 +21,7 @@ jobs:
     name: ${{ matrix.name }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -34,11 +34,15 @@ jobs:
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install fltk portaudio zlib
+        run: brew install fltk portaudio zlib pkg-config
+
+      - name: Set Homebrew paths (macOS)
+        if: runner.os == 'macOS'
+        run: echo "CMAKE_PREFIX_PATH=$(brew --prefix)" >> "$GITHUB_ENV"
 
       - name: Cache FetchContent (Windows)
         if: runner.os == 'Windows'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: build/_deps
           key: fetchcontent-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
@@ -50,7 +54,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dreamulator-${{ matrix.name }}
           path: |
