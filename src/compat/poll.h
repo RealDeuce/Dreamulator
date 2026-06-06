@@ -1,15 +1,12 @@
-// POSIX poll.h shim for Windows/mingw-w64
+// POSIX poll.h shim for Windows
 #ifndef COMPAT_POLL_H
 #define COMPAT_POLL_H
 
 #include <winsock2.h>
 
 #ifndef POLLIN
-#define POLLIN   0x0100
-#define POLLOUT  0x0010
-#define POLLERR  0x0001
-#define POLLHUP  0x0002
-#define POLLNVAL 0x0004
+#define POLLIN  0x0100
+#define POLLOUT 0x0010
 #endif
 
 struct pollfd {
@@ -20,10 +17,11 @@ struct pollfd {
 
 static inline int poll(struct pollfd *fds, unsigned long nfds, int timeout)
 {
-    WSAPOLLFD wfds[16];
-    if (nfds > 16) nfds = 16;
+    if (nfds == 0) return 0;
+    WSAPOLLFD wfds[4];
+    if (nfds > 4) nfds = 4;
     for (unsigned long i = 0; i < nfds; i++) {
-        wfds[i].fd = (SOCKET)(intptr_t)fds[i].fd;
+        wfds[i].fd = (SOCKET)(uintptr_t)fds[i].fd;
         wfds[i].events = fds[i].events;
         wfds[i].revents = 0;
     }
