@@ -8,10 +8,17 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <direct.h>
+#include <io.h>
 #define mkdir(p, m) _mkdir(p)
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
 #else
 #include <unistd.h>
 #include <libgen.h>
+#endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
 #endif
 
 static char g_data_dir[1024];
