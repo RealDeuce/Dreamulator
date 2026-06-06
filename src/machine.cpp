@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd, MAMEDev (Wilbert Pol, Sandro Ronco)
 #include "machine.h"
 #include "dbg_periph.h"
+#include "paths.h"
 #include "print/printer.h"
 #include <algorithm>
 
@@ -572,8 +573,10 @@ static void io_write(void *ctx, uint16_t port, uint8_t val)
 				}
 				break;
 			default:
-				if (!m->printer)
-					m->printer.reset(fopen("printer.out", "ab"));
+				if (!m->printer) {
+					char pout[1024]; make_data_path("printer.out", pout, sizeof(pout));
+					m->printer.reset(fopen(pout, "ab"));
+				}
 				if (m->printer) {
 					fputc(m->cent_data, m->printer.get());
 					fflush(m->printer.get());

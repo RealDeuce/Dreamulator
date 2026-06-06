@@ -29,6 +29,7 @@
 #endif
 
 #include "machine.h"
+#include "paths.h"
 #include "print/printer.h"
 #include "prefs.h"
 #include "dbg_regs.h"
@@ -587,7 +588,8 @@ static void cb_new_pccard(Fl_Widget *, void *) {
 	if (!pick) return;
 	int idx = (int)(pick - popup);
 
-	const char *path = fl_file_chooser("Save New PC Card As", "*", "card.bin");
+	char default_card[1024]; make_data_path("card.bin", default_card, sizeof(default_card));
+	const char *path = fl_file_chooser("Save New PC Card As", "*", default_card);
 	if (!path) return;
 
 	int fd = open(path, O_RDWR | O_CREAT | O_TRUNC, 0644);
@@ -619,7 +621,8 @@ static void cb_insert_floppy(Fl_Widget *, void *) {
 }
 
 static void cb_new_floppy(Fl_Widget *, void *) {
-	const char *path = fl_file_chooser("Save New Floppy As", "*.img", "floppy.img");
+	char default_floppy[1024]; make_data_path("floppy.img", default_floppy, sizeof(default_floppy));
+	const char *path = fl_file_chooser("Save New Floppy As", "*.img", default_floppy);
 	if (!path) return;
 
 	FILE *f = fopen(path, "wb");
@@ -861,7 +864,8 @@ static PrinterConfig &config_for_model(PrinterModel pm)
 
 static void cb_printer_pdf(Fl_Widget *, void *v) {
 	int model = (int)(intptr_t)v;
-	const char *path = fl_file_chooser("PDF Output", "*.pdf", "printer.pdf");
+	char default_pdf[1024]; make_data_path("printer.pdf", default_pdf, sizeof(default_pdf));
+	const char *path = fl_file_chooser("PDF Output", "*.pdf", default_pdf);
 	if (!path) return;
 
 	auto pm = static_cast<PrinterModel>(model);
@@ -872,7 +876,8 @@ static void cb_printer_pdf(Fl_Widget *, void *v) {
 
 static void cb_printer_pdf_serial(Fl_Widget *, void *v) {
 	int model = (int)(intptr_t)v;
-	const char *path = fl_file_chooser("PDF Output", "*.pdf", "printer.pdf");
+	char default_pdf[1024]; make_data_path("printer.pdf", default_pdf, sizeof(default_pdf));
+	const char *path = fl_file_chooser("PDF Output", "*.pdf", default_pdf);
 	if (!path) return;
 
 	auto pm = static_cast<PrinterModel>(model);
@@ -925,7 +930,15 @@ static void cb_speed(Fl_Widget *, void *v) {
 /* ---- NVRAM path helper ---- */
 
 static void make_nvram_path(const char *rom, char *out, size_t sz) {
-	snprintf(out, sz, "%s.nvram", rom);
+	const char *base = strrchr(rom, '/');
+#ifdef _WIN32
+	const char *base2 = strrchr(rom, '\\');
+	if (base2 && (!base || base2 > base)) base = base2;
+#endif
+	base = base ? base + 1 : rom;
+	make_data_path("", out, sz);
+	size_t len = strlen(out);
+	snprintf(out + len, sz - len, "%s.nvram", base);
 }
 
 /* ---- main ---- */
@@ -982,12 +995,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	/* romdir default */
-	if (!romdir) {
-		struct stat st;
-		if (stat("roms", &st) == 0 && S_ISDIR(st.st_mode))
-			romdir = "roms";
-	}
+	/* romdir: search --romdir > data dir > install dir > ./roms */
+	romdir = find_rom_dir(romdir);
 
 	/* scan romdir */
 	static char found_path[1024];

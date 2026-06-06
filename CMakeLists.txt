@@ -101,6 +101,7 @@ set(EMU_SOURCES
     src/main.cpp
     src/v20.cpp
     src/machine.cpp
+    src/paths.cpp
     src/uart.cpp
     src/fdc.cpp
     src/dis86.cpp

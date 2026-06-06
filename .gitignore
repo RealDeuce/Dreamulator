@@ -1,6 +1,10 @@
 *.o
 *.d
 *.nvram
-printer.out
+*.out
+*.pdf
 /build/
+/build-*/
 /card.bin
+/proms/
+/hack.py
