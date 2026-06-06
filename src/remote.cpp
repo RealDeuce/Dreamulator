@@ -19,8 +19,8 @@
 #include "remote.h"
 
 static machine_t *g_mach;
-static int g_listen_fd = -1;
-static int g_client_fd = -1;
+static FL_SOCKET g_listen_fd = -1;
+static FL_SOCKET g_client_fd = -1;
 static char g_linebuf[1024];
 static int g_linepos = 0;
 

@@ -11,15 +11,15 @@
 #include <string.h>
 #include <stdlib.h>
 
-typedef struct compat_dirent {
+struct dirent {
     char d_name[MAX_PATH];
-} dirent;
+};
 
-typedef struct compat_DIR {
-    HANDLE               hFind;
-    WIN32_FIND_DATAA     fdata;
-    struct compat_dirent ent;
-    int                  first;
+typedef struct {
+    HANDLE         hFind;
+    WIN32_FIND_DATAA fdata;
+    struct dirent  ent;
+    int            first;
 } DIR;
 
 static inline DIR *opendir(const char *path)
@@ -34,7 +34,7 @@ static inline DIR *opendir(const char *path)
     return d;
 }
 
-static inline struct compat_dirent *readdir(DIR *d)
+static inline struct dirent *readdir(DIR *d)
 {
     if (d->first) {
         d->first = 0;

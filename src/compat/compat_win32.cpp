@@ -16,29 +16,29 @@
 // --- socket tracking ---
 
 #define MAX_SOCKETS 64
-static int g_socket_fds[MAX_SOCKETS];
+static SOCKET g_socket_fds[MAX_SOCKETS];
 static int g_socket_count;
 
-void compat_register_socket(int fd)
+void compat_register_socket(SOCKET s)
 {
     if (g_socket_count < MAX_SOCKETS)
-        g_socket_fds[g_socket_count++] = fd;
+        g_socket_fds[g_socket_count++] = s;
 }
 
-void compat_unregister_socket(int fd)
+void compat_unregister_socket(SOCKET s)
 {
     for (int i = 0; i < g_socket_count; i++) {
-        if (g_socket_fds[i] == fd) {
+        if (g_socket_fds[i] == s) {
             g_socket_fds[i] = g_socket_fds[--g_socket_count];
             return;
         }
     }
 }
 
-extern "C" int compat_is_socket(int fd)
+extern "C" int compat_is_socket(SOCKET s)
 {
     for (int i = 0; i < g_socket_count; i++)
-        if (g_socket_fds[i] == fd) return 1;
+        if (g_socket_fds[i] == s) return 1;
     return 0;
 }
 
@@ -108,7 +108,7 @@ int msync(void *addr, size_t length, int flags)
 
 #include "unistd.h"
 
-extern "C" int fcntl(int fd, int cmd, ...)
+extern "C" int fcntl(SOCKET fd, int cmd, ...)
 {
     if (cmd == F_SETFL) {
         va_list ap;
@@ -117,7 +117,7 @@ extern "C" int fcntl(int fd, int cmd, ...)
         va_end(ap);
         if (compat_is_socket(fd)) {
             u_long mode = (flags & O_NONBLOCK) ? 1 : 0;
-            ioctlsocket((SOCKET)(intptr_t)fd, FIONBIO, &mode);
+            ioctlsocket(fd, FIONBIO, &mode);
         }
         return 0;
     }

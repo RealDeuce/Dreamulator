@@ -3,6 +3,7 @@
 #ifndef UART_H
 #define UART_H
 
+#include <FL/Fl.H>
 #include <cstdint>
 #include <string>
 
@@ -33,8 +34,8 @@ struct uart_t {
 	bool     prev_rxrdy = false;
 
 	UartBackend backend = UartBackend::Pty;
-	int      fd = -1;
-	int      listen_fd = -1;
+	FL_SOCKET fd = -1;
+	FL_SOCKET listen_fd = -1;
 	std::string path;
 
 	uart_signal_fn txrdy_cb = nullptr;

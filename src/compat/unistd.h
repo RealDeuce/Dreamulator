@@ -6,6 +6,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <winsock2.h>
 #include <io.h>
 #include <process.h>
 #include <stdint.h>
@@ -35,17 +36,33 @@ typedef long off_t;
 #define F_SETFL    4
 #endif
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-static inline int compat_close(int fd);
-static inline ssize_t compat_read(int fd, void *buf, size_t count);
-static inline ssize_t compat_write(int fd, const void *buf, size_t count);
+int  compat_is_socket(SOCKET s);
+int  fcntl(SOCKET fd, int cmd, ...);
 
-int  compat_is_socket(int fd);
-int  fcntl(int fd, int cmd, ...);
+static inline int compat_close(SOCKET fd)
+{
+    if (compat_is_socket(fd))
+        return closesocket(fd);
+    return _close((int)fd);
+}
+
+static inline ssize_t compat_read(SOCKET fd, void *buf, size_t count)
+{
+    if (compat_is_socket(fd))
+        return recv(fd, (char *)buf, (int)count, 0);
+    return _read((int)fd, buf, (unsigned int)count);
+}
+
+static inline ssize_t compat_write(SOCKET fd, const void *buf, size_t count)
+{
+    if (compat_is_socket(fd))
+        return send(fd, (const char *)buf, (int)count, 0);
+    return _write((int)fd, buf, (unsigned int)count);
+}
 
 #define close   compat_close
 #define read    compat_read
@@ -65,37 +82,6 @@ static inline unsigned int sleep(unsigned int seconds)
 static inline void usleep(unsigned long usec)
 {
     Sleep((DWORD)(usec / 1000));
-}
-
-#ifdef __cplusplus
-}
-#endif
-
-#include <winsock2.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-static inline int compat_close(int fd)
-{
-    if (compat_is_socket(fd))
-        return closesocket((SOCKET)(intptr_t)fd);
-    return _close(fd);
-}
-
-static inline ssize_t compat_read(int fd, void *buf, size_t count)
-{
-    if (compat_is_socket(fd))
-        return recv((SOCKET)(intptr_t)fd, (char *)buf, (int)count, 0);
-    return _read(fd, buf, (unsigned int)count);
-}
-
-static inline ssize_t compat_write(int fd, const void *buf, size_t count)
-{
-    if (compat_is_socket(fd))
-        return send((SOCKET)(intptr_t)fd, (const char *)buf, (int)count, 0);
-    return _write(fd, buf, (unsigned int)count);
 }
 
 #ifdef __cplusplus
