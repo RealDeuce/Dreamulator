@@ -34,8 +34,8 @@ struct uart_t {
 	bool     prev_rxrdy = false;
 
 	UartBackend backend = UartBackend::Pty;
-	FL_SOCKET fd = -1;
-	FL_SOCKET listen_fd = -1;
+	FL_SOCKET fd = (FL_SOCKET)-1;
+	FL_SOCKET listen_fd = (FL_SOCKET)-1;
 	std::string path;
 
 	uart_signal_fn txrdy_cb = nullptr;

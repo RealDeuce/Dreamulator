@@ -44,9 +44,7 @@ jobs:
           key: fetchcontent-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
-        run: >
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev
-          ${{ runner.os == 'macOS' && format('-DCMAKE_PREFIX_PATH={0}', '/opt/homebrew') || '' }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev
 
       - name: Build
         run: cmake --build build --config Release
