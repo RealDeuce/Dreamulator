@@ -1,5 +1,8 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.14...4.0)
 project(dreamulator VERSION 1.0.0 LANGUAGES C CXX)
+
+# Allow FetchContent deps with old cmake_minimum_required (e.g. PortAudio 19.7)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "")
 
 set(CMAKE_CXX_STANDARD 20)
 
