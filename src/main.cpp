@@ -636,14 +636,6 @@ static void cb_eject_floppy(Fl_Widget *, void *) {
 	g_floppy_path[0] = 0;
 }
 
-static void cb_printer_file(Fl_Widget *, void *) {
-	const char *path = fl_file_chooser("Printer Output", "*", "printer.out");
-	if (path) {
-		machine_pdf_finish(&g_mach);
-		g_mach.cent_backend = CentBackend::File;
-		g_mach.printer.reset(fopen(path, "ab"));
-	}
-}
 
 static bool show_iw_dip_dialog(PrinterConfig &cfg)
 {
@@ -1134,19 +1126,17 @@ int main(int argc, char *argv[])
 		menu->add("M&edia/New Floppy...",      0, cb_new_floppy);
 		menu->add("M&edia/Eject Floppy",       0, cb_eject_floppy);
 	}
-	menu->add("M&edia/Printer Output...",  0, cb_printer_file);
-	menu->add("M&edia/PDF Printer/IBM X24E...",     0, cb_printer_pdf, (void *)0);
-	menu->add("M&edia/PDF Printer/IBM XIII...",      0, cb_printer_pdf, (void *)1);
-	menu->add("M&edia/PDF Printer/Epson LQ...",     0, cb_printer_pdf, (void *)2);
-	menu->add("M&edia/PDF Printer/Epson FX...",     0, cb_printer_pdf, (void *)3);
-	menu->add("M&edia/PDF Printer/Canon BJ-10e...", 0, cb_printer_pdf, (void *)4);
-	menu->add("M&edia/PDF Printer/HP JET...",       0, cb_printer_pdf, (void *)5);
-	menu->add("M&edia/PDF Printer/ImageWriter...",  0, cb_printer_pdf, (void *)6);
-	menu->add("M&edia/PDF Printer/Finish PDF",      0, cb_printer_pdf_finish);
-	menu->add("M&edia/Serial Printer/ImageWriter (serial)...", 0, cb_printer_pdf_serial, (void *)6);
-	menu->add("M&edia/Serial Printer/Finish PDF",              0, cb_printer_pdf_finish);
-	menu->add("M&edia/Printer Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
-	menu->add("M&edia/Printer Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
+	//menu->add("&Printer/Parallel/IBM X24E...",     0, cb_printer_pdf, (void *)0);
+	//menu->add("&Printer/Parallel/IBM XIII...",      0, cb_printer_pdf, (void *)1);
+	//menu->add("&Printer/Parallel/Epson LQ...",     0, cb_printer_pdf, (void *)2);
+	menu->add("&Printer/Parallel/Epson FX-80...",          0, cb_printer_pdf, (void *)3);
+	//menu->add("&Printer/Parallel/Canon BJ-10e...", 0, cb_printer_pdf, (void *)4);
+	//menu->add("&Printer/Parallel/HP JET...",       0, cb_printer_pdf, (void *)5);
+	menu->add("&Printer/Parallel/Apple ImageWriter II...", 0, cb_printer_pdf, (void *)6);
+	menu->add("&Printer/Serial/Apple ImageWriter II...",   0, cb_printer_pdf_serial, (void *)6);
+	menu->add("&Printer/Finish PDF",               0, cb_printer_pdf_finish);
+	menu->add("&Printer/Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
+	menu->add("&Printer/Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
 
 	menu->add("&Serial/Connect PTY",       0, cb_serial_pty);
 	menu->add("&Serial/Connect TCP...",    0, cb_serial_tcp);
