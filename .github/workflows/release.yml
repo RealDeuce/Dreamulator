@@ -41,16 +41,12 @@ jobs:
             libxcursor-dev libxrender-dev libxfixes-dev \
             libpango1.0-dev libgl1-mesa-dev libglu1-mesa-dev
 
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: brew install fltk portaudio zlib
-
       - name: Install NSIS (Windows)
         if: runner.os == 'Windows'
         run: choco install nsis -y
 
-      - name: Cache FetchContent (Windows)
-        if: runner.os == 'Windows'
+      - name: Cache FetchContent
+        if: runner.os != 'Linux'
         uses: actions/cache@v5
         with:
           path: ${{ github.workspace }}/.fetchcontent
@@ -60,7 +56,7 @@ jobs:
       - name: Configure
         run: >
           cmake -B build -DCMAKE_BUILD_TYPE=Release -Wno-dev
-          ${{ runner.os == 'Windows' && format('-DFETCHCONTENT_BASE_DIR={0}/.fetchcontent', github.workspace) || '' }}
+          ${{ runner.os != 'Linux' && format('-DFETCHCONTENT_BASE_DIR={0}/.fetchcontent', github.workspace) || '' }}
 
       - name: Build
         run: cmake --build build --config Release
