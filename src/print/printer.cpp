@@ -177,6 +177,69 @@ static uint8_t intl_substitute_iw(uint8_t ch, int charset)
 	return ch;
 }
 
+static uint16_t try_compose(uint16_t a, uint16_t b)
+{
+	for (int pass = 0; pass < 2; pass++) {
+		uint16_t base = pass ? b : a;
+		uint16_t acc  = pass ? a : b;
+		uint16_t r = 0;
+		switch (acc) {
+		case 0x27: // apostrophe → acute
+			switch (base) {
+			case 'a': r=0xE1; break; case 'e': r=0xE9; break;
+			case 'i': r=0xED; break; case 'o': r=0xF3; break;
+			case 'u': r=0xFA; break; case 'y': r=0xFD; break;
+			case 'A': r=0xC1; break; case 'E': r=0xC9; break;
+			case 'I': r=0xCD; break; case 'O': r=0xD3; break;
+			case 'U': r=0xDA; break; case 'Y': r=0xDD; break;
+			} break;
+		case 0x60: // backtick → grave
+			switch (base) {
+			case 'a': r=0xE0; break; case 'e': r=0xE8; break;
+			case 'i': r=0xEC; break; case 'o': r=0xF2; break;
+			case 'u': r=0xF9; break;
+			case 'A': r=0xC0; break; case 'E': r=0xC8; break;
+			case 'I': r=0xCC; break; case 'O': r=0xD2; break;
+			case 'U': r=0xD9; break;
+			} break;
+		case 0x5E: // caret → circumflex
+			switch (base) {
+			case 'a': r=0xE2; break; case 'e': r=0xEA; break;
+			case 'i': r=0xEE; break; case 'o': r=0xF4; break;
+			case 'u': r=0xFB; break;
+			case 'A': r=0xC2; break; case 'E': r=0xCA; break;
+			case 'I': r=0xCE; break; case 'O': r=0xD4; break;
+			case 'U': r=0xDB; break;
+			} break;
+		case 0x7E: // tilde
+			switch (base) {
+			case 'n': r=0xF1; break; case 'N': r=0xD1; break;
+			case 'a': r=0xE3; break; case 'o': r=0xF5; break;
+			case 'A': r=0xC3; break; case 'O': r=0xD5; break;
+			} break;
+		case 0xA8: // ¨ diaeresis
+			switch (base) {
+			case 'a': r=0xE4; break; case 'e': r=0xEB; break;
+			case 'i': r=0xEF; break; case 'o': r=0xF6; break;
+			case 'u': r=0xFC; break; case 'y': r=0xFF; break;
+			case 'A': r=0xC4; break; case 'E': r=0xCB; break;
+			case 'I': r=0xCF; break; case 'O': r=0xD6; break;
+			case 'U': r=0xDC; break;
+			} break;
+		case 0x2C: // comma → cedilla
+			switch (base) {
+			case 'c': r=0xE7; break; case 'C': r=0xC7; break;
+			} break;
+		case 0x2F: // slash → stroke
+			switch (base) {
+			case 'o': r=0xF8; break; case 'O': r=0xD8; break;
+			} break;
+		}
+		if (r) return r;
+	}
+	return 0;
+}
+
 void PrinterSim::emit_char(uint8_t ch)
 {
 	new_page_if_needed();
@@ -226,7 +289,17 @@ void PrinterSim::emit_char(uint8_t ch)
 			if (st_.underline) sty |= TextGlyph::UNDERLINE;
 			if (st_.superscript) sty |= TextGlyph::SUPER;
 			if (st_.subscript) sty |= TextGlyph::SUB;
-			text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty});
+			bool composed = false;
+			if (!text_buf_.empty()) {
+				auto &prev = text_buf_.back();
+				if (fabsf(prev.x_in - st_.x_pos) < 0.01f &&
+				    fabsf(prev.y_in - st_.y_pos) < 0.01f) {
+					uint16_t c = try_compose(prev.codepoint, cp);
+					if (c) { prev.codepoint = c; composed = true; }
+				}
+			}
+			if (!composed)
+				text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty});
 		}
 	}
 
