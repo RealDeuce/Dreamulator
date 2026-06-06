@@ -52,7 +52,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: dreamulator-${{ matrix.name }}
           path: |

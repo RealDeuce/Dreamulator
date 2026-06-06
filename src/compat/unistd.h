@@ -17,6 +17,9 @@ typedef SSIZE_T ssize_t;
 typedef long off_t;
 #define strcasecmp  _stricmp
 #define strncasecmp _strnicmp
+#ifndef S_ISDIR
+#define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#endif
 #endif
 
 #ifndef O_NONBLOCK

@@ -1,10 +1,14 @@
 // POSIX compatibility shims for Windows/mingw-w64
-#include <windows.h>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
+#include <windows.h>
 #include <io.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
+#include "unistd.h"
 #include "sys/mman.h"
 #include "sys/ioctl.h"
 #include "termios.h"

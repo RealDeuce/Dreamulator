@@ -37,8 +37,16 @@ if(NOT ZLIB_FOUND)
     add_library(ZLIB::ZLIB ALIAS zlibstatic)
 endif()
 
-find_package(FLTK QUIET)
-if(NOT FLTK_FOUND)
+find_package(fltk QUIET CONFIG)
+if(NOT fltk_FOUND)
+    find_package(FLTK QUIET)
+endif()
+if(TARGET fltk::fltk)
+    set(FLTK_TARGET fltk::fltk)
+elseif(fltk_FOUND OR FLTK_FOUND)
+    set(FLTK_TARGET ${FLTK_LIBRARIES})
+    set(FLTK_EXTRA_INCLUDES ${FLTK_INCLUDE_DIRS})
+else()
     message(STATUS "FLTK not found — using FetchContent")
     set(FLTK_BUILD_TEST OFF CACHE BOOL "" FORCE)
     set(FLTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -49,8 +57,7 @@ if(NOT FLTK_FOUND)
         URL https://github.com/fltk/fltk/releases/download/release-1.4.3/fltk-1.4.3-source.tar.gz
         URL_HASH SHA256=19725f687146610976a1a43ef448feeba212a7eca88ad5897d22f6adaf3af45b)
     FetchContent_MakeAvailable(fltk)
-    set(FLTK_INCLUDE_DIRS ${fltk_SOURCE_DIR} ${fltk_BINARY_DIR})
-    set(FLTK_LIBRARIES fltk)
+    set(FLTK_TARGET fltk::fltk)
 endif()
 
 find_package(PkgConfig QUIET)
@@ -105,9 +112,9 @@ endif()
 
 add_executable(dreamulator ${EMU_SOURCES})
 
-target_include_directories(dreamulator SYSTEM PRIVATE
-    ${FLTK_INCLUDE_DIRS}
-)
+if(DEFINED FLTK_EXTRA_INCLUDES)
+    target_include_directories(dreamulator SYSTEM PRIVATE ${FLTK_EXTRA_INCLUDES})
+endif()
 
 if(WIN32)
     target_include_directories(dreamulator BEFORE PRIVATE
@@ -115,7 +122,7 @@ if(WIN32)
 endif()
 
 target_link_libraries(dreamulator PRIVATE
-    ${FLTK_LIBRARIES}
+    ${FLTK_TARGET}
     ZLIB::ZLIB
 )
 

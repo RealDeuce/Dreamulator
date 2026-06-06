@@ -79,7 +79,7 @@ jobs:
           7z a dreamulator-${{ matrix.name }}.zip ./pkg/*
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: dreamulator-${{ matrix.name }}
           path: dreamulator-${{ matrix.name }}.*
@@ -91,7 +91,7 @@ jobs:
 
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: artifacts
           merge-multiple: true
