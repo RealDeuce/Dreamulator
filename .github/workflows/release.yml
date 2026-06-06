@@ -58,29 +58,14 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p pkg
-          cp build/dreamulator build/dreamprint pkg/ 2>/dev/null || true
-          cp -r roms pkg/ 2>/dev/null || true
-          tar czf dreamulator-${{ matrix.name }}.tar.gz -C pkg .
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mkdir -p pkg
-          cp build/Release/dreamulator.exe build/Release/dreamprint.exe pkg/ 2>/dev/null || true
-          cp build/dreamulator.exe build/dreamprint.exe pkg/ 2>/dev/null || true
-          cp -r roms pkg/ 2>/dev/null || true
-          7z a dreamulator-${{ matrix.name }}.zip ./pkg/*
+      - name: Package
+        run: cd build && cpack -C Release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: dreamulator-${{ matrix.name }}
-          path: dreamulator-${{ matrix.name }}.*
+          path: build/dreamulator-*.*
 
   release:
     needs: build

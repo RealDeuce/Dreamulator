@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(dreamulator LANGUAGES C CXX)
+project(dreamulator VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 
@@ -252,3 +252,38 @@ endif()
 install(TARGETS dreamulator dreamprint RUNTIME DESTINATION bin)
 install(DIRECTORY roms/ DESTINATION share/dreamulator/roms
         FILES_MATCHING PATTERN "*.ic303" PATTERN "*.bin")
+
+# --- CPack ---
+
+set(CPACK_PACKAGE_NAME "dreamulator")
+set(CPACK_PACKAGE_VENDOR "Stephen Hurd")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Nakajima/DreamWriter typewriter emulator")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/RealDeuce/Dreamulator")
+set(CPACK_PACKAGE_CONTACT "claude@sjh.sh")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+if(APPLE)
+    set(CPACK_GENERATOR DragNDrop)
+    set(CPACK_DMG_VOLUME_NAME "Dreamulator")
+elseif(WIN32)
+    set(CPACK_GENERATOR NSIS)
+    set(CPACK_NSIS_DISPLAY_NAME "Dreamulator")
+    set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
+    set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    set(CPACK_NSIS_CREATE_ICONS_EXTRA
+        "CreateShortCut '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\Dreamulator.lnk' '$INSTDIR\\\\bin\\\\dreamulator.exe'")
+    set(CPACK_NSIS_DELETE_ICONS_EXTRA
+        "Delete '$SMPROGRAMS\\\\$START_MENU\\\\Dreamulator.lnk'")
+else()
+    set(CPACK_GENERATOR "DEB;RPM;TGZ")
+
+    # DEB
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libfltk1.3 (>= 1.3), zlib1g, libportaudio2")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "misc")
+
+    # RPM
+    set(CPACK_RPM_PACKAGE_REQUIRES "fltk, zlib, portaudio")
+    set(CPACK_RPM_PACKAGE_LICENSE "BSD-3-Clause")
+endif()
+
+include(CPack)
