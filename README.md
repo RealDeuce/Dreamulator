@@ -1,5 +1,7 @@
 # dreamulator
 
+[![CI](https://github.com/RealDeuce/Dreamulator/actions/workflows/ci.yml/badge.svg)](https://github.com/RealDeuce/Dreamulator/actions/workflows/ci.yml)
+
 > **Disclaimer:** The code in this repository is 100% AI slop.  The "author"
 > has never opened any of the source files to see what horrors lie within.
 
