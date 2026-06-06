@@ -19,12 +19,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <csignal>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#ifndef _WIN32
+#include <csignal>
+#endif
 
 #include "machine.h"
 #include "print/printer.h"
@@ -930,7 +932,12 @@ static void make_nvram_path(const char *rom, char *out, size_t sz) {
 
 int main(int argc, char *argv[])
 {
+#ifdef _WIN32
+	WSADATA wsa;
+	WSAStartup(MAKEWORD(2, 2), &wsa);
+#else
 	signal(SIGPIPE, SIG_IGN);
+#endif
 
 	auto uart_backend = UartBackend::Pty;
 	int tcp_port = 0;

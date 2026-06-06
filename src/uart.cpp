@@ -180,7 +180,11 @@ int uart_init(uart_t *u, UartBackend backend, int tcp_port, const char *serial_p
 	int rc;
 	switch (backend) {
 	case UartBackend::Tcp:    rc = open_tcp(u, tcp_port); break;
+#ifdef _WIN32
+	case UartBackend::Serial: rc = open_serial(u, serial_path ? serial_path : "COM1"); break;
+#else
 	case UartBackend::Serial: rc = open_serial(u, serial_path ? serial_path : "/dev/cuau0"); break;
+#endif
 	default:          rc = open_pty(u); break;
 	}
 

@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 include(CheckCXXCompilerFlag)
 include(CheckCXXSourceCompiles)
+include(FetchContent)
 
 function(try_add_compile_option target flag)
     string(REGEX REPLACE "[^a-zA-Z0-9]" "_" var "HAS_CXX${flag}")
@@ -23,9 +24,41 @@ function(try_add_link_option target flag)
     endif()
 endfunction()
 
-find_package(FLTK REQUIRED)
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(PORTAUDIO portaudio-2.0)
+# --- Dependencies: find_package first, FetchContent fallback ---
+
+find_package(ZLIB QUIET)
+if(NOT ZLIB_FOUND)
+    message(STATUS "ZLIB not found — using FetchContent")
+    FetchContent_Declare(zlib
+        URL https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
+        URL_HASH SHA256=9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23)
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(zlib)
+    add_library(ZLIB::ZLIB ALIAS zlibstatic)
+endif()
+
+find_package(FLTK QUIET)
+if(NOT FLTK_FOUND)
+    message(STATUS "FLTK not found — using FetchContent")
+    set(FLTK_BUILD_TEST OFF CACHE BOOL "" FORCE)
+    set(FLTK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(FLTK_BUILD_FLUID OFF CACHE BOOL "" FORCE)
+    set(FLTK_BUILD_GL OFF CACHE BOOL "" FORCE)
+    set(OPTION_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(fltk
+        URL https://github.com/fltk/fltk/releases/download/release-1.4.3/fltk-1.4.3-source.tar.gz
+        URL_HASH SHA256=19725f687146610976a1a43ef448feeba212a7eca88ad5897d22f6adaf3af45b)
+    FetchContent_MakeAvailable(fltk)
+    set(FLTK_INCLUDE_DIRS ${fltk_SOURCE_DIR} ${fltk_BINARY_DIR})
+    set(FLTK_LIBRARIES fltk)
+endif()
+
+if(NOT CMAKE_CROSSCOMPILING)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(PORTAUDIO portaudio-2.0)
+    endif()
+endif()
 
 set(PRINT_SOURCES
     src/print/printer.cpp
@@ -41,7 +74,7 @@ set(PRINT_SOURCES
     src/print/pdfwriter.cpp
 )
 
-add_executable(dreamulator
+set(EMU_SOURCES
     src/main.cpp
     src/v20.cpp
     src/machine.cpp
@@ -57,14 +90,29 @@ add_executable(dreamulator
     ${PRINT_SOURCES}
 )
 
+if(WIN32)
+    list(APPEND EMU_SOURCES src/compat/compat_win32.cpp)
+endif()
+
+add_executable(dreamulator ${EMU_SOURCES})
+
 target_include_directories(dreamulator SYSTEM PRIVATE
     ${FLTK_INCLUDE_DIRS}
 )
+
+if(WIN32)
+    target_include_directories(dreamulator BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/compat)
+endif()
 
 target_link_libraries(dreamulator PRIVATE
     ${FLTK_LIBRARIES}
     ZLIB::ZLIB
 )
+
+if(WIN32)
+    target_link_libraries(dreamulator PRIVATE ws2_32 ole32 uuid comctl32 comdlg32)
+endif()
 
 if(PORTAUDIO_FOUND)
     target_compile_definitions(dreamulator PRIVATE HAS_PORTAUDIO)
@@ -104,7 +152,6 @@ if(HAS_FORTIFY_SOURCE_3)
 endif()
 
 try_add_compile_option(dreamulator -fstrict-flex-arrays=3)
-try_add_compile_option(dreamulator -fstack-clash-protection)
 try_add_compile_option(dreamulator -fstack-protector-strong)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "[xX]86_64|[aA][mM][dD]64|i[3-6]86")
     try_add_compile_option(dreamulator -fcf-protection=full)
@@ -116,26 +163,36 @@ try_add_compile_option(dreamulator -fno-strict-overflow)
 try_add_compile_option(dreamulator -fno-strict-aliasing)
 try_add_compile_option(dreamulator -ftrivial-auto-var-init=zero)
 try_add_compile_option(dreamulator -fzero-init-padding-bits=all)
-try_add_compile_option(dreamulator -fPIE)
 
-# Linker hardening
-try_add_link_option(dreamulator -pie)
-try_add_link_option(dreamulator "-Wl,-z,noexecstack")
-try_add_link_option(dreamulator "-Wl,-z,relro")
-try_add_link_option(dreamulator "-Wl,-z,now")
-try_add_link_option(dreamulator "-Wl,--as-needed")
-try_add_link_option(dreamulator "-Wl,--no-copy-dt-needed-entries")
+if(NOT WIN32)
+    try_add_compile_option(dreamulator -fstack-clash-protection)
+    try_add_compile_option(dreamulator -fPIE)
+
+    # ELF-specific linker hardening
+    try_add_link_option(dreamulator -pie)
+    try_add_link_option(dreamulator "-Wl,-z,noexecstack")
+    try_add_link_option(dreamulator "-Wl,-z,relro")
+    try_add_link_option(dreamulator "-Wl,-z,now")
+    try_add_link_option(dreamulator "-Wl,--as-needed")
+    try_add_link_option(dreamulator "-Wl,--no-copy-dt-needed-entries")
+endif()
 
 # --- dreamprint: printer simulator tool ---
 
-find_package(ZLIB REQUIRED)
+set(DREAMPRINT_SOURCES src/print/dreamprint.cpp ${PRINT_SOURCES})
+if(WIN32)
+    list(APPEND DREAMPRINT_SOURCES src/compat/compat_win32.cpp)
+endif()
 
-add_executable(dreamprint
-    src/print/dreamprint.cpp
-    ${PRINT_SOURCES}
-)
+add_executable(dreamprint ${DREAMPRINT_SOURCES})
 
 target_link_libraries(dreamprint PRIVATE ZLIB::ZLIB)
+
+if(WIN32)
+    target_include_directories(dreamprint BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/compat)
+    target_link_libraries(dreamprint PRIVATE ws2_32)
+endif()
 
 # Apply same hardening flags to dreamprint
 target_compile_options(dreamprint PRIVATE -Wall -Wextra)
