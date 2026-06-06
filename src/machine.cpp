@@ -482,7 +482,18 @@ static uint8_t io_read_inner(machine_t *m, uint16_t port)
 
 	case 0x00B0: {
 		uint8_t r = m->keyboard_row;
-		return (r > 0 && r <= 10) ? m->kb_rows[r - 1] : 0;
+		if (r < 1 || r > 10) return 0;
+		int idx = r - 1;
+		uint8_t held = 0;
+		for (int b = 0; b < 8; b++)
+			if (m->kb_hold[idx][b] > 0) held |= (uint8_t)(1 << b);
+		uint8_t result = m->kb_rows[idx] | held;
+		if (m->kb_last_scan_row != r) {
+			m->kb_last_scan_row = r;
+			for (int b = 0; b < 8; b++)
+				if (m->kb_hold[idx][b] > 0) m->kb_hold[idx][b]--;
+		}
+		return result;
 	}
 
 	case 0x00C0: return uart_data_read(&m->uart);
@@ -709,8 +720,10 @@ void machine_render_lcd(machine_t *m, uint32_t *px)
 
 void machine_key_down(machine_t *m, int row, int bit)
 {
-	if (row >= 0 && (size_t)row < m->kb_rows.size() && bit >= 0 && bit < 8)
+	if (row >= 0 && (size_t)row < m->kb_rows.size() && bit >= 0 && bit < 8) {
 		m->kb_rows[(size_t)row] |= (uint8_t)(1 << bit);
+		m->kb_hold[row][bit] = 2;
+	}
 }
 
 void machine_key_up(machine_t *m, int row, int bit)

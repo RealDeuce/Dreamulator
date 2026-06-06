@@ -95,6 +95,8 @@ struct machine_t {
 	uint8_t  keyboard_row = 0;
 	uint8_t  keyboard_row_reset = 0;
 	std::array<uint8_t, 10> kb_rows{};
+	uint8_t  kb_hold[10][8]{};
+	uint8_t  kb_last_scan_row = 0xFF;
 
 	uint8_t  buzzer_low = 0;
 	uint8_t  buzzer_high = 0;
