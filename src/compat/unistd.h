@@ -6,6 +6,11 @@
 #include <process.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <basetsd.h>
+
+#ifdef _MSC_VER
+typedef SSIZE_T ssize_t;
+#endif
 
 #ifndef O_NONBLOCK
 #define O_NONBLOCK 0x0800

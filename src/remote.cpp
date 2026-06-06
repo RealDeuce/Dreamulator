@@ -29,7 +29,9 @@ static void set_nonblock(int fd)
 	fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
 }
 
+#ifdef __GNUC__
 __attribute__((format(printf, 1, 2)))
+#endif
 static void rsend(const char *fmt, ...)
 {
 	if (g_client_fd < 0) return;
