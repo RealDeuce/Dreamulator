@@ -468,6 +468,7 @@ static uint8_t io_read_inner(machine_t *m, uint16_t port)
 	case 0x00A0: {
 		uint8_t st = 0;
 		if (!m->pccard) st |= 0x80;
+		if (!m->pccard_battery_low) st |= 0x10;
 		if (m->main_battery_low) st |= 0x08;
 		if (m->coin_battery_low) st |= 0x04;
 #ifdef __FreeBSD__
@@ -772,23 +773,8 @@ void machine_power_button(machine_t *m, bool pressed)
 	}
 
 	if (m->model->power_nmi) {
-		uint16_t nmi_off = (uint16_t)(mem_read(m, 0x0008) | (mem_read(m, 0x0009) << 8));
-		uint16_t nmi_seg = (uint16_t)(mem_read(m, 0x000A) | (mem_read(m, 0x000B) << 8));
-		uint16_t f8_off  = (uint16_t)(mem_read(m, 0x03E0) | (mem_read(m, 0x03E1) << 8));
-		uint16_t f8_seg  = (uint16_t)(mem_read(m, 0x03E2) | (mem_read(m, 0x03E3) << 8));
-
-		uint16_t f8_handler = f8_off;
-		uint32_t f8_phys = ((uint32_t)f8_seg << 4) + f8_off;
-		if (f8_phys <= 0xFFFFD && mem_read(m, f8_phys) == 0xE9) {
-			int16_t disp = (int16_t)(mem_read(m, f8_phys + 1) |
-			               ((uint16_t)mem_read(m, f8_phys + 2) << 8));
-			f8_handler = (uint16_t)(f8_off + 3 + disp);
-		}
-
-		if (nmi_seg == f8_seg && nmi_off == f8_handler) {
-			v20_nmi(&m->cpu, true);
-			return;
-		}
+		v20_nmi(&m->cpu, true);
+		return;
 	}
 
 	m->irq_active |= 0x01;

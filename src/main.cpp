@@ -1116,12 +1116,13 @@ int main(int argc, char *argv[])
 	win->callback(cb_quit);
 
 	Fl_Menu_Bar *menu = new Fl_Menu_Bar(0, 0, win_w, MENUBAR_H);
-	menu->add("&File/Quit",  FL_CTRL+'q',  cb_quit);
+	menu->add("&File/Quit",  FL_ALT+FL_F+4,  cb_quit);
 
 	menu->add("&Machine/Power Button", FL_End,      cb_power);
 	menu->add("&Machine/Reset",        0,           cb_reset);
 	menu->add("&Machine/Main Battery Low", 0,       cb_battery, &g_mach.main_battery_low, FL_MENU_TOGGLE);
 	menu->add("&Machine/Coin Battery Low", 0,       cb_battery, &g_mach.coin_battery_low, FL_MENU_TOGGLE);
+	menu->add("&Machine/PCMCIA Battery Low", 0,     cb_battery, &g_mach.pccard_battery_low, FL_MENU_TOGGLE);
 
 	if (g_model->has_pccard) {
 		menu->add("M&edia/Insert PC Card...",  0, cb_insert_pccard);

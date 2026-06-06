@@ -133,6 +133,7 @@ struct machine_t {
 	bool     bank_bit3_selects_ram = false;
 	bool     main_battery_low = false;
 	bool     coin_battery_low = false;
+	bool     pccard_battery_low = false;
 };
 
 [[nodiscard]] int  machine_init(machine_t *m, const model_t *model,
