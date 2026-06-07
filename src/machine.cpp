@@ -775,12 +775,8 @@ void machine_power_button(machine_t *m, bool pressed)
 		return;
 	}
 
-	if (m->model->power_nmi) {
-		v20_nmi(&m->cpu, true);
-		return;
-	}
-
 	m->irq_active |= 0x01;
+	v20_nmi(&m->cpu, true);
 	update_irqs(m);
 }
 

@@ -551,7 +551,11 @@ static void cb_power(Fl_Widget *, void *) {
 	Fl::add_timeout(0.2, [](void *) { machine_power_button(&g_mach, false); }, nullptr);
 }
 
-static void cb_reset(Fl_Widget *, void *) {
+static void cb_clear_nvram(Fl_Widget *, void *) {
+	if (!fl_choice("Clear all NVRAM and restart?\nThis erases all saved documents and settings.", "Cancel", "Clear", nullptr))
+		return;
+	if (g_mach.ram && g_mach.ram_size > 0)
+		memset(g_mach.ram, 0, g_mach.ram_size);
 	machine_reset(&g_mach);
 }
 
@@ -1127,7 +1131,7 @@ int main(int argc, char *argv[])
 	menu->add("&File/Quit",  FL_ALT+FL_F+4,  cb_quit);
 
 	menu->add("&Machine/Power Button", FL_End,      cb_power);
-	menu->add("&Machine/Reset",        0,           cb_reset);
+	menu->add("&Machine/Clear NVRAM and Restart", 0, cb_clear_nvram);
 	menu->add("&Machine/Main Battery Low", 0,       cb_battery, &g_mach.main_battery_low, FL_MENU_TOGGLE);
 	menu->add("&Machine/Coin Battery Low", 0,       cb_battery, &g_mach.coin_battery_low, FL_MENU_TOGGLE);
 	menu->add("&Machine/PCMCIA Battery Low", 0,     cb_battery, &g_mach.pccard_battery_low, FL_MENU_TOGGLE);
