@@ -116,8 +116,17 @@ static const kmap g_keymap[] = {
 class LcdWidget : public Fl_Widget {
 	uint32_t argb[LCD_WIDTH * MAX_LCD_H];
 	uint8_t  rgb[LCD_WIDTH * SCALE * MAX_LCD_H * SCALE * 3];
+	bool     power_down = false;
 public:
 	LcdWidget(int x, int y, int w, int h) : Fl_Widget(x, y, w, h) {}
+
+	void release_keys() {
+		machine_keys_all_up(&g_mach);
+		if (power_down) {
+			machine_power_button(&g_mach, false);
+			power_down = false;
+		}
+	}
 
 	void draw() override {
 		machine_render_lcd(&g_mach, argb);
@@ -141,7 +150,12 @@ public:
 	}
 
 	int handle(int event) override {
-		if (event == FL_FOCUS || event == FL_UNFOCUS) return 1;
+		if (event == FL_FOCUS) return 1;
+
+		if (event == FL_UNFOCUS || event == FL_HIDE || event == FL_DEACTIVATE) {
+			release_keys();
+			return 1;
+		}
 
 		if (event == FL_KEYDOWN || event == FL_KEYUP) {
 			int key = Fl::event_key();
@@ -149,6 +163,7 @@ public:
 
 			if (key == FL_End) {
 				machine_power_button(&g_mach, down);
+				power_down = down;
 				return 1;
 			}
 

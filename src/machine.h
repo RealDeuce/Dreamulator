@@ -147,6 +147,7 @@ void machine_step(machine_t *m, int cycles);
 void machine_render_lcd(machine_t *m, uint32_t *pixels);
 void machine_key_down(machine_t *m, int row, int bit);
 void machine_key_up(machine_t *m, int row, int bit);
+void machine_keys_all_up(machine_t *m);
 void machine_power_button(machine_t *m, bool pressed);
 void machine_close_rom(machine_t *m);
 [[nodiscard]] int  machine_open_nvram(machine_t *m, const char *path);

@@ -157,6 +157,7 @@ void machine_reset(machine_t *m)
 	m->lcd_on            = true;
 	m->keyboard_row      = 0;
 	m->keyboard_row_reset = 0xFF;
+	machine_keys_all_up(m);
 	m->port30            = 0;
 	m->buzzer_low        = 0;
 	m->buzzer_high       = 0;
@@ -485,7 +486,7 @@ static uint8_t io_read_inner(machine_t *m, uint16_t port)
 	case 0x00B0: {
 		uint8_t r = m->keyboard_row;
 		if (r < 1 || r > 10) return 0;
-		int idx = r - 1;
+		size_t idx = (size_t)r - 1;
 		uint8_t held = 0;
 		for (int b = 0; b < 8; b++)
 			if (m->kb_hold[idx][b] > 0) held |= (uint8_t)(1 << b);
@@ -734,6 +735,12 @@ void machine_key_up(machine_t *m, int row, int bit)
 {
 	if (row >= 0 && (size_t)row < m->kb_rows.size() && bit >= 0 && bit < 8)
 		m->kb_rows[(size_t)row] &= (uint8_t)~(1 << bit);
+}
+
+void machine_keys_all_up(machine_t *m)
+{
+	m->kb_rows.fill(0);
+	memset(m->kb_hold, 0, sizeof(m->kb_hold));
 }
 
 /* ---- UART IRQ callbacks ---- */
