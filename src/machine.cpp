@@ -58,6 +58,7 @@ const rom_entry_t rom_db[] = {
 	{ "es210_es", nullptr,    "nakajima_es.ic303",     0x214d73ce, 0x80000,  0 },
 	{ "dwT100",   "v2.3",  "t100_2.3.ic303",       0x8a16f12f, 0x80000,  0 },
 	{ "dwT200",   nullptr,    "drwrt200.bin",          0x3c39483c, 0x100000, 0 },
+	{ "dwT400",   "v3.1",  "t4_ir_3.1_T4-067979",  0x5c062e52, 0x100000, 0 },
 	{ "dwT400",   "v3.1",  "t4_ir_3.1_e588.ic303", 0x1724ceb2, 0x100000, 0 },
 	{ "dwT400",   "v2.1",  "t4_ir_2.1.ic303",      0xf0f45fd2, 0x80000,  0x80000 },
 	{ "dw450",    nullptr,    "t4_ir_35ba308.ic303",   0x3b5a580d, 0x100000, 0 },

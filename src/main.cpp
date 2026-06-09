@@ -1021,27 +1021,21 @@ int main(int argc, char *argv[])
 	static char found_path[1024];
 	if (!rom_path && romdir) {
 		const rom_entry_t *found = nullptr;
-		DIR *d = opendir(romdir);
-		if (d) {
-			struct dirent *de;
-			while ((de = readdir(d)) != nullptr) {
-				for (int i = 0; i < rom_db_count; i++) {
-					if (strcmp(de->d_name, rom_db[i].filename) != 0) continue;
-					if (model_name && strcmp(rom_db[i].model, model_name) != 0) continue;
-					if (bios_name && rom_db[i].bios && strcmp(rom_db[i].bios, bios_name) != 0) continue;
-					if (!found || (model_name && strcmp(rom_db[i].model, model_name) == 0)) {
-						found = &rom_db[i];
-						snprintf(found_path, sizeof(found_path), "%s/%s", romdir, de->d_name);
-					}
-				}
+		for (int i = 0; i < rom_db_count; i++) {
+			if (model_name && strcmp(rom_db[i].model, model_name) != 0) continue;
+			if (bios_name && rom_db[i].bios && strcmp(rom_db[i].bios, bios_name) != 0) continue;
+			snprintf(found_path, sizeof(found_path), "%s/%s", romdir, rom_db[i].filename);
+			struct stat st;
+			if (stat(found_path, &st) == 0) {
+				found = &rom_db[i];
+				break;
 			}
-			closedir(d);
 		}
 		if (!model_name && !rom_path) {
 			fprintf(stderr, "Available ROMs");
 			if (romdir) fprintf(stderr, " in %s", romdir);
 			fprintf(stderr, ":\n");
-			d = opendir(romdir);
+			DIR *d = opendir(romdir);
 			if (d) {
 				struct dirent *de;
 				while ((de = readdir(d)) != nullptr) {
