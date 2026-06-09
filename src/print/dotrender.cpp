@@ -405,8 +405,8 @@ static const Bj10eInkKernel &bj10e_ink_kernel(const PrinterProfile &prof,
 	float density = prof.dot_intensity;
 	float core_sx = sigma;
 	float core_sy = sigma * 1.10f;
-	float halo_sx = sigma * 2.25f;
-	float halo_sy = sigma * 2.45f;
+	float halo_sx = sigma * 1.85f;
+	float halo_sy = sigma * 2.00f;
 	float max_x = std::max(core_sx, halo_sx) * 3.0f;
 	float max_y = std::max(core_sy, halo_sy) * 3.0f;
 	float core_inv_2sx2 = 1.0f / (2.0f * core_sx * core_sx);
@@ -430,7 +430,7 @@ static const Bj10eInkKernel &bj10e_ink_kernel(const PrinterProfile &prof,
 			float halo = std::exp(-(fx * fx * halo_inv_2sx2 +
 			                        fy * fy * halo_inv_2sy2));
 			if (halo >= 0.002f)
-				effect += density * 0.09f * halo;
+				effect += density * 0.05f * halo;
 			if (effect > 0.0f)
 				kernel.samples.push_back({dx, dy, std::exp(-effect)});
 		}
