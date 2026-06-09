@@ -96,6 +96,7 @@ set(PRINT_SOURCES
     src/print/font9pin.cpp
     src/print/fontfx80.cpp
     src/print/fontiw2.cpp
+    src/print/fontbj10e.cpp
     src/print/font24pin.cpp
     src/print/pagebuf.cpp
     src/print/pdfwriter.cpp

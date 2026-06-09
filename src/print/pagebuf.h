@@ -24,6 +24,8 @@ public:
 
 	void stamp_dot(float cx, float cy, float radius, float intensity,
 	               float sharpness = 2.0f);
+	void stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
+	                   float density);
 
 	static PageBitmap letter_at_dpi(int dpi);
 

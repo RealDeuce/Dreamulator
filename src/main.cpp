@@ -804,8 +804,97 @@ static bool show_fx_dip_dialog(PrinterConfig &cfg)
 	return true;
 }
 
+static bool show_bj_settings_dialog(PrinterConfig &cfg)
+{
+	Fl_Window win(620, 620, "Canon BJ-10e Settings");
+	win.set_modal();
+
+	Fl_Box hdr1(10, 5, 600, 20, "Front Panel");
+	hdr1.labelfont(FL_BOLD);
+	hdr1.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+
+	Fl_Choice pitch(180, 30, 220, 25, "Pitch:");
+	pitch.add("Pica (10 CPI)");
+	pitch.add("Elite (12 CPI)");
+	pitch.add("Condensed (17 CPI)");
+	pitch.add("Proportional");
+	pitch.value(cfg.proportional ? 3 : cfg.pitch_cpi >= 17 ? 2 : cfg.pitch_cpi >= 12 ? 1 : 0);
+
+	Fl_Check_Button emph(10, 65, 390, 25, "Emphasized");
+	emph.value(cfg.emphasized ? 1 : 0);
+
+	Fl_Check_Button double_high(210, 65, 190, 25, "Double-high");
+	double_high.value(cfg.double_high ? 1 : 0);
+
+	Fl_Check_Button double_width(410, 65, 190, 25, "Double-width");
+	double_width.value(cfg.double_width ? 1 : 0);
+
+	Fl_Check_Button slashed(10, 95, 190, 25, "Slashed Zeros");
+	slashed.value(cfg.slashed_zero ? 1 : 0);
+
+	Fl_Choice quality(410, 95, 190, 25, "Quality:");
+	quality.add("High Quality");
+	quality.add("Economy");
+	quality.value(cfg.font_mode == 1 ? 1 : 0);
+
+	Fl_Box hdr2(10, 155, 600, 20, "DIP Selectors");
+	hdr2.labelfont(FL_BOLD);
+	hdr2.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
+
+	Fl_Check_Button dip1(10, 180, 590, 25, "1 Auto sheet feeder mode: ON=Enable, OFF=Disable");
+	Fl_Check_Button dip2(10, 210, 590, 25, "2 Graphics image density: ON=Normal, OFF=High");
+	Fl_Check_Button dip3(10, 240, 590, 25, "3 Automatic line feed: ON=CR with LF, OFF=CR only");
+	Fl_Check_Button dip4(10, 270, 590, 25, "4 Page length: ON=305mm/12in, OFF=279mm/11in");
+	Fl_Check_Button dip5(10, 300, 590, 25, "5 Character set: ON=Set 2, OFF=Set 1");
+	Fl_Check_Button dip6(10, 330, 590, 25, "6 Automatic carriage return: ON=LF with CR, OFF=LF only");
+	Fl_Check_Button dip7(10, 360, 590, 25, "7 Alternate graphics mode: ON=Enable, OFF=Disable");
+	Fl_Check_Button dip8(10, 390, 590, 25, "8 Receive buffer/download memory: ON=3KB/34KB, OFF=37KB/0KB");
+	Fl_Check_Button dip9(10, 420, 590, 25, "9 Code page: ON=Multilingual 850, OFF=USA 437");
+	Fl_Check_Button dip10(10, 450, 590, 25, "10 Printer control mode: ON=Mode 2, OFF=Mode 1");
+	Fl_Check_Button *dips[] = {
+		&dip1, &dip2, &dip3, &dip4, &dip5,
+		&dip6, &dip7, &dip8, &dip9, &dip10
+	};
+	for (int i = 0; i < 10; i++)
+		dips[i]->value((cfg.dip_switches & (1 << i)) ? 1 : 0);
+
+	bool ok = false;
+	Fl_Return_Button btn_ok(440, 580, 80, 30, "OK");
+	btn_ok.callback([](Fl_Widget *w, void *d) {
+		*static_cast<bool *>(d) = true;
+		w->window()->hide();
+	}, &ok);
+	Fl_Button btn_cancel(530, 580, 80, 30, "Cancel");
+	btn_cancel.callback([](Fl_Widget *w, void *) {
+		w->window()->hide();
+	});
+
+	win.end();
+	win.show();
+	while (win.shown()) Fl::wait();
+
+	if (!ok) return false;
+
+	static constexpr float pitches[] = {10, 12, 17, 10};
+	cfg.pitch_cpi = pitches[pitch.value()];
+	cfg.proportional = pitch.value() == 3;
+	cfg.emphasized = emph.value();
+	cfg.double_high = double_high.value();
+	cfg.double_width = double_width.value();
+	cfg.slashed_zero = slashed.value();
+	cfg.font_mode = quality.value() == 1 ? 1 : 0;
+	cfg.dip_switches = 0;
+	for (int i = 0; i < 10; i++)
+		if (dips[i]->value())
+			cfg.dip_switches |= (1 << i);
+	cfg.auto_lf = (cfg.dip_switches & (1 << 2)) != 0;
+	cfg.page_length_lines = (cfg.dip_switches & (1 << 3)) ? 72 : 66;
+	return true;
+}
+
 static PrinterConfig g_iw_cfg;
 static PrinterConfig g_fx_cfg;
+static PrinterConfig g_bj_cfg;
 static bool g_printer_cfg_loaded = false;
 
 static void printer_cfg_load()
@@ -814,6 +903,7 @@ static void printer_cfg_load()
 	g_printer_cfg_loaded = true;
 	g_iw_cfg = default_config_for(PrinterModel::ImageWriter);
 	g_fx_cfg = default_config_for(PrinterModel::EpsonFX);
+	g_bj_cfg = default_config_for(PrinterModel::CanonBJ10e);
 
 	g_iw_cfg.charset           = prefs_get_int("printer_iw", "charset", g_iw_cfg.charset);
 	int iw_pitch_x100          = prefs_get_int("printer_iw", "pitch", static_cast<int>(g_iw_cfg.pitch_cpi * 100.0f));
@@ -831,6 +921,21 @@ static void printer_cfg_load()
 	g_fx_cfg.auto_lf           = prefs_get_int("printer_fx", "auto_lf", g_fx_cfg.auto_lf ? 1 : 0);
 	g_fx_cfg.emphasized        = prefs_get_int("printer_fx", "emph", g_fx_cfg.emphasized ? 1 : 0);
 	g_fx_cfg.slashed_zero      = prefs_get_int("printer_fx", "slashed", g_fx_cfg.slashed_zero ? 1 : 0);
+
+	g_bj_cfg.charset           = prefs_get_int("printer_bj10e", "charset", g_bj_cfg.charset);
+	int bj_pitch_x100          = prefs_get_int("printer_bj10e", "pitch", static_cast<int>(g_bj_cfg.pitch_cpi * 100.0f));
+	g_bj_cfg.pitch_cpi         = static_cast<float>(bj_pitch_x100) / 100.0f;
+	g_bj_cfg.perf_skip         = prefs_get_int("printer_bj10e", "perf_skip", g_bj_cfg.perf_skip);
+	g_bj_cfg.auto_lf           = prefs_get_int("printer_bj10e", "auto_lf", g_bj_cfg.auto_lf ? 1 : 0);
+	g_bj_cfg.emphasized        = prefs_get_int("printer_bj10e", "emph", g_bj_cfg.emphasized ? 1 : 0);
+	g_bj_cfg.font_mode         = prefs_get_int("printer_bj10e", "font_mode", g_bj_cfg.font_mode);
+	g_bj_cfg.slashed_zero      = prefs_get_int("printer_bj10e", "slashed", g_bj_cfg.slashed_zero ? 1 : 0);
+	g_bj_cfg.dip_switches      = prefs_get_int("printer_bj10e", "dip_switches", g_bj_cfg.dip_switches);
+	g_bj_cfg.double_width      = prefs_get_int("printer_bj10e", "double_width", g_bj_cfg.double_width ? 1 : 0);
+	g_bj_cfg.double_high       = prefs_get_int("printer_bj10e", "double_high", g_bj_cfg.double_high ? 1 : 0);
+	g_bj_cfg.proportional      = prefs_get_int("printer_bj10e", "proportional", g_bj_cfg.proportional ? 1 : 0);
+	g_bj_cfg.auto_lf           = (g_bj_cfg.dip_switches & (1 << 2)) != 0;
+	g_bj_cfg.page_length_lines = (g_bj_cfg.dip_switches & (1 << 3)) ? 72 : 66;
 }
 
 static void printer_cfg_save_iw()
@@ -854,6 +959,21 @@ static void printer_cfg_save_fx()
 	prefs_set_int("printer_fx", "slashed", g_fx_cfg.slashed_zero ? 1 : 0);
 }
 
+static void printer_cfg_save_bj()
+{
+	prefs_set_int("printer_bj10e", "charset", g_bj_cfg.charset);
+	prefs_set_int("printer_bj10e", "pitch", static_cast<int>(g_bj_cfg.pitch_cpi * 100.0f));
+	prefs_set_int("printer_bj10e", "perf_skip", g_bj_cfg.perf_skip);
+	prefs_set_int("printer_bj10e", "auto_lf", g_bj_cfg.auto_lf ? 1 : 0);
+	prefs_set_int("printer_bj10e", "emph", g_bj_cfg.emphasized ? 1 : 0);
+	prefs_set_int("printer_bj10e", "font_mode", g_bj_cfg.font_mode);
+	prefs_set_int("printer_bj10e", "slashed", g_bj_cfg.slashed_zero ? 1 : 0);
+	prefs_set_int("printer_bj10e", "dip_switches", g_bj_cfg.dip_switches);
+	prefs_set_int("printer_bj10e", "double_width", g_bj_cfg.double_width ? 1 : 0);
+	prefs_set_int("printer_bj10e", "double_high", g_bj_cfg.double_high ? 1 : 0);
+	prefs_set_int("printer_bj10e", "proportional", g_bj_cfg.proportional ? 1 : 0);
+}
+
 static void cb_iw_dip_switches(Fl_Widget *, void *) {
 	printer_cfg_load();
 	if (show_iw_dip_dialog(g_iw_cfg)) {
@@ -874,10 +994,21 @@ static void cb_fx_dip_switches(Fl_Widget *, void *) {
 	}
 }
 
+static void cb_bj_dip_switches(Fl_Widget *, void *) {
+	printer_cfg_load();
+	if (show_bj_settings_dialog(g_bj_cfg)) {
+		printer_cfg_save_bj();
+		if (g_mach.pdf_printer &&
+		    g_mach.pdf_model == static_cast<int>(PrinterModel::CanonBJ10e))
+			g_mach.pdf_printer->apply_config(g_bj_cfg);
+	}
+}
+
 static PrinterConfig &config_for_model(PrinterModel pm)
 {
 	printer_cfg_load();
 	if (pm == PrinterModel::ImageWriter) return g_iw_cfg;
+	if (pm == PrinterModel::CanonBJ10e) return g_bj_cfg;
 	return g_fx_cfg;
 }
 
@@ -1159,13 +1290,14 @@ int main(int argc, char *argv[])
 	//menu->add("&Printer/Parallel/IBM XIII...",      0, cb_printer_pdf, (void *)1);
 	//menu->add("&Printer/Parallel/Epson LQ...",     0, cb_printer_pdf, (void *)2);
 	menu->add("&Printer/Parallel/Epson FX-80...",          0, cb_printer_pdf, (void *)3);
-	//menu->add("&Printer/Parallel/Canon BJ-10e...", 0, cb_printer_pdf, (void *)4);
+	menu->add("&Printer/Parallel/Canon BJ-10e...", 0, cb_printer_pdf, (void *)4);
 	//menu->add("&Printer/Parallel/HP JET...",       0, cb_printer_pdf, (void *)5);
 	menu->add("&Printer/Parallel/Apple ImageWriter II...", 0, cb_printer_pdf, (void *)6);
 	menu->add("&Printer/Serial/Apple ImageWriter II...",   0, cb_printer_pdf_serial, (void *)6);
 	menu->add("&Printer/Finish PDF",               0, cb_printer_pdf_finish);
 	menu->add("&Printer/Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
 	menu->add("&Printer/Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
+	menu->add("&Printer/Settings/Canon BJ-10e Settings...",      0, cb_bj_dip_switches);
 
 	menu->add("&Serial/Connect PTY",       0, cb_serial_pty);
 	menu->add("&Serial/Connect TCP...",    0, cb_serial_tcp);

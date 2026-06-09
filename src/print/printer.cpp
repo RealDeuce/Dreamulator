@@ -12,7 +12,7 @@ static constexpr PrinterProfile profiles[] = {
 	{ PrinterModel::IbmXIII,    "IBM XIII",        DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24, 0.30f, 0.025f, 0.85f, 2.0f },
 	{ PrinterModel::EpsonLQ,    "Epson LQ",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.015f, 0.90f, 2.0f },
 	{ PrinterModel::EpsonFX,    "Epson FX",       DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24,  0.30f, 0.025f, 0.85f, 2.0f },
-	{ PrinterModel::CanonBJ10e, "Canon BJ-10e",   DotTech::Inkjet,   720, 360,360, 360,360, 36,24, 36,  0.12f, 0.04f, 0.95f, 1.2f },
+	{ PrinterModel::CanonBJ10e, "Canon BJ-10e",   DotTech::Inkjet,   360, 360,360, 360,360, 36,48, 30,  0.050f, 0.0f, 0.68f, 1.0f },
 	{ PrinterModel::HpJet,      "HP JET",         DotTech::Toner,    600, 300,300, 300,300, 30,50, 30,   0.13f, 0.01f, 0.98f, 0.3f },
 	{ PrinterModel::ImageWriter, "ImageWriter",   DotTech::Impact9,  720,  72, 72, 144,144,  8, 8, 16,  0.30f, 0.025f, 0.85f, 2.0f },
 };
@@ -254,11 +254,17 @@ void PrinterSim::emit_char(uint8_t ch)
 	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
 	if (st_.condensed && st_.pitch_cpi <= 10)
 		char_w_in = 1.0f / 17.16f;
-	if (st_.proportional) {
+	if (prof_.model == PrinterModel::CanonBJ10e && st_.condensed && !st_.proportional)
+		char_w_in = 21.0f / 360.0f;
+	if (st_.proportional && prof_.model == PrinterModel::ImageWriter) {
 		uint8_t gw = get_iw2_corr_prop_width(ch);
 		if (gw > 0)
 			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
 			            static_cast<float>(st_.prop_dpi);
+	} else if (st_.proportional && prof_.model == PrinterModel::CanonBJ10e) {
+		Bj10eGlyph glyph = get_bj10e_glyph(ch, st_.codepage_850, false, true);
+		if (glyph.width > 0)
+			char_w_in = static_cast<float>(glyph.width) / 360.0f;
 	}
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
@@ -304,7 +310,7 @@ void PrinterSim::emit_char(uint8_t ch)
 	}
 
 	if (st_.slashed_zero) {
-		if (ch == 0x30) ch = 0x7F;
+		if (ch == 0x30) ch = prof_.model == PrinterModel::CanonBJ10e ? 0x00 : 0x7F;
 		else if (ch == 0xB0) ch = 0xFF;
 	}
 	if (st_.charset > 0 && st_.charset <= 8)
@@ -333,8 +339,17 @@ void PrinterSim::apply_config(const PrinterConfig &cfg)
 			st_.condensed = true;
 		} else {
 			st_.pitch_cpi = cfg.pitch_cpi;
+			st_.condensed = false;
 		}
 		st_.bold = cfg.emphasized;
+	}
+	if (prof_.model == PrinterModel::CanonBJ10e) {
+		st_.include_8th_bit = true;
+		st_.expanded = cfg.double_width;
+		st_.double_high = cfg.double_high;
+		st_.double_high_motion = cfg.double_high;
+		st_.proportional = cfg.proportional;
+		st_.font_mode = cfg.font_mode;
 	}
 	st_.auto_lf = cfg.auto_lf;
 	st_.perf_skip_lines = cfg.perf_skip;
@@ -361,6 +376,8 @@ void PrinterSim::line_feed()
 	page_dirty_ = true;
 
 	float delta = st_.reverse_lf ? -st_.line_spacing_in : st_.line_spacing_in;
+	if (prof_.model == PrinterModel::CanonBJ10e && st_.double_high_motion)
+		delta *= 2.0f;
 	st_.y_pos += delta;
 
 	if (st_.reverse_lf) {
@@ -424,6 +441,11 @@ PrinterConfig default_config_for(PrinterModel model)
 		cfg.pitch_cpi = 12;
 		cfg.font_mode = 0;
 		cfg.page_length_lines = 66;
+	} else if (model == PrinterModel::CanonBJ10e) {
+		cfg.auto_lf = false;
+		cfg.page_length_lines = 66;
+		cfg.dip_switches = 0;
+		cfg.font_mode = 0;
 	}
 	return cfg;
 }
@@ -432,6 +454,13 @@ float parse_pitch(const char *val, PrinterModel model)
 {
 	if (model == PrinterModel::ImageWriter)
 		return match_iw_pitch(val);
+	if (model == PrinterModel::CanonBJ10e) {
+		if (strcasecmp(val, "elite") == 0 || strcasecmp(val, "12") == 0)
+			return 12;
+		if (strcasecmp(val, "compressed") == 0 || strcasecmp(val, "condensed") == 0 ||
+		    strcasecmp(val, "17") == 0)
+			return 17;
+	}
 	if (strcasecmp(val, "compressed") == 0) return 17;
 	return 10;
 }
@@ -458,6 +487,8 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 		if (strcasecmp(key, "pitch") == 0) {
 			if (is_iw) {
 				cfg.pitch_cpi = match_iw_pitch(val);
+			} else if (model == PrinterModel::CanonBJ10e) {
+				cfg.pitch_cpi = parse_pitch(val, model);
 			} else {
 				if (strcasecmp(val, "compressed") == 0) cfg.pitch_cpi = 17;
 				else cfg.pitch_cpi = 10;
@@ -480,11 +511,40 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 				if (strcasecmp(val, "draft") == 0)          cfg.font_mode = 1;
 				else if (strcasecmp(val, "standard") == 0)  cfg.font_mode = 0;
 				else if (strcasecmp(val, "nlq") == 0)       cfg.font_mode = 2;
+			} else if (model == PrinterModel::CanonBJ10e) {
+				if (strcasecmp(val, "economy") == 0)        cfg.font_mode = 1;
+				else if (strcasecmp(val, "hq") == 0 ||
+				         strcasecmp(val, "high_quality") == 0)
+					cfg.font_mode = 0;
 			}
 		} else if (strcasecmp(key, "page_length") == 0) {
 			if (strcasecmp(val, "11") == 0) cfg.page_length_lines = 66;
 			else if (strcasecmp(val, "12") == 0) cfg.page_length_lines = 72;
 			else cfg.page_length_lines = atoi(val);
+		} else if (strcasecmp(key, "dip_switches") == 0) {
+			if (model == PrinterModel::CanonBJ10e)
+				cfg.dip_switches = atoi(val);
+		} else if (strcasecmp(key, "control_mode") == 0) {
+			if (model == PrinterModel::CanonBJ10e) {
+				if (strcasecmp(val, "mode1") == 0) cfg.dip_switches &= ~(1 << 9);
+				else if (strcasecmp(val, "mode2") == 0) cfg.dip_switches |= (1 << 9);
+			}
+		} else if (strcasecmp(key, "double_width") == 0) {
+			if (model == PrinterModel::CanonBJ10e)
+				cfg.double_width = (strcasecmp(val, "on") == 0);
+		} else if (strcasecmp(key, "double_high") == 0) {
+			if (model == PrinterModel::CanonBJ10e)
+				cfg.double_high = (strcasecmp(val, "on") == 0);
+		} else if (strcasecmp(key, "proportional") == 0) {
+			if (model == PrinterModel::CanonBJ10e)
+				cfg.proportional = (strcasecmp(val, "on") == 0);
+		} else if (strcasecmp(key, "quality") == 0) {
+			if (model == PrinterModel::CanonBJ10e) {
+				if (strcasecmp(val, "economy") == 0) cfg.font_mode = 1;
+				else if (strcasecmp(val, "hq") == 0 ||
+				         strcasecmp(val, "high_quality") == 0)
+					cfg.font_mode = 0;
+			}
 		} else {
 			fprintf(stderr, "printer config: unknown key '%s'\n", key);
 		}

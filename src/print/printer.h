@@ -52,8 +52,13 @@ struct PrinterConfig {
 	int  charset = 0;
 	bool auto_lf = false;
 	int  perf_skip = 0;
+	// Canon BJ-10e: 0=High Quality/full composition, 1=Economy dot omission.
 	int  font_mode = 0;
 	int  page_length_lines = 66;
+	int  dip_switches = 0;
+	bool double_width = false;
+	bool double_high = false;
+	bool proportional = false;
 };
 
 PrinterConfig default_config_for(PrinterModel model);
@@ -67,6 +72,8 @@ struct PrinterState {
 	float pitch_cpi = 10;
 	bool  bold = false;
 	bool  underline = false;
+	bool  overline = false;
+	bool  double_strike = false;
 	bool  superscript = false;
 	bool  subscript = false;
 	bool  expanded = false;
@@ -92,11 +99,14 @@ struct PrinterState {
 	bool  mousetext_mode = false;
 	bool  include_8th_bit = false;
 	bool  half_height = false;
+	bool  double_high = false;
+	bool  double_high_motion = false;
 	bool  reverse_lf = false;
 	int   font_mode = 0;
 	bool  cr_insertion = true;
 	bool  lf_when_full = false;
 	bool  proportional = false;
+	bool  codepage_850 = false;
 	int   prop_dpi = 144;
 	int   prop_spacing = 0;
 	int   tab_stops[32] = {};
@@ -115,7 +125,7 @@ public:
 
 	void feed(const uint8_t *data, size_t len);
 	void flush();
-	void apply_config(const PrinterConfig &cfg);
+	virtual void apply_config(const PrinterConfig &cfg);
 
 	const PrinterState &state() const { return st_; }
 

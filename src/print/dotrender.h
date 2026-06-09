@@ -12,6 +12,11 @@
 struct PrinterProfile;
 struct PrinterState;
 
+struct Bj10eGlyph {
+	const uint64_t *cols;
+	uint8_t width;
+};
+
 class DotRenderer {
 public:
 	virtual ~DotRenderer() = default;
@@ -65,5 +70,7 @@ const uint16_t *get_iw2_nlq_prop_p1_glyph(uint8_t ch);
 const uint16_t *get_iw2_nlq_prop_p2_glyph(uint8_t ch);
 const uint16_t *get_iw2_nlq_fw_p1_glyph(uint8_t ch);
 const uint16_t *get_iw2_nlq_fw_p2_glyph(uint8_t ch);
+Bj10eGlyph get_bj10e_glyph(uint8_t ch, bool cp850, bool secondary,
+                           bool proportional);
 
 #endif

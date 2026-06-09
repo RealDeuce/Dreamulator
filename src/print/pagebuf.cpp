@@ -61,6 +61,39 @@ void PageBitmap::stamp_dot(float cx, float cy, float radius, float intensity,
 	}
 }
 
+void PageBitmap::stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
+                               float density)
+{
+	if (sigma_x <= 0.0f || sigma_y <= 0.0f || density <= 0.0f)
+		return;
+
+	int x0 = (int)std::floor(cx - sigma_x * 3.0f);
+	int y0 = (int)std::floor(cy - sigma_y * 3.0f);
+	int x1 = (int)std::ceil(cx + sigma_x * 3.0f);
+	int y1 = (int)std::ceil(cy + sigma_y * 3.0f);
+
+	x0 = std::max(0, x0);
+	y0 = std::max(0, y0);
+	x1 = std::min(w_ - 1, x1);
+	y1 = std::min(h_ - 1, y1);
+
+	float inv_2sx2 = 1.0f / (2.0f * sigma_x * sigma_x);
+	float inv_2sy2 = 1.0f / (2.0f * sigma_y * sigma_y);
+	for (int y = y0; y <= y1; y++) {
+		float dy = (float)y - cy;
+		for (int x = x0; x <= x1; x++) {
+			float dx = (float)x - cx;
+			float coverage = std::exp(-(dx * dx * inv_2sx2 + dy * dy * inv_2sy2));
+			if (coverage < 0.002f) continue;
+
+			size_t idx = (size_t)y * (size_t)w_ + (size_t)x;
+			float cur = buf_[idx] / 255.0f;
+			float result = cur * std::exp(-density * coverage);
+			buf_[idx] = (uint8_t)std::max(0.0f, std::min(255.0f, result * 255.0f));
+		}
+	}
+}
+
 PageBitmap PageBitmap::letter_at_dpi(int dpi)
 {
 	int w = (int)(8.5f * (float)dpi);

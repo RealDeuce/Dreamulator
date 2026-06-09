@@ -36,6 +36,9 @@ protected:
 
 	void emit_gfx_col(uint8_t data);
 	void emit_gfx_col_9pin(uint8_t lo, uint8_t hi);
+	void emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
+	                        float pin_h = 1.0f / 180.0f);
+	void set_default_horizontal_tabs();
 
 	float denom_A_ = 72.0f;
 	float denom_3_ = 216.0f;
@@ -58,6 +61,82 @@ public:
 	using EscpPrinter::EscpPrinter;
 protected:
 	bool parse_esc_extension(uint8_t b) override;
+};
+
+class CanonBj10ePrinter : public PpdsPrinter {
+public:
+	CanonBj10ePrinter(PrinterModel model, PdfWriter &pdf)
+		: PpdsPrinter(model, pdf)
+	{
+		denom_3_ = 180.0f;
+		denom_J_ = 180.0f;
+		set_default_horizontal_tabs();
+	}
+
+	void apply_config(const PrinterConfig &cfg) override;
+
+protected:
+	void parse_byte(uint8_t b) override;
+	bool parse_esc_extension(uint8_t b) override;
+
+private:
+	enum class CanonExpect {
+		Normal,
+		Esc5,
+		EscI,
+		EscP,
+		EscXLeft,
+		EscXRight,
+		EscDLo,
+		EscDHi,
+		EscEqLo,
+		EscEqHi,
+		EscBracketSub,
+		EscBracketLo,
+		EscBracketHi,
+		EscBracketData,
+		AllCharsLo,
+		AllCharsHi,
+		AllCharsOne,
+		AllCharsData,
+		FsPrefix,
+		FsSub,
+		FsCJMode,
+		FsCJAmount,
+		FsCB1,
+		FsCB2,
+		MasterSel,
+		EscLowerP,
+	};
+
+	void begin_counted_sequence(uint8_t subcmd);
+	void handle_counted_byte(uint8_t b);
+	void finish_counted_sequence();
+	void apply_print_mode(uint8_t mode);
+	void derive_print_mode();
+	bool printable_c0(uint8_t b) const;
+	void consume_bytes(int count);
+
+	CanonExpect canon_expect_ = CanonExpect::Normal;
+	uint8_t canon_cmd_ = 0;
+	uint8_t canon_p1_ = 0;
+	uint16_t canon_count_ = 0;
+	uint16_t canon_seen_ = 0;
+	uint8_t canon_payload_[8] = {};
+	uint8_t canon_payload_len_ = 0;
+	bool charset1_controls_ = true;
+	bool mode2_ = false;
+	bool cr_after_lf_ = true;
+	int consume_remain_ = 0;
+	bool counted_graphics_ = false;
+	bool counted_graphics_24pin_ = false;
+	float counted_graphics_dot_w_ = 1.0f / 60.0f;
+	uint8_t counted_graphics_buf_[3] = {};
+	uint8_t counted_graphics_buf_len_ = 0;
+	bool bj_raw_12_ = false;
+	bool bj_raw_proportional_ = false;
+	bool bj_raw_17_ = false;
+	bool bj_raw_emphasized_ = false;
 };
 
 // Render one 8-pin graphics column at the current position.
@@ -110,6 +189,36 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 	st_.x_pos += gfx_dot_w_;
 }
 
+void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
+                                     float pin_h)
+{
+	uint32_t data = ((uint32_t)top << 16) | ((uint32_t)mid << 8) | (uint32_t)bot;
+	if (data == 0) {
+		st_.x_pos += gfx_dot_w_;
+		return;
+	}
+
+	new_page_if_needed();
+	page_dirty_ = true;
+
+	for (int pin = 0; pin < 24; pin++) {
+		if (!(data & (1U << (23 - pin)))) continue;
+		float x = st_.x_pos;
+		float y = st_.y_pos + (float)pin * pin_h - 24.0f * pin_h;
+		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+		                 prof_.dot_radius_mm, prof_.jitter_mm,
+		                 prof_.dot_intensity, prof_.dot_sharpness);
+	}
+	st_.x_pos += gfx_dot_w_;
+}
+
+void EscpPrinter::set_default_horizontal_tabs()
+{
+	st_.tab_count = 0;
+	for (int col = 8; col <= 80 && st_.tab_count < 32; col += 8)
+		st_.tab_stops[st_.tab_count++] = col;
+}
+
 void EscpPrinter::parse_byte(uint8_t b)
 {
 	switch (expect_) {
@@ -119,6 +228,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 		expect_ = Expect::Normal;
 		switch (esc_cmd_) {
 		case '-': st_.underline = (b & 1); break;           // p283
+		case '_': st_.overline = (b & 1); break;
 		case 'S':                                            // p283
 			st_.superscript = (b == 0);
 			st_.subscript = (b == 1);
@@ -260,9 +370,9 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'E': st_.bold = true; break;
 		case 'F': st_.bold = false; break;
 
-		// Double-strike — p283 (no rendering difference)
-		case 'G': break;
-		case 'H': break;
+		// Double-strike — p283
+		case 'G': st_.double_strike = true; break;
+		case 'H': st_.double_strike = false; break;
 
 		// Script mode off — p283
 		case 'T': st_.superscript = false; st_.subscript = false; break;
@@ -293,7 +403,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case '>': break;
 
 		// 1-byte binary parameter commands
-		case '-': case 'S': case 'W': case 'U': case 'A': case '3':
+		case '-': case '_': case 'S': case 'W': case 'U': case 'A': case '3':
 		case 'J': case 'l': case 'Q': case 'N': case 'p': case 'C':
 		case 'R':
 			esc_cmd_ = b;
@@ -383,9 +493,465 @@ bool PpdsPrinter::parse_esc_extension(uint8_t b)
 {
 	if (b == ':') {
 		st_.pitch_cpi = 12;
+		st_.condensed = false;
+		st_.proportional = false;
 		return true;
 	}
 	return false;
+}
+
+bool CanonBj10ePrinter::printable_c0(uint8_t b) const
+{
+	return b == 0x03 || b == 0x04 || b == 0x05 || b == 0x06 || b == 0x15;
+}
+
+static void apply_bj10e_nibble_style(uint8_t nibble, bool &state)
+{
+	if (nibble == 1)
+		state = false;
+	else if (nibble == 2)
+		state = true;
+}
+
+void CanonBj10ePrinter::derive_print_mode()
+{
+	st_.bold = bj_raw_emphasized_;
+	st_.proportional = false;
+	st_.condensed = false;
+	st_.pitch_cpi = 10;
+
+	if (bj_raw_proportional_) {
+		st_.proportional = true;
+	} else if (bj_raw_12_) {
+		st_.pitch_cpi = 12;
+	} else if (bj_raw_17_ && !bj_raw_emphasized_) {
+		st_.condensed = true;
+	}
+}
+
+void CanonBj10ePrinter::apply_config(const PrinterConfig &cfg)
+{
+	PrinterSim::apply_config(cfg);
+	bool sw3 = (cfg.dip_switches & (1 << 2)) != 0;
+	bool sw4 = (cfg.dip_switches & (1 << 3)) != 0;
+	bool sw5 = (cfg.dip_switches & (1 << 4)) != 0;
+	bool sw6 = (cfg.dip_switches & (1 << 5)) != 0;
+	bool sw9 = (cfg.dip_switches & (1 << 8)) != 0;
+	bool sw10 = (cfg.dip_switches & (1 << 9)) != 0;
+
+	st_.auto_lf = sw3;
+	st_.page_height_in = (sw4 ? 72.0f : 66.0f) * st_.line_spacing_in;
+	st_.codepage_850 = sw9;
+	charset1_controls_ = !sw5;
+	cr_after_lf_ = sw6;
+	mode2_ = sw10;
+
+	bj_raw_12_ = cfg.pitch_cpi == 12.0f && !cfg.proportional;
+	bj_raw_17_ = cfg.pitch_cpi == 17.0f && !cfg.proportional;
+	bj_raw_proportional_ = cfg.proportional;
+	bj_raw_emphasized_ = cfg.emphasized;
+	derive_print_mode();
+}
+
+void CanonBj10ePrinter::consume_bytes(int count)
+{
+	consume_remain_ = count;
+	canon_expect_ = consume_remain_ > 0 ? CanonExpect::EscBracketData
+	                                    : CanonExpect::Normal;
+	counted_graphics_ = false;
+	canon_payload_len_ = 0;
+}
+
+void CanonBj10ePrinter::apply_print_mode(uint8_t mode)
+{
+	bj_raw_12_ = false;
+	bj_raw_17_ = false;
+	bj_raw_proportional_ = false;
+
+	switch (mode) {
+	case 0x00: case 0x04:
+		st_.font_mode = 1;
+		break;
+	case 0x02: case 0x06:
+		st_.font_mode = 0;
+		break;
+	case 0x08: case 0x0C:
+		bj_raw_12_ = true;
+		st_.font_mode = 1;
+		break;
+	case 0x0A: case 0x0E:
+		bj_raw_12_ = true;
+		st_.font_mode = 0;
+		break;
+	case 0x10: case 0x14:
+		bj_raw_17_ = true;
+		bj_raw_emphasized_ = false;
+		st_.font_mode = 1;
+		break;
+	case 0x12: case 0x16:
+		bj_raw_17_ = true;
+		bj_raw_emphasized_ = false;
+		st_.font_mode = 0;
+		break;
+	case 0x03: case 0x07:
+		bj_raw_proportional_ = true;
+		st_.font_mode = 0;
+		break;
+	default:
+		return;
+	}
+	derive_print_mode();
+}
+
+void CanonBj10ePrinter::begin_counted_sequence(uint8_t subcmd)
+{
+	canon_cmd_ = subcmd;
+	canon_count_ = 0;
+	canon_seen_ = 0;
+	canon_payload_len_ = 0;
+	counted_graphics_ = false;
+	counted_graphics_24pin_ = false;
+	counted_graphics_buf_len_ = 0;
+	canon_expect_ = CanonExpect::EscBracketLo;
+}
+
+void CanonBj10ePrinter::handle_counted_byte(uint8_t b)
+{
+	if (canon_payload_len_ < sizeof(canon_payload_))
+		canon_payload_[canon_payload_len_++] = b;
+
+	if (canon_cmd_ == 'g') {
+		if (canon_seen_ == 0) {
+			counted_graphics_ = true;
+			counted_graphics_buf_len_ = 0;
+			switch (b) {
+			case 0: counted_graphics_dot_w_ = 1.0f / 60.0f;  counted_graphics_24pin_ = false; break;
+			case 1: counted_graphics_dot_w_ = 1.0f / 120.0f; counted_graphics_24pin_ = false; break;
+			case 2: counted_graphics_dot_w_ = 1.0f / 120.0f; counted_graphics_24pin_ = false; break;
+			case 3: counted_graphics_dot_w_ = 1.0f / 240.0f; counted_graphics_24pin_ = false; break;
+			case 8: counted_graphics_dot_w_ = 1.0f / 60.0f;  counted_graphics_24pin_ = true; break;
+			case 9: counted_graphics_dot_w_ = 1.0f / 120.0f; counted_graphics_24pin_ = true; break;
+			case 11: counted_graphics_dot_w_ = 1.0f / 180.0f; counted_graphics_24pin_ = true; break;
+			case 12: counted_graphics_dot_w_ = 1.0f / 360.0f; counted_graphics_24pin_ = true; break;
+			default: counted_graphics_ = false; break;
+			}
+		} else if (counted_graphics_) {
+			float old_w = gfx_dot_w_;
+			gfx_dot_w_ = counted_graphics_dot_w_;
+			if (counted_graphics_24pin_) {
+				counted_graphics_buf_[counted_graphics_buf_len_++] = b;
+				if (counted_graphics_buf_len_ == 3) {
+					emit_gfx_col_24pin(counted_graphics_buf_[0],
+					                   counted_graphics_buf_[1],
+					                   counted_graphics_buf_[2]);
+					counted_graphics_buf_len_ = 0;
+				}
+			} else {
+				emit_gfx_col(b);
+			}
+			gfx_dot_w_ = old_w;
+		}
+	}
+
+	canon_seen_++;
+	if (canon_seen_ >= canon_count_)
+		finish_counted_sequence();
+}
+
+void CanonBj10ePrinter::finish_counted_sequence()
+{
+	if (canon_cmd_ == '@' && canon_payload_len_ >= 3) {
+		uint8_t height = canon_payload_[2];
+		uint8_t low = (uint8_t)(height & 0x0F);
+		uint8_t high = (uint8_t)(height >> 4);
+		apply_bj10e_nibble_style(low, st_.double_high);
+		apply_bj10e_nibble_style(high, st_.double_high_motion);
+	}
+	if (canon_cmd_ == '@' && canon_payload_len_ >= 4) {
+		uint8_t dblwide = (uint8_t)(canon_payload_[3] & 0x0F);
+		if (dblwide == 1) st_.expanded = false;
+		else if (dblwide == 2) st_.expanded = true;
+	}
+
+	canon_expect_ = CanonExpect::Normal;
+	counted_graphics_ = false;
+	counted_graphics_buf_len_ = 0;
+}
+
+bool CanonBj10ePrinter::parse_esc_extension(uint8_t b)
+{
+	if (PpdsPrinter::parse_esc_extension(b))
+	{
+		if (b == ':') {
+			bj_raw_12_ = true;
+			bj_raw_proportional_ = false;
+			derive_print_mode();
+		}
+		return true;
+	}
+
+	switch (b) {
+	case '5':
+		canon_expect_ = CanonExpect::Esc5;
+		return true;
+	case '6':
+		charset1_controls_ = false;
+		return true;
+	case '7':
+		charset1_controls_ = true;
+		return true;
+	case 'I':
+		canon_expect_ = CanonExpect::EscI;
+		return true;
+	case 'P':
+		canon_expect_ = CanonExpect::EscP;
+		return true;
+	case 'E':
+		bj_raw_emphasized_ = true;
+		derive_print_mode();
+		return true;
+	case 'F':
+		bj_raw_emphasized_ = false;
+		derive_print_mode();
+		return true;
+	case 'G':
+		st_.double_strike = true;
+		return true;
+	case 'H':
+		st_.double_strike = false;
+		return true;
+	case 'M':
+		bj_raw_12_ = true;
+		bj_raw_proportional_ = false;
+		derive_print_mode();
+		return true;
+	case 'p':
+		canon_expect_ = CanonExpect::EscLowerP;
+		return true;
+	case '!':
+		canon_expect_ = CanonExpect::MasterSel;
+		return true;
+	case 'R':
+		set_default_horizontal_tabs();
+		return true;
+	case 'X':
+		canon_expect_ = CanonExpect::EscXLeft;
+		return true;
+	case 'd':
+		canon_expect_ = CanonExpect::EscDLo;
+		return true;
+	case '=':
+		canon_expect_ = CanonExpect::EscEqLo;
+		return true;
+	case '[':
+		canon_expect_ = CanonExpect::EscBracketSub;
+		return true;
+	case '\\':
+		canon_expect_ = CanonExpect::AllCharsLo;
+		return true;
+	case '^':
+		canon_expect_ = CanonExpect::AllCharsOne;
+		return true;
+	case ']':
+	case 'j':
+	case 'Q':
+		return true;
+	default:
+		return false;
+	}
+}
+
+void CanonBj10ePrinter::parse_byte(uint8_t b)
+{
+	if (consume_remain_ > 0) {
+		if (--consume_remain_ <= 0)
+			canon_expect_ = CanonExpect::Normal;
+		return;
+	}
+
+	switch (canon_expect_) {
+	case CanonExpect::Normal:
+		break;
+	case CanonExpect::Esc5:
+		st_.auto_lf = (b & 1);
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscI:
+		apply_print_mode(b);
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscP:
+		bj_raw_proportional_ = (b & 1);
+		if (bj_raw_proportional_ && !mode2_)
+			st_.font_mode = 0;
+		derive_print_mode();
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscLowerP:
+		bj_raw_proportional_ = (b & 1);
+		derive_print_mode();
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::MasterSel:
+		bj_raw_12_ = !!(b & 0x01);
+		bj_raw_proportional_ = !!(b & 0x02);
+		bj_raw_17_ = !!(b & 0x04);
+		bj_raw_emphasized_ = !!(b & 0x08);
+		st_.expanded = !!(b & 0x20);
+		st_.underline = !!(b & 0x80);
+		derive_print_mode();
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscXLeft:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::EscXRight;
+		return;
+	case CanonExpect::EscXRight:
+		if (canon_p1_ > 0)
+			st_.left_margin_in = (float)canon_p1_ / (float)st_.pitch_cpi;
+		if (b > canon_p1_)
+			st_.right_margin_in = (float)b / (float)st_.pitch_cpi;
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscDLo:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::EscDHi;
+		return;
+	case CanonExpect::EscDHi:
+		st_.x_pos += (float)((int)canon_p1_ | ((int)b << 8)) / 120.0f;
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscEqLo:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::EscEqHi;
+		return;
+	case CanonExpect::EscEqHi:
+		consume_bytes((int)canon_p1_ | ((int)b << 8));
+		return;
+	case CanonExpect::EscBracketSub:
+		if (b == '@' || b == 'K' || b == 'T' || b == '\\' || b == 'g' ||
+		    (mode2_ && b == 'I'))
+			begin_counted_sequence(b);
+		else
+			canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::EscBracketLo:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::EscBracketHi;
+		return;
+	case CanonExpect::EscBracketHi:
+		canon_count_ = (uint16_t)((uint16_t)canon_p1_ | ((uint16_t)b << 8));
+		canon_seen_ = 0;
+		if (canon_count_ == 0)
+			finish_counted_sequence();
+		else
+			canon_expect_ = CanonExpect::EscBracketData;
+		return;
+	case CanonExpect::EscBracketData:
+		handle_counted_byte(b);
+		return;
+	case CanonExpect::AllCharsLo:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::AllCharsHi;
+		return;
+	case CanonExpect::AllCharsHi:
+		canon_count_ = (uint16_t)((uint16_t)canon_p1_ | ((uint16_t)b << 8));
+		canon_expect_ = canon_count_ > 0 ? CanonExpect::AllCharsData
+		                                 : CanonExpect::Normal;
+		return;
+	case CanonExpect::AllCharsOne:
+		emit_char(b);
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::AllCharsData:
+		emit_char(b);
+		if (--canon_count_ == 0)
+			canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::FsPrefix:
+		if (b == 'C')
+			canon_expect_ = CanonExpect::FsSub;
+		else
+			canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::FsSub:
+		switch (b) {
+		case 'J':
+			canon_expect_ = CanonExpect::FsCJMode;
+			break;
+		case 'B':
+			canon_expect_ = CanonExpect::FsCB1;
+			break;
+		case 'M':
+			consume_bytes(2);
+			break;
+		case 'R': case 'S': case 'F': case 'I':
+			consume_bytes(1);
+			break;
+		default:
+			canon_expect_ = CanonExpect::Normal;
+			break;
+		}
+		return;
+	case CanonExpect::FsCJMode:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::FsCJAmount;
+		return;
+	case CanonExpect::FsCJAmount:
+		if (canon_p1_ == 0 || canon_p1_ == 4) {
+			float scale = canon_p1_ == 4 ? 1.0f : 2.0f;
+			new_page_if_needed();
+			page_dirty_ = true;
+			st_.y_pos += scale * (float)b / 360.0f;
+		}
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::FsCB1:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::FsCB2;
+		return;
+	case CanonExpect::FsCB2:
+		(void)canon_p1_;
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	}
+
+	if (mode2_ && b == 0x1C) {
+		canon_expect_ = CanonExpect::FsPrefix;
+		return;
+	}
+	if (b == 0x0F) {
+		bj_raw_17_ = true;
+		bj_raw_proportional_ = false;
+		derive_print_mode();
+		return;
+	}
+	if (b == 0x12) {
+		bj_raw_12_ = false;
+		bj_raw_17_ = false;
+		bj_raw_proportional_ = false;
+		derive_print_mode();
+		return;
+	}
+	if (b == 0x0A) {
+		line_feed();
+		if (cr_after_lf_) {
+			st_.x_pos = st_.left_margin_in;
+			st_.expanded_line = false;
+		}
+		return;
+	}
+
+	if (charset1_controls_ && b >= 0x80 && b < 0xA0) {
+		EscpPrinter::parse_byte((uint8_t)(b & 0x7F));
+		return;
+	}
+	if (!charset1_controls_ && printable_c0(b)) {
+		emit_char(b);
+		return;
+	}
+
+	EscpPrinter::parse_byte(b);
 }
 
 std::unique_ptr<PrinterSim> create_pcl_printer(PrinterModel model, PdfWriter &pdf);
@@ -397,8 +963,9 @@ std::unique_ptr<PrinterSim> create_printer(PrinterModel model, PdfWriter &pdf)
 	case PrinterModel::EpsonFX:
 		return std::make_unique<EscpPrinter>(model, pdf);
 	case PrinterModel::EpsonLQ:
-	case PrinterModel::CanonBJ10e:
 		return std::make_unique<Escp2Printer>(model, pdf);
+	case PrinterModel::CanonBJ10e:
+		return std::make_unique<CanonBj10ePrinter>(model, pdf);
 	case PrinterModel::IbmX24E:
 	case PrinterModel::IbmXIII:
 		return std::make_unique<PpdsPrinter>(model, pdf);

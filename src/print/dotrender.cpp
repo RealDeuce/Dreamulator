@@ -1,7 +1,10 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd
 #include "dotrender.h"
+#include <algorithm>
 #include <cmath>
+#include <utility>
+#include <vector>
 
 void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
                             int dpi, float radius_mm, float jitter_mm,
@@ -348,12 +351,237 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 	render_glyph_9pin(*this, page, st, prof, glyph, 12, pin_vib_);
 }
 
+static constexpr uint64_t BJ10E_48_DOT_MASK = (1ULL << 48) - 1ULL;
+static constexpr int BJ10E_FRAC_STEPS = 64;
+static constexpr int BJ10E_MAX_GLYPH_COLS = 96;
+
+struct Bj10eInkSample {
+	int dx;
+	int dy;
+	float transmit;
+};
+
+struct Bj10eInkKernel {
+	int dpi = 0;
+	int qx = 0;
+	int qy = 0;
+	float radius_mm = 0.0f;
+	float intensity = 0.0f;
+	std::vector<Bj10eInkSample> samples;
+};
+
+static void quantize_frac(float v, int &base, int &q)
+{
+	base = (int)std::floor(v);
+	float frac = v - (float)base;
+	q = (int)std::lround(frac * (float)BJ10E_FRAC_STEPS);
+	if (q >= BJ10E_FRAC_STEPS) {
+		q = 0;
+		base++;
+	}
+}
+
+static const Bj10eInkKernel &bj10e_ink_kernel(const PrinterProfile &prof,
+                                              int qx, int qy)
+{
+	static std::vector<Bj10eInkKernel> cache;
+
+	for (const Bj10eInkKernel &k : cache) {
+		if (k.dpi == prof.render_dpi && k.qx == qx && k.qy == qy &&
+		    k.radius_mm == prof.dot_radius_mm && k.intensity == prof.dot_intensity)
+			return k;
+	}
+
+	Bj10eInkKernel kernel;
+	kernel.dpi = prof.render_dpi;
+	kernel.qx = qx;
+	kernel.qy = qy;
+	kernel.radius_mm = prof.dot_radius_mm;
+	kernel.intensity = prof.dot_intensity;
+
+	float frac_x = (float)qx / (float)BJ10E_FRAC_STEPS;
+	float frac_y = (float)qy / (float)BJ10E_FRAC_STEPS;
+	float sigma = prof.dot_radius_mm / 25.4f * (float)prof.render_dpi;
+	float density = prof.dot_intensity;
+	float core_sx = sigma;
+	float core_sy = sigma * 1.10f;
+	float halo_sx = sigma * 2.25f;
+	float halo_sy = sigma * 2.45f;
+	float max_x = std::max(core_sx, halo_sx) * 3.0f;
+	float max_y = std::max(core_sy, halo_sy) * 3.0f;
+	float core_inv_2sx2 = 1.0f / (2.0f * core_sx * core_sx);
+	float core_inv_2sy2 = 1.0f / (2.0f * core_sy * core_sy);
+	float halo_inv_2sx2 = 1.0f / (2.0f * halo_sx * halo_sx);
+	float halo_inv_2sy2 = 1.0f / (2.0f * halo_sy * halo_sy);
+
+	int x0 = (int)std::floor(frac_x - max_x);
+	int x1 = (int)std::ceil(frac_x + max_x);
+	int y0 = (int)std::floor(frac_y - max_y);
+	int y1 = (int)std::ceil(frac_y + max_y);
+	for (int dy = y0; dy <= y1; dy++) {
+		float fy = (float)dy - frac_y;
+		for (int dx = x0; dx <= x1; dx++) {
+			float fx = (float)dx - frac_x;
+			float effect = 0.0f;
+			float core = std::exp(-(fx * fx * core_inv_2sx2 +
+			                        fy * fy * core_inv_2sy2));
+			if (core >= 0.002f)
+				effect += density * core;
+			float halo = std::exp(-(fx * fx * halo_inv_2sx2 +
+			                        fy * fy * halo_inv_2sy2));
+			if (halo >= 0.002f)
+				effect += density * 0.09f * halo;
+			if (effect > 0.0f)
+				kernel.samples.push_back({dx, dy, std::exp(-effect)});
+		}
+	}
+
+	cache.push_back(std::move(kernel));
+	return cache.back();
+}
+
+static void stamp_bj10e_drop(PageBitmap &page, const Bj10eInkKernel &kernel,
+                             int base_x, int base_y)
+{
+	uint8_t *buf = page.data();
+	int w = page.width();
+	int h = page.height();
+	for (const Bj10eInkSample &s : kernel.samples) {
+		int x = base_x + s.dx;
+		int y = base_y + s.dy;
+		if (x < 0 || x >= w || y < 0 || y >= h)
+			continue;
+		size_t idx = (size_t)y * (size_t)w + (size_t)x;
+		buf[idx] = (uint8_t)std::max(0.0f, std::min(255.0f,
+		                     (float)buf[idx] * s.transmit));
+	}
+}
+
+static void bj10e_apply_emphasis(uint64_t *cols, int count)
+{
+	if (count <= 1)
+		return;
+	uint64_t prev = cols[0];
+	for (int i = 1; i < count; i++) {
+		uint64_t src = cols[i];
+		cols[i] |= prev;
+		prev = src;
+	}
+}
+
+static void bj10e_apply_double_strike(uint64_t *cols, int count)
+{
+	for (int i = 0; i < count; i++)
+		cols[i] = (cols[i] | (cols[i] << 1)) & BJ10E_48_DOT_MASK;
+}
+
+static void bj10e_apply_double_width(uint64_t *cols, int &count)
+{
+	int out_count = std::min(count * 2, BJ10E_MAX_GLYPH_COLS);
+	for (int src = count - 1, dst = out_count - 1; src >= 0 && dst >= 0; src--) {
+		cols[dst--] = cols[src];
+		if (dst >= 0)
+			cols[dst--] = cols[src];
+	}
+	count = out_count;
+}
+
+static void bj10e_apply_underline(uint64_t *cols, int count)
+{
+	constexpr uint64_t underline = (1ULL << 45) | (1ULL << 46) | (1ULL << 47);
+	for (int i = 0; i < count; i++)
+		cols[i] |= underline;
+}
+
+static void bj10e_apply_overline(uint64_t *cols, int count)
+{
+	constexpr uint64_t overline = (1ULL << 0) | (1ULL << 1) | (1ULL << 2);
+	for (int i = 0; i < count; i++)
+		cols[i] |= overline;
+}
+
+static void stamp_bj10e_column(PageBitmap &page,
+                               const Bj10eInkKernel &kernel, uint64_t column,
+                               int base_x, int base_y, int row_step_px,
+                               bool double_high, bool economy, int xdot)
+{
+	for (int ydot = 0; ydot < 48; ydot++) {
+		if (!(column & (1ULL << ydot))) continue;
+		int row = double_high ? ydot * 2 : ydot;
+		if (!economy || ((xdot + row) & 1) == 0)
+			stamp_bj10e_drop(page, kernel, base_x,
+			                 base_y + row * row_step_px);
+		if (double_high) {
+			int lower_row = row + 1;
+			if (!economy || ((xdot + lower_row) & 1) == 0)
+				stamp_bj10e_drop(page, kernel, base_x,
+				                 base_y + lower_row * row_step_px);
+		}
+	}
+}
+
+static void render_bj10e_glyph(PageBitmap &page,
+                               const PrinterState &st,
+                               const PrinterProfile &prof, uint8_t ch)
+{
+	bool secondary = !st.proportional && !st.condensed && st.pitch_cpi >= 12.0f;
+	Bj10eGlyph glyph = get_bj10e_glyph(ch, st.codepage_850, secondary,
+	                                   st.proportional);
+	if (!glyph.cols || glyph.width == 0)
+		return;
+
+	uint64_t cols[BJ10E_MAX_GLYPH_COLS];
+	int col_count = 0;
+	int advance_dots = 36;
+
+	if (st.condensed && !st.proportional && glyph.width >= 36) {
+		for (int xdot = 0; xdot < 18; xdot++)
+			cols[col_count++] = glyph.cols[xdot * 2] | glyph.cols[xdot * 2 + 1];
+		advance_dots = 21;
+	} else {
+		for (int xdot = 0; xdot < glyph.width && col_count < BJ10E_MAX_GLYPH_COLS; xdot++)
+			cols[col_count++] = glyph.cols[xdot];
+		advance_dots = glyph.width;
+	}
+
+	while (col_count < advance_dots && col_count < BJ10E_MAX_GLYPH_COLS)
+		cols[col_count++] = 0;
+
+	if (st.bold)
+		bj10e_apply_emphasis(cols, col_count);
+	if (st.underline)
+		bj10e_apply_underline(cols, col_count);
+	if (st.overline)
+		bj10e_apply_overline(cols, col_count);
+	if (st.double_strike)
+		bj10e_apply_double_strike(cols, col_count);
+	if (st.expanded || st.expanded_line)
+		bj10e_apply_double_width(cols, col_count);
+
+	float base_y = st.y_pos - 48.0f / 360.0f;
+	float bidi_offset = st.line_dir_ltr ? 0.0f : (0.20f / 360.0f);
+	int absolute_xdot = (int)std::lround((st.x_pos + bidi_offset) * 360.0f);
+
+	int base_x = 0;
+	int base_y_px = 0;
+	int qx = 0;
+	int qy = 0;
+	quantize_frac((st.x_pos + bidi_offset) * (float)prof.render_dpi, base_x, qx);
+	quantize_frac(base_y * (float)prof.render_dpi, base_y_px, qy);
+	const Bj10eInkKernel &kernel = bj10e_ink_kernel(prof, qx, qy);
+	int row_step_px = std::max(1, (int)std::lround((float)prof.render_dpi / 360.0f));
+	bool economy = st.font_mode == 1;
+
+	for (int xdot = 0; xdot < col_count; xdot++)
+		stamp_bj10e_column(page, kernel, cols[xdot], base_x + xdot,
+		                    base_y_px, row_step_px, st.double_high, economy,
+		                    absolute_xdot + xdot);
+}
+
 void InkjetDot::render_char(PageBitmap &page, const PrinterState &st,
                              const PrinterProfile &prof, uint8_t ch)
 {
-	const uint16_t *glyph = get_9pin_glyph(ch);
-	if (!glyph) return;
-	render_glyph_9pin(*this, page, st, prof, glyph, 12, nullptr);
+	render_bj10e_glyph(page, st, prof, ch);
 }
 
 void TonerDot::render_char(PageBitmap &page, const PrinterState &st,
