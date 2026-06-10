@@ -291,9 +291,16 @@ void PrinterSim::emit_char(uint8_t ch)
 			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
 			            static_cast<float>(st_.prop_dpi);
 	} else if (st_.proportional && prof_.model == PrinterModel::CanonBJ10e) {
-		Bj10eGlyph glyph = get_bj10e_glyph(ch, st_.codepage_850, false, true);
-		if (glyph.width > 0)
-			char_w_in = static_cast<float>(glyph.width) / 360.0f;
+		if (st_.bj10e_use_downloaded_font && st_.bj10e_user_font &&
+		    st_.bj10e_user_font->defined[ch]) {
+			uint8_t width = st_.bj10e_user_font->width[ch];
+			if (width > 0)
+				char_w_in = static_cast<float>(width) / 360.0f;
+		} else {
+			Bj10eGlyph glyph = get_bj10e_glyph(ch, st_.codepage_850, false, true);
+			if (glyph.width > 0)
+				char_w_in = static_cast<float>(glyph.width) / 360.0f;
+		}
 	} else if (st_.proportional && prof_.model == PrinterModel::EpsonFX) {
 		bool italic = st_.italic || render_ch >= 0x80;
 		if (st_.use_user_chars && st_.user_char_defined[render_ch]) {

@@ -65,6 +65,12 @@ PrinterConfig default_config_for(PrinterModel model);
 PrinterConfig load_printer_config(const char *path, PrinterModel model);
 float parse_pitch(const char *val, PrinterModel model);
 
+struct Bj10eUserFont {
+	bool defined[256] = {};
+	uint8_t width[256] = {};
+	uint64_t glyph[256][60] = {};
+};
+
 struct PrinterState {
 	float x_pos = 0;
 	float y_pos = 0;
@@ -97,6 +103,8 @@ struct PrinterState {
 	int   perf_skip_lines = 0;
 	int   charset = 0;
 	bool  slashed_zero = false;
+	bool  reverse_image = false;
+	bool  presentation_highlight = false;
 
 	bool  mousetext_mode = false;
 	bool  include_8th_bit = false;
@@ -109,6 +117,9 @@ struct PrinterState {
 	bool  lf_when_full = false;
 	bool  proportional = false;
 	bool  codepage_850 = false;
+	bool  bj10e_graphics_density_omit = false;
+	bool  bj10e_use_downloaded_font = false;
+	const Bj10eUserFont *bj10e_user_font = nullptr;
 	bool  selected = true;
 	bool  printable_low_controls = false;
 	bool  printable_high_controls = false;

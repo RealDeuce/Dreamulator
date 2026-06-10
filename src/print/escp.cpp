@@ -7,6 +7,8 @@
 #include "dotrender.h"
 #include <cstring>
 #include <cstdio>
+#include <cmath>
+#include <vector>
 
 class EscpPrinter : public PrinterSim {
 public:
@@ -65,6 +67,7 @@ protected:
 	                        float pin_h = 1.0f / 180.0f);
 	void emit_gfx_col_bytes(const uint8_t *bytes, int byte_count,
 	                        float pin_h);
+	bool graphics_dot_allowed(int pin) const;
 	void set_default_horizontal_tabs();
 	void reset_graphics_reassignments();
 	bool set_graphics_mode(uint8_t mode);
@@ -138,6 +141,7 @@ private:
 		EscDHi,
 		EscEqLo,
 		EscEqHi,
+		EscEqData,
 		EscBracketSub,
 		EscBracketLo,
 		EscBracketHi,
@@ -168,6 +172,11 @@ private:
 	void derive_print_mode();
 	bool printable_c0(uint8_t b) const;
 	void consume_bytes(int count);
+	void start_download(int count);
+	void finish_download();
+	void reset_downloaded_fonts();
+	void parse_downloaded_font_payload();
+	void select_downloaded_font(bool selected);
 
 	CanonExpect canon_expect_ = CanonExpect::Normal;
 	uint8_t canon_cmd_ = 0;
@@ -179,8 +188,12 @@ private:
 	bool charset1_controls_ = true;
 	bool mode2_ = false;
 	bool alternate_graphics_mode_ = false;
+	bool downloaded_font_present_ = false;
+	bool downloaded_font_selected_ = false;
 	bool cr_after_lf_ = true;
 	int consume_remain_ = 0;
+	std::vector<uint8_t> download_payload_;
+	int download_remain_ = 0;
 	bool counted_graphics_ = false;
 	int counted_graphics_bytes_per_col_ = 0;
 	float counted_graphics_dot_w_ = 1.0f / 60.0f;
@@ -193,6 +206,7 @@ private:
 	bool bj_raw_proportional_ = false;
 	bool bj_raw_17_ = false;
 	bool bj_raw_emphasized_ = false;
+	Bj10eUserFont bj_user_font_;
 };
 
 static int graphics_reassign_index(uint8_t cmd)
@@ -252,6 +266,15 @@ bool EscpPrinter::begin_reassigned_graphics(uint8_t cmd)
 	return true;
 }
 
+bool EscpPrinter::graphics_dot_allowed(int pin) const
+{
+	if (prof_.model != PrinterModel::CanonBJ10e ||
+	    !st_.bj10e_graphics_density_omit)
+		return true;
+	int xdot = (int)std::lround(st_.x_pos * 360.0f);
+	return ((xdot + pin) & 1) == 0;
+}
+
 // Render one 8-pin graphics column at the current position.
 // Bit 7 = pin 1 (top), bit 0 = pin 8 (bottom).
 // Pin vertical spacing is 1/72".  (FX manual, Ch.10)
@@ -276,6 +299,7 @@ void EscpPrinter::emit_gfx_col(uint8_t data)
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 8; pin++) {
 		if (!(printable & (0x80 >> pin))) continue;
+		if (!graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 9.0f * pin_h;
 		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
@@ -310,6 +334,7 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 9; pin++) {
 		if (!(data & (1 << pin))) continue;
+		if (!graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 9.0f * pin_h;
 		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
@@ -336,6 +361,7 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 
 	for (int pin = 0; pin < 24; pin++) {
 		if (!(data & (1U << (23 - pin)))) continue;
+		if (!graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 24.0f * pin_h;
 		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
@@ -369,6 +395,7 @@ void EscpPrinter::emit_gfx_col_bytes(const uint8_t *bytes, int byte_count,
 	for (int pin = 0; pin < byte_count * 8; pin++) {
 		uint8_t b = bytes[pin / 8];
 		if (!(b & (0x80 >> (pin & 7)))) continue;
+		if (!graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - origin;
 		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
@@ -1182,6 +1209,7 @@ void CanonBj10ePrinter::derive_print_mode()
 void CanonBj10ePrinter::apply_config(const PrinterConfig &cfg)
 {
 	PrinterSim::apply_config(cfg);
+	bool sw2 = (cfg.dip_switches & (1 << 1)) != 0;
 	bool sw3 = (cfg.dip_switches & (1 << 2)) != 0;
 	bool sw4 = (cfg.dip_switches & (1 << 3)) != 0;
 	bool sw5 = (cfg.dip_switches & (1 << 4)) != 0;
@@ -1190,6 +1218,8 @@ void CanonBj10ePrinter::apply_config(const PrinterConfig &cfg)
 	bool sw9 = (cfg.dip_switches & (1 << 8)) != 0;
 	bool sw10 = (cfg.dip_switches & (1 << 9)) != 0;
 
+	st_.bj10e_graphics_density_omit = sw2;
+	st_.bj10e_user_font = &bj_user_font_;
 	st_.auto_lf = sw3;
 	st_.page_height_in = (sw4 ? 72.0f : 66.0f) * st_.line_spacing_in;
 	st_.codepage_850 = sw9;
@@ -1203,6 +1233,7 @@ void CanonBj10ePrinter::apply_config(const PrinterConfig &cfg)
 	bj_raw_proportional_ = cfg.proportional;
 	bj_raw_emphasized_ = cfg.emphasized;
 	derive_print_mode();
+	select_downloaded_font(downloaded_font_selected_);
 }
 
 void CanonBj10ePrinter::consume_bytes(int count)
@@ -1214,44 +1245,190 @@ void CanonBj10ePrinter::consume_bytes(int count)
 	canon_payload_len_ = 0;
 }
 
+void CanonBj10ePrinter::select_downloaded_font(bool selected)
+{
+	downloaded_font_selected_ = selected;
+	st_.bj10e_user_font = &bj_user_font_;
+	st_.bj10e_use_downloaded_font = selected && downloaded_font_present_;
+}
+
+void CanonBj10ePrinter::reset_downloaded_fonts()
+{
+	bj_user_font_ = Bj10eUserFont{};
+	downloaded_font_present_ = false;
+	downloaded_font_selected_ = false;
+	download_payload_.clear();
+	download_remain_ = 0;
+	select_downloaded_font(false);
+}
+
+void CanonBj10ePrinter::start_download(int count)
+{
+	flush_pending_line();
+	download_payload_.clear();
+	download_remain_ = count;
+	if (download_remain_ <= 0) {
+		reset_downloaded_fonts();
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	}
+	canon_expect_ = CanonExpect::EscEqData;
+}
+
+static uint64_t bj10e_download_column(const uint8_t *src)
+{
+	uint64_t col = 0;
+	for (int byte = 0; byte < 6; byte++) {
+		for (int bit = 0; bit < 8; bit++) {
+			if (src[byte] & (0x80 >> bit))
+				col |= 1ULL << (byte * 8 + bit);
+		}
+	}
+	return col;
+}
+
+void CanonBj10ePrinter::parse_downloaded_font_payload()
+{
+	if (download_payload_.empty()) {
+		reset_downloaded_fonts();
+		return;
+	}
+
+	uint8_t format = download_payload_[0];
+	if (mode2_) {
+		if (download_payload_.size() < 2) {
+			reset_downloaded_fonts();
+			return;
+		}
+		if (download_payload_.size() < 8 || format != 0x25)
+			return;
+
+		uint8_t flags = download_payload_[5];
+		size_t pos = 8;
+		bool any = false;
+		while (pos + 4 <= download_payload_.size()) {
+			uint8_t ch = download_payload_[pos++];
+			(void)download_payload_[pos++]; // attribute low bits affect ROM-side records.
+			uint8_t raw_width = download_payload_[pos++];
+			(void)download_payload_[pos++];
+
+			int input_width = raw_width == 0 ? 0x24 : raw_width;
+			int max_width = (flags & 0x10) ? 0x3c : 0x24;
+			int stored_width = input_width > max_width ? max_width : input_width;
+			if (stored_width > 60)
+				stored_width = 60;
+
+			std::memset(bj_user_font_.glyph[ch], 0, sizeof(bj_user_font_.glyph[ch]));
+			for (int col = 0; col < stored_width; col++) {
+				uint8_t bytes[6] = {};
+				for (int i = 0; i < 6; i++) {
+					if (pos < download_payload_.size())
+						bytes[i] = download_payload_[pos];
+					pos++;
+				}
+				bj_user_font_.glyph[ch][col] = bj10e_download_column(bytes);
+			}
+			size_t discard = (size_t)(input_width - stored_width) * 6U;
+			pos += discard;
+			bj_user_font_.defined[ch] = true;
+			bj_user_font_.width[ch] = (uint8_t)stored_width;
+			any = true;
+		}
+		if (any) {
+			downloaded_font_present_ = true;
+			select_downloaded_font(downloaded_font_selected_);
+		}
+		return;
+	}
+
+	if (format == 0x23 || format == 0x24)
+		downloaded_font_present_ = true;
+	select_downloaded_font(downloaded_font_selected_);
+}
+
+void CanonBj10ePrinter::finish_download()
+{
+	parse_downloaded_font_payload();
+	download_payload_.clear();
+	download_remain_ = 0;
+	canon_expect_ = CanonExpect::Normal;
+}
+
 void CanonBj10ePrinter::apply_print_mode(uint8_t mode)
 {
 	bj_raw_12_ = false;
 	bj_raw_17_ = false;
 	bj_raw_proportional_ = false;
+	bool downloaded = false;
 
 	switch (mode) {
-	case 0x00: case 0x04:
+	case 0x00:
 		st_.font_mode = 1;
 		break;
-	case 0x02: case 0x06:
+	case 0x04:
+		downloaded = true;
+		st_.font_mode = 1;
+		break;
+	case 0x02:
 		st_.font_mode = 0;
 		break;
-	case 0x08: case 0x0C:
+	case 0x06:
+		downloaded = true;
+		st_.font_mode = 0;
+		break;
+	case 0x08:
 		bj_raw_12_ = true;
 		st_.font_mode = 1;
 		break;
-	case 0x0A: case 0x0E:
+	case 0x0C:
+		downloaded = true;
+		bj_raw_12_ = true;
+		st_.font_mode = 1;
+		break;
+	case 0x0A:
 		bj_raw_12_ = true;
 		st_.font_mode = 0;
 		break;
-	case 0x10: case 0x14:
+	case 0x0E:
+		downloaded = true;
+		bj_raw_12_ = true;
+		st_.font_mode = 0;
+		break;
+	case 0x10:
 		bj_raw_17_ = true;
 		bj_raw_emphasized_ = false;
 		st_.font_mode = 1;
 		break;
-	case 0x12: case 0x16:
+	case 0x14:
+		downloaded = true;
+		bj_raw_17_ = true;
+		bj_raw_emphasized_ = false;
+		st_.font_mode = 1;
+		break;
+	case 0x12:
 		bj_raw_17_ = true;
 		bj_raw_emphasized_ = false;
 		st_.font_mode = 0;
 		break;
-	case 0x03: case 0x07:
+	case 0x16:
+		downloaded = true;
+		bj_raw_17_ = true;
+		bj_raw_emphasized_ = false;
+		st_.font_mode = 0;
+		break;
+	case 0x03:
+		bj_raw_proportional_ = true;
+		st_.font_mode = 0;
+		break;
+	case 0x07:
+		downloaded = true;
 		bj_raw_proportional_ = true;
 		st_.font_mode = 0;
 		break;
 	default:
 		return;
 	}
+	select_downloaded_font(downloaded);
 	derive_print_mode();
 }
 
@@ -1309,6 +1486,13 @@ void CanonBj10ePrinter::handle_counted_byte(uint8_t b)
 
 void CanonBj10ePrinter::finish_counted_sequence()
 {
+	if (canon_cmd_ == '@' && mode2_ && canon_payload_len_ >= 2) {
+		uint8_t effects = canon_payload_[1];
+		apply_bj10e_nibble_style((uint8_t)(effects & 0x0F),
+		                         st_.presentation_highlight);
+		apply_bj10e_nibble_style((uint8_t)(effects >> 4),
+		                         st_.reverse_image);
+	}
 	if (canon_cmd_ == '@' && canon_payload_len_ >= 3) {
 		uint8_t height = canon_payload_[2];
 		uint8_t low = (uint8_t)(height & 0x0F);
@@ -1320,6 +1504,44 @@ void CanonBj10ePrinter::finish_counted_sequence()
 		uint8_t dblwide = (uint8_t)(canon_payload_[3] & 0x0F);
 		if (dblwide == 1) st_.expanded = false;
 		else if (dblwide == 2) st_.expanded = true;
+	}
+	if (canon_cmd_ == 'T' && canon_payload_len_ >= 4) {
+		uint16_t cpid = (uint16_t)(((uint16_t)canon_payload_[2] << 8) |
+		                           canon_payload_[3]);
+		if (cpid == 850)
+			st_.codepage_850 = true;
+		else if (cpid == 437)
+			st_.codepage_850 = false;
+	}
+	if (canon_cmd_ == 'K' && canon_payload_len_ >= 1) {
+		uint8_t init = canon_payload_[0];
+		bool user_init = init == 0 || init == 1 || init == 254;
+		bool factory_init = init == 4 || init == 5 || init == 255;
+		if (user_init || factory_init) {
+			cancel_pending_line();
+			st_ = PrinterState{};
+			apply_config(factory_init ? default_config_for(PrinterModel::CanonBJ10e) : cfg_);
+			set_default_horizontal_tabs();
+			set_default_vertical_tabs();
+			reset_graphics_reassignments();
+			reset_downloaded_fonts();
+		}
+	}
+	if (canon_cmd_ == 'I' && mode2_ && canon_payload_len_ > 0) {
+		uint8_t mode = canon_payload_[0];
+		if (canon_payload_len_ > 1) {
+			switch (mode) {
+			case 0x00: case 0x02: case 0x03: case 0x04:
+			case 0x06: case 0x07: case 0x08: case 0x0A:
+			case 0x0C: case 0x0E: case 0x10: case 0x12:
+			case 0x14: case 0x16:
+				break;
+			default:
+				mode = canon_payload_[1];
+				break;
+			}
+		}
+		apply_print_mode(mode);
 	}
 
 	canon_expect_ = CanonExpect::Normal;
@@ -1493,7 +1715,12 @@ void CanonBj10ePrinter::parse_byte(uint8_t b)
 		canon_expect_ = CanonExpect::EscEqHi;
 		return;
 	case CanonExpect::EscEqHi:
-		consume_bytes((int)canon_p1_ | ((int)b << 8));
+		start_download((int)canon_p1_ | ((int)b << 8));
+		return;
+	case CanonExpect::EscEqData:
+		download_payload_.push_back(b);
+		if (--download_remain_ <= 0)
+			finish_download();
 		return;
 	case CanonExpect::EscBracketSub:
 		if (b == '@' || b == 'K' || b == 'T' || b == '\\' || b == 'g' ||

@@ -521,6 +521,13 @@ static void bj10e_apply_overline(uint64_t *cols, int count)
 		cols[i] |= overline;
 }
 
+static void bj10e_apply_presentation_highlight(uint64_t *cols, int count)
+{
+	constexpr uint64_t mask = 0x002492492492ULL;
+	for (int i = 0; i < count; i++)
+		cols[i] |= (i & 1) ? (mask << 1) : mask;
+}
+
 static void stamp_bj10e_column(PageBitmap &page,
                                const Bj10eInkKernel &kernel, uint64_t column,
                                int base_x, int base_y, int row_step_px,
@@ -548,6 +555,13 @@ static void render_bj10e_glyph(PageBitmap &page,
 	bool secondary = !st.proportional && !st.condensed && st.pitch_cpi >= 12.0f;
 	Bj10eGlyph glyph = get_bj10e_glyph(ch, st.codepage_850, secondary,
 	                                   st.proportional);
+	if (st.bj10e_use_downloaded_font && st.bj10e_user_font &&
+	    st.bj10e_user_font->defined[ch]) {
+		glyph = Bj10eGlyph{
+			st.bj10e_user_font->glyph[ch],
+			st.bj10e_user_font->width[ch]
+		};
+	}
 	if (!glyph.cols || glyph.width == 0)
 		return;
 
@@ -574,6 +588,12 @@ static void render_bj10e_glyph(PageBitmap &page,
 		bj10e_apply_underline(cols, col_count);
 	if (st.overline)
 		bj10e_apply_overline(cols, col_count);
+	if (st.presentation_highlight)
+		bj10e_apply_presentation_highlight(cols, col_count);
+	if (st.reverse_image) {
+		for (int i = 0; i < col_count; i++)
+			cols[i] = (~cols[i]) & BJ10E_48_DOT_MASK;
+	}
 	if (st.double_strike)
 		bj10e_apply_double_strike(cols, col_count);
 	if (st.expanded || st.expanded_line)
