@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <vector>
 
 struct PrinterProfile;
 struct PrinterState;
@@ -75,5 +76,9 @@ const uint16_t *get_iw2_nlq_fw_p1_glyph(uint8_t ch);
 const uint16_t *get_iw2_nlq_fw_p2_glyph(uint8_t ch);
 Bj10eGlyph get_bj10e_glyph(uint8_t ch, bool cp850, bool secondary,
                            bool proportional);
+std::vector<uint64_t> build_bj10e_glyph_columns(const PrinterState &st,
+                                                uint8_t ch);
+void stamp_bj10e_dot(PageBitmap &page, const PrinterProfile &prof,
+                     int xdot, int ydot);
 
 #endif

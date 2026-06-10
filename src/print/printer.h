@@ -5,6 +5,7 @@
 
 #include "pagebuf.h"
 #include "pdfwriter.h"
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -146,6 +147,13 @@ struct PendingLineChar {
 	float advance_in = 0.0f;
 	bool has_text = false;
 	TextGlyph text = {};
+	size_t bj10e_dot_count = 0;
+};
+
+struct Bj10ePendingDot {
+	int xdot = 0;
+	int ydot = 0;
+	bool omit = false;
 };
 
 class PrinterSim {
@@ -169,6 +177,9 @@ protected:
 	void flush_pending_line();
 	void cancel_pending_line();
 	void delete_pending_char();
+	size_t queue_bj10e_text_dots(uint8_t ch, const PrinterState &state);
+	void queue_bj10e_graphics_dot(float x_in, float y_in, bool omit);
+	void flush_bj10e_pending_dots();
 	void carriage_return();
 	void line_feed();
 	void form_feed();
@@ -187,6 +198,7 @@ protected:
 	bool line_force_ltr_ = false;
 	std::vector<TextGlyph> text_buf_;
 	std::vector<PendingLineChar> pending_line_;
+	std::vector<Bj10ePendingDot> bj10e_pending_dots_;
 };
 
 std::unique_ptr<PrinterSim> create_printer(PrinterModel model, PdfWriter &pdf);

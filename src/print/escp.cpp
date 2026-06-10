@@ -280,7 +280,8 @@ bool EscpPrinter::graphics_dot_allowed(int pin) const
 // Pin vertical spacing is 1/72".  (FX manual, Ch.10)
 void EscpPrinter::emit_gfx_col(uint8_t data)
 {
-	flush_pending_line();
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		flush_pending_line();
 
 	uint8_t printable = data;
 	if (gfx_adjacent_suppression_)
@@ -293,18 +294,23 @@ void EscpPrinter::emit_gfx_col(uint8_t data)
 	}
 
 	new_page_if_needed();
-	page_dirty_ = true;
 	mark_line_output(true);
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		page_dirty_ = true;
 
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 8; pin++) {
 		if (!(printable & (0x80 >> pin))) continue;
-		if (!graphics_dot_allowed(pin)) continue;
+		if (prof_.model != PrinterModel::CanonBJ10e &&
+		    !graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 9.0f * pin_h;
-		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
-		                 prof_.dot_radius_mm, prof_.jitter_mm,
-		                 prof_.dot_intensity, prof_.dot_sharpness);
+		if (prof_.model == PrinterModel::CanonBJ10e)
+			queue_bj10e_graphics_dot(x, y, st_.bj10e_graphics_density_omit);
+		else
+			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -313,7 +319,8 @@ void EscpPrinter::emit_gfx_col(uint8_t data)
 // lo: pins 1-8 (bit 7 = pin 1), hi: bit 7 = pin 9.
 void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 {
-	flush_pending_line();
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		flush_pending_line();
 
 	uint16_t data = 0;
 	for (int pin = 0; pin < 8; pin++) {
@@ -328,18 +335,23 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 	}
 
 	new_page_if_needed();
-	page_dirty_ = true;
 	mark_line_output(true);
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		page_dirty_ = true;
 
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 9; pin++) {
 		if (!(data & (1 << pin))) continue;
-		if (!graphics_dot_allowed(pin)) continue;
+		if (prof_.model != PrinterModel::CanonBJ10e &&
+		    !graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 9.0f * pin_h;
-		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
-		                 prof_.dot_radius_mm, prof_.jitter_mm,
-		                 prof_.dot_intensity, prof_.dot_sharpness);
+		if (prof_.model == PrinterModel::CanonBJ10e)
+			queue_bj10e_graphics_dot(x, y, st_.bj10e_graphics_density_omit);
+		else
+			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -347,7 +359,8 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
                                      float pin_h)
 {
-	flush_pending_line();
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		flush_pending_line();
 
 	uint32_t data = ((uint32_t)top << 16) | ((uint32_t)mid << 8) | (uint32_t)bot;
 	if (data == 0) {
@@ -356,17 +369,22 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 	}
 
 	new_page_if_needed();
-	page_dirty_ = true;
 	mark_line_output(true);
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		page_dirty_ = true;
 
 	for (int pin = 0; pin < 24; pin++) {
 		if (!(data & (1U << (23 - pin)))) continue;
-		if (!graphics_dot_allowed(pin)) continue;
+		if (prof_.model != PrinterModel::CanonBJ10e &&
+		    !graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 24.0f * pin_h;
-		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
-		                 prof_.dot_radius_mm, prof_.jitter_mm,
-		                 prof_.dot_intensity, prof_.dot_sharpness);
+		if (prof_.model == PrinterModel::CanonBJ10e)
+			queue_bj10e_graphics_dot(x, y, st_.bj10e_graphics_density_omit);
+		else
+			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -374,7 +392,8 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 void EscpPrinter::emit_gfx_col_bytes(const uint8_t *bytes, int byte_count,
                                      float pin_h)
 {
-	flush_pending_line();
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		flush_pending_line();
 
 	if (byte_count <= 0)
 		return;
@@ -388,19 +407,24 @@ void EscpPrinter::emit_gfx_col_bytes(const uint8_t *bytes, int byte_count,
 	}
 
 	new_page_if_needed();
-	page_dirty_ = true;
 	mark_line_output(true);
+	if (prof_.model != PrinterModel::CanonBJ10e)
+		page_dirty_ = true;
 
 	float origin = 9.0f / 72.0f;
 	for (int pin = 0; pin < byte_count * 8; pin++) {
 		uint8_t b = bytes[pin / 8];
 		if (!(b & (0x80 >> (pin & 7)))) continue;
-		if (!graphics_dot_allowed(pin)) continue;
+		if (prof_.model != PrinterModel::CanonBJ10e &&
+		    !graphics_dot_allowed(pin)) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - origin;
-		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
-		                 prof_.dot_radius_mm, prof_.jitter_mm,
-		                 prof_.dot_intensity, prof_.dot_sharpness);
+		if (prof_.model == PrinterModel::CanonBJ10e)
+			queue_bj10e_graphics_dot(x, y, st_.bj10e_graphics_density_omit);
+		else
+			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
 	}
 	st_.x_pos += gfx_dot_w_;
 }

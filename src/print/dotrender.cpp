@@ -478,6 +478,15 @@ static void stamp_bj10e_drop(PageBitmap &page, const Bj10eInkKernel &kernel,
 	}
 }
 
+void stamp_bj10e_dot(PageBitmap &page, const PrinterProfile &prof,
+                     int xdot, int ydot)
+{
+	const Bj10eInkKernel &kernel = bj10e_ink_kernel(prof, 0, 0);
+	int x = (int)std::lround((float)xdot * (float)prof.render_dpi / 360.0f);
+	int y = (int)std::lround((float)ydot * (float)prof.render_dpi / 360.0f);
+	stamp_bj10e_drop(page, kernel, x, y);
+}
+
 static void bj10e_apply_emphasis(uint64_t *cols, int count)
 {
 	if (count <= 1)
@@ -548,9 +557,8 @@ static void stamp_bj10e_column(PageBitmap &page,
 	}
 }
 
-static void render_bj10e_glyph(PageBitmap &page,
-                               const PrinterState &st,
-                               const PrinterProfile &prof, uint8_t ch)
+std::vector<uint64_t> build_bj10e_glyph_columns(const PrinterState &st,
+                                                uint8_t ch)
 {
 	bool secondary = !st.proportional && !st.condensed && st.pitch_cpi >= 12.0f;
 	Bj10eGlyph glyph = get_bj10e_glyph(ch, st.codepage_850, secondary,
@@ -563,7 +571,7 @@ static void render_bj10e_glyph(PageBitmap &page,
 		};
 	}
 	if (!glyph.cols || glyph.width == 0)
-		return;
+		return {};
 
 	uint64_t cols[BJ10E_MAX_GLYPH_COLS];
 	int col_count = 0;
@@ -599,6 +607,17 @@ static void render_bj10e_glyph(PageBitmap &page,
 	if (st.expanded || st.expanded_line)
 		bj10e_apply_double_width(cols, col_count);
 
+	return std::vector<uint64_t>(cols, cols + col_count);
+}
+
+static void render_bj10e_glyph(PageBitmap &page,
+                               const PrinterState &st,
+                               const PrinterProfile &prof, uint8_t ch)
+{
+	std::vector<uint64_t> cols = build_bj10e_glyph_columns(st, ch);
+	if (cols.empty())
+		return;
+
 	float base_y = st.y_pos - 48.0f / 360.0f;
 	float bidi_offset = st.line_dir_ltr ? 0.0f : (0.20f / 360.0f);
 	int absolute_xdot = (int)std::lround((st.x_pos + bidi_offset) * 360.0f);
@@ -613,10 +632,10 @@ static void render_bj10e_glyph(PageBitmap &page,
 	int row_step_px = std::max(1, (int)std::lround((float)prof.render_dpi / 360.0f));
 	bool economy = st.font_mode == 1;
 
-	for (int xdot = 0; xdot < col_count; xdot++)
-		stamp_bj10e_column(page, kernel, cols[xdot], base_x + xdot,
+	for (size_t xdot = 0; xdot < cols.size(); xdot++)
+		stamp_bj10e_column(page, kernel, cols[xdot], base_x + (int)xdot,
 		                    base_y_px, row_step_px, st.double_high, economy,
-		                    absolute_xdot + xdot);
+		                    absolute_xdot + (int)xdot);
 }
 
 void InkjetDot::render_char(PageBitmap &page, const PrinterState &st,

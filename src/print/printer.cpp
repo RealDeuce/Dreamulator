@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd
 #include "printer.h"
 #include "dotrender.h"
+#include <algorithm>
 #include <cmath>
 #include <cctype>
 #include <cstdio>
@@ -259,6 +260,90 @@ static void append_text_glyph(std::vector<TextGlyph> &text_buf,
 	text_buf.push_back(glyph);
 }
 
+static uint64_t bj10e_dot_key(int xdot, int ydot)
+{
+	return ((uint64_t)(uint32_t)xdot << 32) | (uint32_t)ydot;
+}
+
+static int bj10e_key_x(uint64_t key)
+{
+	return (int32_t)(uint32_t)(key >> 32);
+}
+
+static int bj10e_key_y(uint64_t key)
+{
+	return (int32_t)(uint32_t)key;
+}
+
+size_t PrinterSim::queue_bj10e_text_dots(uint8_t ch,
+                                         const PrinterState &state)
+{
+	size_t start = bj10e_pending_dots_.size();
+	std::vector<uint64_t> cols = build_bj10e_glyph_columns(state, ch);
+	if (cols.empty())
+		return 0;
+
+	float bidi_offset = state.line_dir_ltr ? 0.0f : (0.20f / 360.0f);
+	int base_xdot = (int)std::lround((state.x_pos + bidi_offset) * 360.0f);
+	int base_ydot = (int)std::lround((state.y_pos - 48.0f / 360.0f) * 360.0f);
+	bool omit = state.font_mode == 1;
+
+	for (size_t xdot = 0; xdot < cols.size(); xdot++) {
+		uint64_t column = cols[xdot];
+		for (int ydot = 0; ydot < 48; ydot++) {
+			if (!(column & (1ULL << ydot)))
+				continue;
+			int row = state.double_high ? ydot * 2 : ydot;
+			bj10e_pending_dots_.push_back({ base_xdot + (int)xdot,
+			                                base_ydot + row, omit });
+			if (state.double_high)
+				bj10e_pending_dots_.push_back({ base_xdot + (int)xdot,
+				                                base_ydot + row + 1, omit });
+		}
+	}
+	return bj10e_pending_dots_.size() - start;
+}
+
+void PrinterSim::queue_bj10e_graphics_dot(float x_in, float y_in, bool omit)
+{
+	int xdot = (int)std::lround(x_in * 360.0f);
+	int ydot = (int)std::lround(y_in * 360.0f);
+	bj10e_pending_dots_.push_back({ xdot, ydot, omit });
+}
+
+void PrinterSim::flush_bj10e_pending_dots()
+{
+	if (bj10e_pending_dots_.empty())
+		return;
+
+	struct Dot {
+		uint64_t key;
+		bool omit;
+	};
+	std::vector<Dot> dots;
+	dots.reserve(bj10e_pending_dots_.size());
+	for (const Bj10ePendingDot &dot : bj10e_pending_dots_)
+		dots.push_back({ bj10e_dot_key(dot.xdot, dot.ydot), dot.omit });
+	std::sort(dots.begin(), dots.end(),
+	          [](const Dot &a, const Dot &b) { return a.key < b.key; });
+
+	for (size_t i = 0; i < dots.size();) {
+		uint64_t key = dots[i].key;
+		bool omit = true;
+		do {
+			omit = omit && dots[i].omit;
+			i++;
+		} while (i < dots.size() && dots[i].key == key);
+
+		int xdot = bj10e_key_x(key);
+		int ydot = bj10e_key_y(key);
+		if (omit && ((xdot + ydot) & 1))
+			continue;
+		stamp_bj10e_dot(*page_, prof_, xdot, ydot);
+	}
+	bj10e_pending_dots_.clear();
+}
+
 void PrinterSim::emit_char(uint8_t ch)
 {
 	new_page_if_needed();
@@ -316,6 +401,10 @@ void PrinterSim::emit_char(uint8_t ch)
 		char_w_in *= 2.0f;
 
 	{
+		size_t bj10e_dot_count = 0;
+		if (prof_.model == PrinterModel::CanonBJ10e)
+			bj10e_dot_count = queue_bj10e_text_dots(render_ch, st_);
+
 		uint16_t cp = ch;
 		if (st_.mousetext_mode && ch >= 0xC0 && ch <= 0xDF) {
 			static constexpr uint16_t mt_unicode[32] = {
@@ -344,10 +433,12 @@ void PrinterSim::emit_char(uint8_t ch)
 			if (st_.subscript) sty |= TextGlyph::SUB;
 			pending_line_.push_back({
 				render_ch, st_, char_w_in, true,
-				{st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty}
+				{st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty},
+				bj10e_dot_count
 			});
 		} else {
-			pending_line_.push_back({render_ch, st_, char_w_in, false, {}});
+			pending_line_.push_back({render_ch, st_, char_w_in, false, {},
+			                         bj10e_dot_count});
 		}
 	}
 
@@ -361,11 +452,21 @@ void PrinterSim::emit_char(uint8_t ch)
 
 void PrinterSim::flush_pending_line()
 {
-	if (pending_line_.empty())
+	if (pending_line_.empty() && bj10e_pending_dots_.empty())
 		return;
 
 	new_page_if_needed();
 	page_dirty_ = true;
+	if (prof_.model == PrinterModel::CanonBJ10e) {
+		for (const auto &entry : pending_line_) {
+			if (entry.has_text)
+				append_text_glyph(text_buf_, entry.text);
+		}
+		pending_line_.clear();
+		flush_bj10e_pending_dots();
+		mark_line_output();
+		return;
+	}
 	for (const auto &entry : pending_line_) {
 		if (entry.has_text)
 			append_text_glyph(text_buf_, entry.text);
@@ -378,6 +479,7 @@ void PrinterSim::flush_pending_line()
 void PrinterSim::cancel_pending_line()
 {
 	pending_line_.clear();
+	bj10e_pending_dots_.clear();
 }
 
 void PrinterSim::delete_pending_char()
@@ -385,6 +487,9 @@ void PrinterSim::delete_pending_char()
 	if (pending_line_.empty())
 		return;
 	st_.x_pos = pending_line_.back().state.x_pos;
+	size_t dot_count = pending_line_.back().bj10e_dot_count;
+	while (dot_count-- > 0 && !bj10e_pending_dots_.empty())
+		bj10e_pending_dots_.pop_back();
 	pending_line_.pop_back();
 }
 
