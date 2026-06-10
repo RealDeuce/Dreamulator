@@ -79,9 +79,11 @@ struct PrinterState {
 	bool  expanded = false;
 	bool  expanded_line = false;
 	bool  condensed = false;
+	bool  italic = false;
 
 	float line_spacing_in = 1.0f / 6.0f;
 	bool  unidirectional = false;
+	bool  unidirectional_line = false;
 	bool  line_dir_ltr = true;
 
 	float left_margin_in = 0.25f;
@@ -107,13 +109,32 @@ struct PrinterState {
 	bool  lf_when_full = false;
 	bool  proportional = false;
 	bool  codepage_850 = false;
+	bool  selected = true;
+	bool  printable_low_controls = false;
+	bool  printable_high_controls = false;
+	int   msb_mode = 0; // -1 force 0, 0 accept as sent, 1 force 1
+	bool  use_user_chars = false;
 	int   prop_dpi = 144;
 	int   prop_spacing = 0;
 	int   tab_stops[32] = {};
 	int   tab_count = 0;
+	float vtab_stops[8][16] = {};
+	int   vtab_count[8] = {};
+	int   vtab_channel = 0;
+	bool  user_char_defined[256] = {};
+	uint8_t user_char_prefix[256] = {};
+	uint16_t user_char_glyph[256][12] = {};
 };
 
 class DotRenderer;
+
+struct PendingLineChar {
+	uint8_t ch = 0;
+	PrinterState state = {};
+	float advance_in = 0.0f;
+	bool has_text = false;
+	TextGlyph text = {};
+};
 
 class PrinterSim {
 public:
@@ -133,10 +154,15 @@ protected:
 	virtual void parse_byte(uint8_t b) = 0;
 
 	void emit_char(uint8_t ch);
+	void flush_pending_line();
+	void cancel_pending_line();
+	void delete_pending_char();
 	void carriage_return();
 	void line_feed();
 	void form_feed();
 	void new_page_if_needed();
+	void mark_line_output(bool force_ltr = false);
+	void finish_printed_line();
 
 	PrinterState st_;
 	PrinterConfig cfg_;
@@ -145,7 +171,10 @@ protected:
 	std::unique_ptr<PageBitmap> page_;
 	std::unique_ptr<DotRenderer> dots_;
 	bool page_dirty_ = false;
+	bool line_output_ = false;
+	bool line_force_ltr_ = false;
 	std::vector<TextGlyph> text_buf_;
+	std::vector<PendingLineChar> pending_line_;
 };
 
 std::unique_ptr<PrinterSim> create_printer(PrinterModel model, PdfWriter &pdf);

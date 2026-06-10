@@ -5,11 +5,17 @@
 // Appendix D: Control Code Chart, pages 287-289
 #include "printer.h"
 #include "dotrender.h"
+#include <cstring>
 #include <cstdio>
 
 class EscpPrinter : public PrinterSim {
 public:
-	using PrinterSim::PrinterSim;
+	EscpPrinter(PrinterModel model, PdfWriter &pdf)
+		: PrinterSim(model, pdf)
+	{
+		set_default_horizontal_tabs();
+		set_default_vertical_tabs();
+	}
 
 protected:
 	void parse_byte(uint8_t b) override;
@@ -25,6 +31,12 @@ protected:
 		MasterSel,
 		FormLenInch,
 		EscStar1, EscStar2,
+		EscQuestionCmd, EscQuestionMode,
+		EscPercent1, EscPercent2,
+		EscI, EscBChannel, VTabStops,
+		EscAmpNull, EscAmpFirst, EscAmpLast, EscAmpFxData,
+		EscAmpLqFirst, EscAmpLqLast, EscAmpLqD0, EscAmpLqD1, EscAmpLqD2, EscAmpLqData,
+		EscColon1, EscColon2, EscColon3,
 	};
 	Expect expect_ = Expect::Normal;
 	uint8_t esc_cmd_ = 0;
@@ -32,13 +44,35 @@ protected:
 	int gfx_remain_ = 0;
 	float gfx_dot_w_ = 0;
 	bool gfx_9pin_ = false;
+	bool gfx_adjacent_suppression_ = false;
 	uint8_t gfx_hi_byte_ = 0;
+	uint16_t gfx_prev_col_ = 0;
+	uint8_t gfx_reassign_[4] = { 0, 1, 2, 3 };
+	uint8_t user_first_ = 0;
+	uint8_t user_last_ = 0;
+	uint8_t user_cur_ = 0;
+	int user_data_pos_ = 0;
+	int user_lq_data_remain_ = 0;
+	int vtab_pending_channel_ = 0;
+	int vtab_last_stop_ = 0;
+	int htab_last_stop_ = 0;
+	uint8_t colon_p1_ = 0;
+	uint8_t colon_p2_ = 0;
 
 	void emit_gfx_col(uint8_t data);
 	void emit_gfx_col_9pin(uint8_t lo, uint8_t hi);
 	void emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 	                        float pin_h = 1.0f / 180.0f);
 	void set_default_horizontal_tabs();
+	void reset_graphics_reassignments();
+	bool set_graphics_mode(uint8_t mode);
+	void set_9pin_graphics_density(uint8_t density);
+	bool begin_reassigned_graphics(uint8_t cmd);
+	void set_default_vertical_tabs();
+	void copy_fx_rom_to_user_chars();
+	bool low_control_printable(uint8_t b) const;
+	void begin_vertical_tabs(int channel);
+	void add_vertical_tab(uint8_t stop);
 
 	float denom_A_ = 72.0f;
 	float denom_3_ = 216.0f;
@@ -139,22 +173,87 @@ private:
 	bool bj_raw_emphasized_ = false;
 };
 
+static int graphics_reassign_index(uint8_t cmd)
+{
+	switch (cmd) {
+	case 'K': return 0;
+	case 'L': return 1;
+	case 'Y': return 2;
+	case 'Z': return 3;
+	default:  return -1;
+	}
+}
+
+void EscpPrinter::reset_graphics_reassignments()
+{
+	gfx_reassign_[0] = 0;
+	gfx_reassign_[1] = 1;
+	gfx_reassign_[2] = 2;
+	gfx_reassign_[3] = 3;
+}
+
+bool EscpPrinter::set_graphics_mode(uint8_t mode)
+{
+	gfx_9pin_ = false;
+	gfx_adjacent_suppression_ = false;
+	switch (mode) {                                         // FX Table 11-1 plus ROM mode 7
+	case 0: gfx_dot_w_ = 1.0f / 60.0f;  break;
+	case 1: gfx_dot_w_ = 1.0f / 120.0f; break;
+	case 2: gfx_dot_w_ = 1.0f / 120.0f; gfx_adjacent_suppression_ = true; break;
+	case 3: gfx_dot_w_ = 1.0f / 240.0f; gfx_adjacent_suppression_ = true; break;
+	case 4: gfx_dot_w_ = 1.0f / 80.0f;  break;
+	case 5: gfx_dot_w_ = 1.0f / 72.0f;  break;
+	case 6: gfx_dot_w_ = 1.0f / 90.0f;  break;
+	case 7: gfx_dot_w_ = 1.0f / 144.0f; break;
+	default:
+		gfx_dot_w_ = 1.0f / 60.0f;
+		return false;
+	}
+	return true;
+}
+
+void EscpPrinter::set_9pin_graphics_density(uint8_t density)
+{
+	gfx_9pin_ = true;
+	gfx_adjacent_suppression_ = false;
+	gfx_dot_w_ = density == 1 ? 1.0f / 120.0f : 1.0f / 60.0f;
+}
+
+bool EscpPrinter::begin_reassigned_graphics(uint8_t cmd)
+{
+	int idx = graphics_reassign_index(cmd);
+	if (idx < 0)
+		return false;
+	set_graphics_mode(gfx_reassign_[idx]);
+	esc_cmd_ = cmd;
+	expect_ = Expect::GfxLo;
+	return true;
+}
+
 // Render one 8-pin graphics column at the current position.
-// Bit 0 = pin 1 (top), bit 7 = pin 8 (bottom).
+// Bit 7 = pin 1 (top), bit 0 = pin 8 (bottom).
 // Pin vertical spacing is 1/72".  (FX manual, Ch.10)
 void EscpPrinter::emit_gfx_col(uint8_t data)
 {
-	if (data == 0) {
+	flush_pending_line();
+
+	uint8_t printable = data;
+	if (gfx_adjacent_suppression_)
+		printable = static_cast<uint8_t>(printable & ~gfx_prev_col_);
+	gfx_prev_col_ = data;
+
+	if (printable == 0) {
 		st_.x_pos += gfx_dot_w_;
 		return;
 	}
 
 	new_page_if_needed();
 	page_dirty_ = true;
+	mark_line_output(true);
 
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 8; pin++) {
-		if (!(data & (1 << pin))) continue;
+		if (!(printable & (0x80 >> pin))) continue;
 		float x = st_.x_pos;
 		float y = st_.y_pos + (float)pin * pin_h - 9.0f * pin_h;
 		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
@@ -165,10 +264,18 @@ void EscpPrinter::emit_gfx_col(uint8_t data)
 }
 
 // Render one 9-pin graphics column.
-// lo: pins 1-8 (bit 0 = pin 1), hi: bit 0 = pin 9.
+// lo: pins 1-8 (bit 7 = pin 1), hi: bit 7 = pin 9.
 void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 {
-	uint16_t data = static_cast<uint16_t>((uint16_t)lo | ((uint16_t)(hi & 1) << 8));
+	flush_pending_line();
+
+	uint16_t data = 0;
+	for (int pin = 0; pin < 8; pin++) {
+		if (lo & (0x80 >> pin))
+			data |= static_cast<uint16_t>(1U << pin);
+	}
+	if (hi & 0x80)
+		data |= static_cast<uint16_t>(1U << 8);
 	if (data == 0) {
 		st_.x_pos += gfx_dot_w_;
 		return;
@@ -176,6 +283,7 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 
 	new_page_if_needed();
 	page_dirty_ = true;
+	mark_line_output(true);
 
 	constexpr float pin_h = 1.0f / 72.0f;
 	for (int pin = 0; pin < 9; pin++) {
@@ -192,6 +300,8 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
                                      float pin_h)
 {
+	flush_pending_line();
+
 	uint32_t data = ((uint32_t)top << 16) | ((uint32_t)mid << 8) | (uint32_t)bot;
 	if (data == 0) {
 		st_.x_pos += gfx_dot_w_;
@@ -200,6 +310,7 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 
 	new_page_if_needed();
 	page_dirty_ = true;
+	mark_line_output(true);
 
 	for (int pin = 0; pin < 24; pin++) {
 		if (!(data & (1U << (23 - pin)))) continue;
@@ -219,8 +330,82 @@ void EscpPrinter::set_default_horizontal_tabs()
 		st_.tab_stops[st_.tab_count++] = col;
 }
 
+void EscpPrinter::set_default_vertical_tabs()
+{
+	for (int ch = 0; ch < 8; ch++) {
+		st_.vtab_count[ch] = 0;
+		for (int line = 2; line <= 66 && st_.vtab_count[ch] < 16; line += 2)
+			st_.vtab_stops[ch][st_.vtab_count[ch]++] =
+			    static_cast<float>(line) * st_.line_spacing_in;
+	}
+	st_.vtab_channel = 0;
+}
+
+void EscpPrinter::copy_fx_rom_to_user_chars()
+{
+	for (int ch = 0; ch < 256; ch++) {
+		bool italic = ch >= 128;
+		const uint16_t *glyph = italic ? get_fx80_italic_glyph((uint8_t)ch)
+		                               : get_fx80_roman_glyph((uint8_t)ch);
+		if (!glyph)
+			continue;
+		st_.user_char_defined[ch] = true;
+		st_.user_char_prefix[ch] = get_fx80_prefix((uint8_t)ch, italic);
+		std::memcpy(st_.user_char_glyph[ch], glyph, sizeof(st_.user_char_glyph[ch]));
+	}
+}
+
+bool EscpPrinter::low_control_printable(uint8_t b) const
+{
+	if (!st_.printable_low_controls)
+		return false;
+	return (b <= 6) || b == 16 || (b >= 21 && b <= 23) || (b >= 25 && b <= 31);
+}
+
+void EscpPrinter::begin_vertical_tabs(int channel)
+{
+	if (channel < 0 || channel > 7)
+		channel = 0;
+	vtab_pending_channel_ = channel;
+	vtab_last_stop_ = 0;
+	st_.vtab_count[channel] = 0;
+	expect_ = Expect::VTabStops;
+}
+
+void EscpPrinter::add_vertical_tab(uint8_t stop)
+{
+	if (stop == 0 || stop <= vtab_last_stop_) {
+		expect_ = Expect::Normal;
+		return;
+	}
+	if (st_.vtab_count[vtab_pending_channel_] < 16) {
+		st_.vtab_stops[vtab_pending_channel_][st_.vtab_count[vtab_pending_channel_]++] =
+		    static_cast<float>(stop) * st_.line_spacing_in;
+	}
+	vtab_last_stop_ = stop;
+}
+
 void EscpPrinter::parse_byte(uint8_t b)
 {
+	if (expect_ == Expect::Normal) {
+		if (b != 0x1B) {
+			if (st_.msb_mode < 0)
+				b = static_cast<uint8_t>(b & 0x7F);
+			else if (st_.msb_mode > 0)
+				b = static_cast<uint8_t>(b | 0x80);
+		}
+		if (b >= 0x80 && b <= 0x9F && !st_.printable_high_controls)
+			b = static_cast<uint8_t>(b & 0x7F);
+		else if (b == 0xFF && !st_.printable_high_controls)
+			b = 0x7F;
+
+		if (!st_.selected) {
+			if (b == 0x11)
+				st_.selected = true;
+			return;
+		}
+	}
+
 	switch (expect_) {
 
 	// --- 1-byte binary parameter ---
@@ -232,11 +417,13 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'S':                                            // p283
 			st_.superscript = (b == 0);
 			st_.subscript = (b == 1);
+			st_.proportional = false;
 			break;
 		case 'W': st_.expanded = (b & 1); break;            // p283
 		case 'A': st_.line_spacing_in = (float)b / denom_A_; break; // p285
 		case '3': st_.line_spacing_in = (float)b / denom_3_; break; // p285
 		case 'J':                                            // p285
+			flush_pending_line();
 			new_page_if_needed();
 			page_dirty_ = true;
 			st_.y_pos += (float)b / denom_J_;
@@ -247,12 +434,55 @@ void EscpPrinter::parse_byte(uint8_t b)
 				if (st_.y_pos >= bottom)
 					form_feed();
 			}
+			finish_printed_line();
 			break;
-		case 'U': st_.unidirectional = (b & 1); break;      // p285
-		case 'l': st_.left_margin_in = (float)b / (float)st_.pitch_cpi; break;  // p286
-		case 'Q': st_.right_margin_in = (float)b / (float)st_.pitch_cpi; break; // p286
+		case 'U':                                           // p285
+			st_.unidirectional = (b & 1);
+			if (st_.unidirectional)
+				st_.line_dir_ltr = true;
+			break;
+		case 'I':
+			st_.printable_low_controls = (b & 1);
+			break;
+		case '/':
+			st_.vtab_channel = b & 7;
+			break;
+		case '%':
+			st_.use_user_chars = (b & 1);
+			break;
+		case 'i':
+		case 's':
+			break;
+		case 'j':
+			flush_pending_line();
+			new_page_if_needed();
+			page_dirty_ = true;
+			st_.y_pos -= (float)b / denom_J_;
+			if (st_.y_pos < st_.top_margin_in)
+				st_.y_pos = st_.top_margin_in;
+			finish_printed_line();
+			break;
+		case 'l':
+			cancel_pending_line();
+			st_.left_margin_in = (float)b / (float)st_.pitch_cpi;
+			st_.x_pos = st_.left_margin_in;
+			break;  // p286
+		case 'Q':
+			cancel_pending_line();
+			st_.right_margin_in = (float)b / (float)st_.pitch_cpi;
+			st_.x_pos = st_.left_margin_in;
+			break; // p286
 		case 'N': st_.perf_skip_lines = b; break;            // p285
-		case 'p': st_.proportional = (b & 1); break;         // p283
+		case 'p':                                            // p283
+			st_.proportional = (b & 1);
+			if (st_.proportional) {
+				st_.pitch_cpi = 10;
+				st_.condensed = false;
+				st_.superscript = false;
+				st_.subscript = false;
+				st_.double_strike = false;
+			}
+			break;
 		case 'C':                                             // p285
 			if (b == 0) {
 				expect_ = Expect::FormLenInch;
@@ -277,10 +507,15 @@ void EscpPrinter::parse_byte(uint8_t b)
 	case Expect::MasterSel:
 		expect_ = Expect::Normal;
 		st_.pitch_cpi = (b & 0x01) ? 12 : 10;               // p284
-		st_.proportional = !!(b & 0x02);
+		st_.proportional = prof_.model == PrinterModel::EpsonFX
+		    ? false
+		    : !!(b & 0x02);
 		st_.condensed = !!(b & 0x04);
 		st_.bold = !!(b & 0x08);
+		st_.double_strike = !!(b & 0x10);
 		st_.expanded = !!(b & 0x20);
+		if (prof_.model != PrinterModel::EpsonFX)
+			st_.italic = !!(b & 0x40);
 		st_.underline = !!(b & 0x80);
 		return;
 
@@ -293,6 +528,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 	// --- Graphics: nH ---
 	case Expect::GfxHi:
 		gfx_remain_ = (int)esc_p1_ | ((int)b << 8);
+		gfx_prev_col_ = 0;
 		if (gfx_9pin_)
 			gfx_remain_ *= 2;
 		expect_ = (gfx_remain_ > 0)
@@ -324,18 +560,10 @@ void EscpPrinter::parse_byte(uint8_t b)
 	// --- ESC * mode byte ---
 	case Expect::EscStar1:
 		esc_p1_ = b;
-		if (esc_cmd_ != '^')
-			gfx_9pin_ = false;
-		switch (b) {                                         // Table 11-1, p150
-		case 0: gfx_dot_w_ = 1.0f / 60.0f; break;
-		case 1: gfx_dot_w_ = 1.0f / 120.0f; break;
-		case 2: gfx_dot_w_ = 1.0f / 120.0f; break;
-		case 3: gfx_dot_w_ = 1.0f / 240.0f; break;
-		case 4: gfx_dot_w_ = 1.0f / 80.0f; break;
-		case 5: gfx_dot_w_ = 1.0f / 72.0f; break;
-		case 6: gfx_dot_w_ = 1.0f / 90.0f; break;
-		default: gfx_dot_w_ = 1.0f / 60.0f; break;
-		}
+		if (esc_cmd_ == '^')
+			set_9pin_graphics_density(b);
+		else
+			set_graphics_mode(b);
 		expect_ = Expect::EscStar2;
 		return;
 
@@ -347,11 +575,144 @@ void EscpPrinter::parse_byte(uint8_t b)
 
 	// --- Horizontal tab stops: values until NUL ---
 	case Expect::TabStops:
-		if (b == 0) {
+		if (b == 0 || b <= htab_last_stop_) {
 			expect_ = Expect::Normal;
 		} else {
 			if (st_.tab_count < 32)
 				st_.tab_stops[st_.tab_count++] = b;
+			htab_last_stop_ = b;
+		}
+		return;
+
+	case Expect::EscPercent1:
+		esc_p1_ = b;
+		expect_ = Expect::EscPercent2;
+		return;
+
+	case Expect::EscPercent2:
+		expect_ = Expect::Normal;
+		st_.use_user_chars = (esc_p1_ == 1 && b == 0);
+		return;
+
+	case Expect::EscI:
+		expect_ = Expect::Normal;
+		st_.printable_low_controls = (b & 1);
+		return;
+
+	case Expect::EscBChannel:
+		begin_vertical_tabs(b & 7);
+		return;
+
+	case Expect::VTabStops:
+		add_vertical_tab(b);
+		return;
+
+	case Expect::EscAmpNull:
+		if (b == 0)
+			expect_ = prof_.model == PrinterModel::EpsonFX
+			    ? Expect::EscAmpFirst
+			    : Expect::EscAmpLqFirst;
+		else
+			expect_ = Expect::Normal;
+		return;
+
+	case Expect::EscAmpFirst:
+		user_first_ = b;
+		expect_ = Expect::EscAmpLast;
+		return;
+
+	case Expect::EscAmpLast:
+		user_last_ = b;
+		user_cur_ = user_first_;
+		user_data_pos_ = 0;
+		expect_ = user_last_ >= user_first_ ? Expect::EscAmpFxData : Expect::Normal;
+		return;
+
+	case Expect::EscAmpFxData:
+		if (user_data_pos_ == 0) {
+			st_.user_char_prefix[user_cur_] = b;
+			std::memset(st_.user_char_glyph[user_cur_], 0, sizeof(st_.user_char_glyph[user_cur_]));
+		} else {
+			uint8_t attr = st_.user_char_prefix[user_cur_];
+			uint16_t col = 0;
+			for (int pin = 0; pin < 8; pin++) {
+				if (!(b & (0x80 >> pin)))
+					continue;
+				int row = (attr & 0x80) ? pin : pin + 1;
+				if (row < 9)
+					col |= static_cast<uint16_t>(1U << row);
+			}
+			st_.user_char_glyph[user_cur_][user_data_pos_ - 1] = col;
+		}
+		if (++user_data_pos_ >= 12) {
+			st_.user_char_defined[user_cur_] = true;
+			if (user_cur_ >= user_last_)
+				expect_ = Expect::Normal;
+			else {
+				user_cur_++;
+				user_data_pos_ = 0;
+			}
+		}
+		return;
+
+	case Expect::EscAmpLqFirst:
+		user_first_ = b;
+		expect_ = Expect::EscAmpLqLast;
+		return;
+
+	case Expect::EscAmpLqLast:
+		user_last_ = b;
+		expect_ = Expect::EscAmpLqD0;
+		return;
+
+	case Expect::EscAmpLqD0:
+		expect_ = Expect::EscAmpLqD1;
+		return;
+
+	case Expect::EscAmpLqD1:
+		user_lq_data_remain_ = 0;
+		if (user_last_ >= user_first_)
+			user_lq_data_remain_ = (int)(user_last_ - user_first_ + 1) * (int)b * 3;
+		expect_ = Expect::EscAmpLqD2;
+		return;
+
+	case Expect::EscAmpLqD2:
+		expect_ = user_lq_data_remain_ > 0 ? Expect::EscAmpLqData : Expect::Normal;
+		return;
+
+	case Expect::EscAmpLqData:
+		if (--user_lq_data_remain_ <= 0)
+			expect_ = Expect::Normal;
+		return;
+
+	case Expect::EscColon1:
+		colon_p1_ = b;
+		expect_ = Expect::EscColon2;
+		return;
+
+	case Expect::EscColon2:
+		colon_p2_ = b;
+		expect_ = Expect::EscColon3;
+		return;
+
+	case Expect::EscColon3:
+		expect_ = Expect::Normal;
+		if (prof_.model == PrinterModel::EpsonFX && colon_p1_ == 0 && colon_p2_ == 0 && b == 0)
+			copy_fx_rom_to_user_chars();
+		return;
+
+	// --- ESC ? s n: reassign graphics command ---
+	case Expect::EscQuestionCmd:
+		esc_cmd_ = b;
+		expect_ = Expect::EscQuestionMode;
+		return;
+
+	case Expect::EscQuestionMode:
+		expect_ = Expect::Normal;
+		{
+			int idx = graphics_reassign_index(esc_cmd_);
+			if (idx >= 0 && b <= 7)
+				gfx_reassign_[idx] = b;
 		}
 		return;
 
@@ -362,8 +723,12 @@ void EscpPrinter::parse_byte(uint8_t b)
 		switch (b) {
 		// Reset — p284
 		case '@':
+			cancel_pending_line();
 			st_ = PrinterState{};
 			apply_config(cfg_);
+			set_default_horizontal_tabs();
+			set_default_vertical_tabs();
+			reset_graphics_reassignments();
 			break;
 
 		// Emphasized (bold) — p283
@@ -371,15 +736,19 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'F': st_.bold = false; break;
 
 		// Double-strike — p283
-		case 'G': st_.double_strike = true; break;
+		case 'G': st_.double_strike = true; st_.proportional = false; break;
 		case 'H': st_.double_strike = false; break;
+
+		// Italic — p283
+		case '4': st_.italic = true; break;
+		case '5': st_.italic = false; break;
 
 		// Script mode off — p283
 		case 'T': st_.superscript = false; st_.subscript = false; break;
 
 		// Pitch — p283
 		case 'P': st_.pitch_cpi = 10; st_.proportional = false; break;
-		case 'M': st_.pitch_cpi = 12; break;
+		case 'M': st_.pitch_cpi = 12; st_.proportional = false; break;
 		case 'g': st_.pitch_cpi = 15; break;
 
 		// Line spacing — p285
@@ -391,23 +760,50 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'O': st_.perf_skip_lines = 0; break;
 
 		// Character set — p284, p291
-		case '6': break;
-		case '7': break;
+		case '6': st_.printable_high_controls = true; break;
+		case '7': st_.printable_high_controls = false; break;
+
+		// Paper-out detector control — not modeled in PDF output.
+		case '8':
+		case '9':
+			break;
 
 		// One-line unidirectional — p285
-		case '<': st_.unidirectional = true; break;
+		case '<':
+			st_.unidirectional_line = true;
+			st_.line_dir_ltr = true;
+			break;
 
 		// MSB control — p284
-		case '#': break;
-		case '=': break;
-		case '>': break;
+		case '#': st_.msb_mode = 0; break;
+		case '=': st_.msb_mode = -1; break;
+		case '>': st_.msb_mode = 1; break;
 
 		// 1-byte binary parameter commands
 		case '-': case '_': case 'S': case 'W': case 'U': case 'A': case '3':
 		case 'J': case 'l': case 'Q': case 'N': case 'p': case 'C':
-		case 'R':
+		case 'R': case 'I': case '/': case 'i': case 'j': case 's':
 			esc_cmd_ = b;
 			expect_ = Expect::Bin1;
+			break;
+
+		case '%':
+			if (prof_.model == PrinterModel::EpsonFX)
+				expect_ = Expect::EscPercent1;
+			else {
+				esc_cmd_ = b;
+				expect_ = Expect::Bin1;
+			}
+			break;
+
+		// Copy ROM character set to user-defined RAM.
+		case ':':
+			expect_ = Expect::EscColon1;
+			break;
+
+		// Define user characters.
+		case '&':
+			expect_ = Expect::EscAmpNull;
 			break;
 
 		// Master select — p284
@@ -418,21 +814,26 @@ void EscpPrinter::parse_byte(uint8_t b)
 		// Horizontal tab setting — p286
 		case 'D':
 			st_.tab_count = 0;
+			htab_last_stop_ = 0;
 			expect_ = Expect::TabStops;
 			break;
 
+		case 'B':
+			begin_vertical_tabs(0);
+			break;
+
+		case 'b':
+			expect_ = Expect::EscBChannel;
+			break;
+
 		// 8-pin graphics — p286
-		case 'K': gfx_dot_w_ = 1.0f / 60.0f;  gfx_9pin_ = false;
-			esc_cmd_ = b; expect_ = Expect::GfxLo; break;
-		case 'L': gfx_dot_w_ = 1.0f / 120.0f; gfx_9pin_ = false;
-			esc_cmd_ = b; expect_ = Expect::GfxLo; break;
-		case 'Y': gfx_dot_w_ = 1.0f / 120.0f; gfx_9pin_ = false;
-			esc_cmd_ = b; expect_ = Expect::GfxLo; break;
-		case 'Z': gfx_dot_w_ = 1.0f / 240.0f; gfx_9pin_ = false;
-			esc_cmd_ = b; expect_ = Expect::GfxLo; break;
+		case 'K': case 'L': case 'Y': case 'Z':
+			begin_reassigned_graphics(b);
+			break;
 
 		// Select dot graphics — p286
 		case '*':
+			esc_cmd_ = '*';
 			expect_ = Expect::EscStar1;
 			break;
 
@@ -441,6 +842,11 @@ void EscpPrinter::parse_byte(uint8_t b)
 			esc_cmd_ = '^';
 			gfx_9pin_ = true;
 			expect_ = Expect::EscStar1;
+			break;
+
+		// Reassign dot-graphics command — p286
+		case '?':
+			expect_ = Expect::EscQuestionCmd;
 			break;
 
 		default:
@@ -457,15 +863,43 @@ void EscpPrinter::parse_byte(uint8_t b)
 	// Control codes
 	switch (b) {
 	case 0x1B: expect_ = Expect::Esc; return;
+	case 0x11: st_.selected = true; return;             // p284: DC1
+	case 0x13: st_.selected = false; return;            // p284: DC3
+	default:
+		if (b < 0x20 && low_control_printable(b)) {
+			emit_char(b);
+			return;
+		}
+		break;
+	}
+
+	switch (b) {
 	case 0x0D: carriage_return(); return;              // p285
 	case 0x0A: line_feed(); return;                    // p285
+	case 0x0B:                                         // p285: VT
+		{
+			int ch = st_.vtab_channel & 7;
+			for (int i = 0; i < st_.vtab_count[ch]; i++) {
+				float y = st_.top_margin_in + st_.vtab_stops[ch][i];
+				if (y > st_.y_pos + 0.001f) {
+					flush_pending_line();
+					st_.y_pos = y;
+					finish_printed_line();
+					return;
+				}
+			}
+			line_feed();
+		}
+		return;
 	case 0x0C: form_feed(); return;                    // p285
 	case 0x0E: st_.expanded_line = true; return;       // p283
 	case 0x14: st_.expanded_line = false; return;      // p283
-	case 0x0F: st_.condensed = true; return;           // p283
+	case 0x0F: st_.condensed = true; st_.proportional = false; return; // p283
 	case 0x12: st_.condensed = false; return;          // p283
 	case 0x18:                                         // p284: CAN
+		cancel_pending_line();
 		st_.x_pos = st_.left_margin_in;
+		finish_printed_line();
 		return;
 	case 0x08:                                         // p284: BS
 		st_.x_pos -= 1.0f / (float)st_.pitch_cpi;
@@ -481,6 +915,9 @@ void EscpPrinter::parse_byte(uint8_t b)
 				return;
 			}
 		}
+		return;
+	case 0x7F:                                         // p284: DEL
+		delete_pending_char();
 		return;
 	default: break;
 	}
@@ -900,9 +1337,11 @@ void CanonBj10ePrinter::parse_byte(uint8_t b)
 	case CanonExpect::FsCJAmount:
 		if (canon_p1_ == 0 || canon_p1_ == 4) {
 			float scale = canon_p1_ == 4 ? 1.0f : 2.0f;
+			flush_pending_line();
 			new_page_if_needed();
 			page_dirty_ = true;
 			st_.y_pos += scale * (float)b / 360.0f;
+			finish_printed_line();
 		}
 		canon_expect_ = CanonExpect::Normal;
 		return;

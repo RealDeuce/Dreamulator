@@ -228,9 +228,30 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
                               const PrinterProfile &prof, uint8_t ch)
 {
 	if (prof.model == PrinterModel::EpsonFX) {
-		const uint16_t *glyph = get_fx80_roman_glyph(ch);
+		bool italic = st.italic || ch >= 128;
+		bool user = st.use_user_chars && st.user_char_defined[ch];
+		const uint16_t *glyph = user ? st.user_char_glyph[ch]
+		    : italic ? get_fx80_italic_glyph(ch)
+		             : get_fx80_roman_glyph(ch);
 		if (!glyph) return;
-		render_glyph_9pin(*this, page, st, prof, glyph, 12, pin_vib_);
+		int w = 12;
+		PrinterState st2 = st;
+		if (st.proportional) {
+			uint8_t start = 0;
+			if (user) {
+				uint8_t attr = st.user_char_prefix[ch];
+				start = (uint8_t)((attr >> 4) & 0x07);
+				uint8_t end = (uint8_t)(attr & 0x0F);
+				w = end >= start ? end - start + 1 : 1;
+			} else {
+				start = get_fx80_prop_start(ch, italic);
+				w = get_fx80_prop_width(ch, italic);
+			}
+			glyph += start;
+			st2.prop_dpi = 120;
+			st2.bold = true;
+		}
+		render_glyph_9pin(*this, page, st2, prof, glyph, w, pin_vib_);
 	} else if (prof.model == PrinterModel::ImageWriter) {
 		// IW II font switching rules per Technical Reference Manual Ch.4:
 		// Draft (font_mode=1) does NOT support bold, expanded, half-height,

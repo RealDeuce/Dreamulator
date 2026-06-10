@@ -666,7 +666,7 @@ static bool show_iw_dip_dialog(PrinterConfig &cfg)
 	Fl_Window win(340, 360, "ImageWriter II DIP Switches");
 	win.set_modal();
 
-	Fl_Box hdr1(10, 5, 320, 20, "SW1 - Character & Page Settings");
+	Fl_Box hdr1(10, 5, 320, 20, "Character & Page Settings");
 	hdr1.labelfont(FL_BOLD);
 	hdr1.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
 
@@ -693,10 +693,10 @@ static bool show_iw_dip_dialog(PrinterConfig &cfg)
 	pglen.add("12 inch (72 lines)");
 	pglen.value(cfg.page_length_lines > 66 ? 1 : 0);
 
-	Fl_Check_Button perf(10, 120, 320, 25, "Perforation Skip (SW1-5)");
+	Fl_Check_Button perf(10, 120, 320, 25, "Perforation Skip");
 	perf.value(cfg.perf_skip > 0 ? 1 : 0);
 
-	Fl_Check_Button autolf(10, 145, 320, 25, "Auto LF after CR (SW1-8)");
+	Fl_Check_Button autolf(10, 145, 320, 25, "Auto LF after CR");
 	autolf.value(cfg.auto_lf ? 1 : 0);
 
 	Fl_Box hdr2(10, 175, 320, 20, "Front Panel");
@@ -745,7 +745,7 @@ static bool show_fx_dip_dialog(PrinterConfig &cfg)
 	Fl_Window win(340, 280, "Epson FX-80 DIP Switches");
 	win.set_modal();
 
-	Fl_Box hdr1(10, 5, 320, 20, "SW1 - Character & Page Settings");
+	Fl_Box hdr1(10, 5, 320, 20, "Character & Page Settings");
 	hdr1.labelfont(FL_BOLD);
 	hdr1.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
 
@@ -766,10 +766,10 @@ static bool show_fx_dip_dialog(PrinterConfig &cfg)
 	pitch.add("Compressed (17 CPI)");
 	pitch.value(cfg.pitch_cpi >= 17 ? 1 : 0);
 
-	Fl_Check_Button perf(10, 90, 320, 25, "Perforation Skip (SW1-5)");
+	Fl_Check_Button perf(10, 90, 320, 25, "Perforation Skip");
 	perf.value(cfg.perf_skip > 0 ? 1 : 0);
 
-	Fl_Check_Button autolf(10, 115, 320, 25, "Auto LF after CR (SW1-8)");
+	Fl_Check_Button autolf(10, 115, 320, 25, "Auto LF after CR");
 	autolf.value(cfg.auto_lf ? 1 : 0);
 
 	Fl_Check_Button emph(10, 140, 320, 25, "Emphasized (Bold)");

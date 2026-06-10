@@ -204,7 +204,7 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		state_ = State::Normal;
 		switch (b) {
 		// Table A-19: reset defaults
-		case 'c': st_ = PrinterState{}; apply_config(cfg_); break;
+		case 'c': cancel_pending_line(); st_ = PrinterState{}; apply_config(cfg_); break;
 
 		// Table A-12: boldface
 		case '!': st_.bold = true; break;
@@ -347,6 +347,7 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		}
 		return;
 	case 0x18:                                      // Table A-19: CAN
+		cancel_pending_line();
 		st_.x_pos = st_.left_margin_in;
 		return;
 	case 0x1F:                                      // Table A-15: multi-LF

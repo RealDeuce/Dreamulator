@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd
 #include "printer.h"
 #include "dotrender.h"
+#include <cmath>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -41,6 +42,7 @@ void PrinterSim::feed(const uint8_t *data, size_t len)
 
 void PrinterSim::flush()
 {
+	flush_pending_line();
 	if (page_dirty_ && page_) {
 		pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
 		text_buf_.clear();
@@ -240,16 +242,43 @@ static uint16_t try_compose(uint16_t a, uint16_t b)
 	return 0;
 }
 
+static void append_text_glyph(std::vector<TextGlyph> &text_buf,
+                              const TextGlyph &glyph)
+{
+	if (!text_buf.empty()) {
+		auto &prev = text_buf.back();
+		if (fabsf(prev.x_in - glyph.x_in) < 0.01f &&
+		    fabsf(prev.y_in - glyph.y_in) < 0.01f) {
+			uint16_t c = try_compose(prev.codepoint, glyph.codepoint);
+			if (c) {
+				prev.codepoint = c;
+				return;
+			}
+		}
+	}
+	text_buf.push_back(glyph);
+}
+
 void PrinterSim::emit_char(uint8_t ch)
 {
 	new_page_if_needed();
-	page_dirty_ = true;
 
-	if (!st_.include_8th_bit)
+	if (!st_.include_8th_bit && prof_.model != PrinterModel::EpsonFX &&
+	    prof_.model != PrinterModel::EpsonLQ)
 		ch = static_cast<uint8_t>(ch & 0x7F);
 
 	if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F)
 		ch = static_cast<uint8_t>(ch + 0x80);
+
+	uint8_t render_ch = ch;
+	if (st_.slashed_zero) {
+		if (render_ch == 0x30) render_ch = prof_.model == PrinterModel::CanonBJ10e ? 0x00 : 0x7F;
+		else if (render_ch == 0xB0) render_ch = 0xFF;
+	}
+	if (st_.charset > 0 && st_.charset <= 8)
+		render_ch = (prof_.model == PrinterModel::ImageWriter)
+		    ? intl_substitute_iw(render_ch, st_.charset)
+		    : intl_substitute_fx(render_ch, st_.charset);
 
 	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
 	if (st_.condensed && st_.pitch_cpi <= 10)
@@ -265,6 +294,16 @@ void PrinterSim::emit_char(uint8_t ch)
 		Bj10eGlyph glyph = get_bj10e_glyph(ch, st_.codepage_850, false, true);
 		if (glyph.width > 0)
 			char_w_in = static_cast<float>(glyph.width) / 360.0f;
+	} else if (st_.proportional && prof_.model == PrinterModel::EpsonFX) {
+		bool italic = st_.italic || render_ch >= 0x80;
+		if (st_.use_user_chars && st_.user_char_defined[render_ch]) {
+			uint8_t attr = st_.user_char_prefix[render_ch];
+			uint8_t start = (uint8_t)((attr >> 4) & 0x07);
+			uint8_t end = (uint8_t)(attr & 0x0F);
+			char_w_in = static_cast<float>(end >= start ? end - start + 1 : 1) / 120.0f;
+		} else {
+			char_w_in = static_cast<float>(get_fx80_prop_width(render_ch, italic)) / 120.0f;
+		}
 	}
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
@@ -291,33 +330,19 @@ void PrinterSim::emit_char(uint8_t ch)
 		if (cp >= 0x20) {
 			float sz = char_w_in * 72.0f / 0.6f;
 			uint8_t sty = 0;
-			if (st_.bold) sty |= TextGlyph::BOLD;
+			if (st_.bold || (prof_.model == PrinterModel::EpsonFX && st_.proportional))
+				sty |= TextGlyph::BOLD;
 			if (st_.underline) sty |= TextGlyph::UNDERLINE;
 			if (st_.superscript) sty |= TextGlyph::SUPER;
 			if (st_.subscript) sty |= TextGlyph::SUB;
-			bool composed = false;
-			if (!text_buf_.empty()) {
-				auto &prev = text_buf_.back();
-				if (fabsf(prev.x_in - st_.x_pos) < 0.01f &&
-				    fabsf(prev.y_in - st_.y_pos) < 0.01f) {
-					uint16_t c = try_compose(prev.codepoint, cp);
-					if (c) { prev.codepoint = c; composed = true; }
-				}
-			}
-			if (!composed)
-				text_buf_.push_back({st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty});
+			pending_line_.push_back({
+				render_ch, st_, char_w_in, true,
+				{st_.x_pos, st_.y_pos, cp, char_w_in, sz, sty}
+			});
+		} else {
+			pending_line_.push_back({render_ch, st_, char_w_in, false, {}});
 		}
 	}
-
-	if (st_.slashed_zero) {
-		if (ch == 0x30) ch = prof_.model == PrinterModel::CanonBJ10e ? 0x00 : 0x7F;
-		else if (ch == 0xB0) ch = 0xFF;
-	}
-	if (st_.charset > 0 && st_.charset <= 8)
-		ch = (prof_.model == PrinterModel::ImageWriter)
-		    ? intl_substitute_iw(ch, st_.charset)
-		    : intl_substitute_fx(ch, st_.charset);
-	dots_->render_char(*page_, st_, prof_, ch);
 
 	st_.x_pos += char_w_in;
 
@@ -325,6 +350,53 @@ void PrinterSim::emit_char(uint8_t ch)
 		carriage_return();
 		line_feed();
 	}
+}
+
+void PrinterSim::flush_pending_line()
+{
+	if (pending_line_.empty())
+		return;
+
+	new_page_if_needed();
+	page_dirty_ = true;
+	for (const auto &entry : pending_line_) {
+		if (entry.has_text)
+			append_text_glyph(text_buf_, entry.text);
+		dots_->render_char(*page_, entry.state, prof_, entry.ch);
+	}
+	pending_line_.clear();
+	mark_line_output();
+}
+
+void PrinterSim::cancel_pending_line()
+{
+	pending_line_.clear();
+}
+
+void PrinterSim::delete_pending_char()
+{
+	if (pending_line_.empty())
+		return;
+	st_.x_pos = pending_line_.back().state.x_pos;
+	pending_line_.pop_back();
+}
+
+void PrinterSim::mark_line_output(bool force_ltr)
+{
+	line_output_ = true;
+	if (force_ltr) {
+		line_force_ltr_ = true;
+		st_.line_dir_ltr = true;
+	}
+}
+
+void PrinterSim::finish_printed_line()
+{
+	if (!line_output_)
+		return;
+	st_.unidirectional_line = false;
+	line_force_ltr_ = false;
+	line_output_ = false;
 }
 
 void PrinterSim::apply_config(const PrinterConfig &cfg)
@@ -362,16 +434,22 @@ void PrinterSim::apply_config(const PrinterConfig &cfg)
 
 void PrinterSim::carriage_return()
 {
-	if (!st_.unidirectional && st_.x_pos > st_.left_margin_in)
+	flush_pending_line();
+	bool force_ltr = st_.unidirectional || st_.unidirectional_line || line_force_ltr_;
+	if (!force_ltr && line_output_)
 		st_.line_dir_ltr = !st_.line_dir_ltr;
+	else if (force_ltr)
+		st_.line_dir_ltr = true;
 	st_.x_pos = st_.left_margin_in;
 	st_.expanded_line = false;
+	finish_printed_line();
 	if (st_.auto_lf)
 		line_feed();
 }
 
 void PrinterSim::line_feed()
 {
+	flush_pending_line();
 	new_page_if_needed();
 	page_dirty_ = true;
 
@@ -391,10 +469,13 @@ void PrinterSim::line_feed()
 		if (st_.y_pos >= bottom)
 			form_feed();
 	}
+	finish_printed_line();
 }
 
 void PrinterSim::form_feed()
 {
+	flush_pending_line();
+	finish_printed_line();
 	if (page_ && page_dirty_) {
 		pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
 		text_buf_.clear();
