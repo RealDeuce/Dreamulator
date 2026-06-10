@@ -152,6 +152,7 @@ private:
 		FsCB2,
 		MasterSel,
 		EscLowerP,
+		Sink1,
 	};
 
 	void begin_counted_sequence(uint8_t subcmd);
@@ -1279,10 +1280,13 @@ bool CanonBj10ePrinter::parse_esc_extension(uint8_t b)
 	case 'H':
 		st_.double_strike = false;
 		return true;
+	case '>':
+	case '?':
+	case '@':
 	case 'M':
-		bj_raw_12_ = true;
-		bj_raw_proportional_ = false;
-		derive_print_mode();
+	case 'f':
+	case 'n':
+		canon_expect_ = CanonExpect::Sink1;
 		return true;
 	case 'p':
 		canon_expect_ = CanonExpect::EscLowerP;
@@ -1349,6 +1353,9 @@ void CanonBj10ePrinter::parse_byte(uint8_t b)
 	case CanonExpect::EscLowerP:
 		bj_raw_proportional_ = (b & 1);
 		derive_print_mode();
+		canon_expect_ = CanonExpect::Normal;
+		return;
+	case CanonExpect::Sink1:
 		canon_expect_ = CanonExpect::Normal;
 		return;
 	case CanonExpect::MasterSel:
