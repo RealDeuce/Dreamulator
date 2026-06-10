@@ -117,6 +117,7 @@ struct PrinterState {
 	int   prop_dpi = 144;
 	int   prop_spacing = 0;
 	int   tab_stops[32] = {};
+	float tab_stops_in[32] = {};
 	int   tab_count = 0;
 	float vtab_stops[8][16] = {};
 	int   vtab_count[8] = {};

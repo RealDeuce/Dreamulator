@@ -69,10 +69,21 @@ protected:
 	void set_9pin_graphics_density(uint8_t density);
 	bool begin_reassigned_graphics(uint8_t cmd);
 	void set_default_vertical_tabs();
+	void clear_vertical_tabs();
 	void copy_fx_rom_to_user_chars();
 	bool low_control_printable(uint8_t b) const;
 	void begin_vertical_tabs(int channel);
 	void add_vertical_tab(uint8_t stop);
+	float current_pitch_width_in() const;
+	float printable_left_edge_in() const;
+	void set_line_spacing_72(uint8_t b);
+	void set_form_length_lines(uint8_t b);
+	void set_form_length_inches(uint8_t b);
+	void set_skip_over_perforation(uint8_t b);
+	void set_left_margin(uint8_t b);
+	void set_right_margin(uint8_t b);
+	void select_vertical_tab_channel(uint8_t b);
+	void select_international_set(uint8_t b);
 
 	float denom_A_ = 72.0f;
 	float denom_3_ = 216.0f;
@@ -326,8 +337,12 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 void EscpPrinter::set_default_horizontal_tabs()
 {
 	st_.tab_count = 0;
-	for (int col = 8; col <= 80 && st_.tab_count < 32; col += 8)
-		st_.tab_stops[st_.tab_count++] = col;
+	for (int col = 8; col <= 80 && st_.tab_count < 32; col += 8) {
+		st_.tab_stops[st_.tab_count] = col;
+		st_.tab_stops_in[st_.tab_count] =
+		    st_.left_margin_in + static_cast<float>(col) * current_pitch_width_in();
+		st_.tab_count++;
+	}
 }
 
 void EscpPrinter::set_default_vertical_tabs()
@@ -338,6 +353,13 @@ void EscpPrinter::set_default_vertical_tabs()
 			st_.vtab_stops[ch][st_.vtab_count[ch]++] =
 			    static_cast<float>(line) * st_.line_spacing_in;
 	}
+	st_.vtab_channel = 0;
+}
+
+void EscpPrinter::clear_vertical_tabs()
+{
+	for (int ch = 0; ch < 8; ch++)
+		st_.vtab_count[ch] = 0;
 	st_.vtab_channel = 0;
 }
 
@@ -378,11 +400,117 @@ void EscpPrinter::add_vertical_tab(uint8_t stop)
 		expect_ = Expect::Normal;
 		return;
 	}
-	if (st_.vtab_count[vtab_pending_channel_] < 16) {
-		st_.vtab_stops[vtab_pending_channel_][st_.vtab_count[vtab_pending_channel_]++] =
-		    static_cast<float>(stop) * st_.line_spacing_in;
+	float pos = static_cast<float>(stop) * st_.line_spacing_in;
+	if (st_.vtab_count[vtab_pending_channel_] >= 16 || pos >= st_.page_height_in) {
+		expect_ = Expect::Normal;
+		return;
 	}
+	st_.vtab_stops[vtab_pending_channel_][st_.vtab_count[vtab_pending_channel_]++] = pos;
 	vtab_last_stop_ = stop;
+}
+
+float EscpPrinter::current_pitch_width_in() const
+{
+	if (st_.condensed && st_.pitch_cpi <= 10.0f)
+		return 1.0f / 17.16f;
+	return 1.0f / static_cast<float>(st_.pitch_cpi);
+}
+
+float EscpPrinter::printable_left_edge_in() const
+{
+	return 0.25f;
+}
+
+void EscpPrinter::set_line_spacing_72(uint8_t b)
+{
+	if (prof_.model == PrinterModel::EpsonFX) {
+		uint8_t v = static_cast<uint8_t>(b & 0x7F);
+		if (v < 0x56)
+			st_.line_spacing_in = static_cast<float>(v) / 72.0f;
+	} else {
+		st_.line_spacing_in = static_cast<float>(b) / denom_A_;
+	}
+}
+
+void EscpPrinter::set_form_length_lines(uint8_t b)
+{
+	uint8_t v = prof_.model == PrinterModel::EpsonFX
+	    ? static_cast<uint8_t>(b & 0x7F)
+	    : b;
+	clear_vertical_tabs();
+	if (v == 0) {
+		expect_ = Expect::FormLenInch;
+		return;
+	}
+	st_.page_height_in = static_cast<float>(v) * st_.line_spacing_in;
+	st_.perf_skip_lines = 0;
+}
+
+void EscpPrinter::set_form_length_inches(uint8_t b)
+{
+	uint8_t v = prof_.model == PrinterModel::EpsonFX
+	    ? static_cast<uint8_t>(b & 0x7F)
+	    : b;
+	if (prof_.model == PrinterModel::EpsonFX) {
+		if (v == 0 || v >= 23)
+			return;
+		float height = static_cast<float>(v);
+		if (height < st_.line_spacing_in)
+			return;
+		st_.page_height_in = height;
+	} else if (v >= 1) {
+		st_.page_height_in = static_cast<float>(v);
+	}
+	st_.perf_skip_lines = 0;
+}
+
+void EscpPrinter::set_skip_over_perforation(uint8_t b)
+{
+	uint8_t v = prof_.model == PrinterModel::EpsonFX
+	    ? static_cast<uint8_t>(b & 0x7F)
+	    : b;
+	if (v == 0)
+		return;
+	float skip = static_cast<float>(v) * st_.line_spacing_in;
+	if (skip < st_.page_height_in)
+		st_.perf_skip_lines = v;
+}
+
+void EscpPrinter::set_left_margin(uint8_t b)
+{
+	float candidate = printable_left_edge_in() + static_cast<float>(b) * current_pitch_width_in();
+	if (candidate > st_.right_margin_in - 0.2f)
+		return;
+	cancel_pending_line();
+	st_.left_margin_in = candidate;
+	st_.x_pos = st_.left_margin_in;
+}
+
+void EscpPrinter::set_right_margin(uint8_t b)
+{
+	float candidate = printable_left_edge_in() + static_cast<float>(b) * current_pitch_width_in();
+	float max_right = printable_left_edge_in() + 8.0f + (1.0f / 720.0f);
+	if (candidate >= max_right || candidate < st_.left_margin_in + 0.2f)
+		return;
+	cancel_pending_line();
+	st_.right_margin_in = candidate;
+	st_.x_pos = st_.left_margin_in;
+}
+
+void EscpPrinter::select_vertical_tab_channel(uint8_t b)
+{
+	uint8_t v = static_cast<uint8_t>(b & 0x7F);
+	if (v < 8)
+		st_.vtab_channel = v;
+}
+
+void EscpPrinter::select_international_set(uint8_t b)
+{
+	uint8_t v = prof_.model == PrinterModel::EpsonFX
+	    ? static_cast<uint8_t>(b & 0x7F)
+	    : b;
+	if (prof_.model != PrinterModel::EpsonFX || v <= 10)
+		st_.charset = v;
 }
 
 void EscpPrinter::parse_byte(uint8_t b)
@@ -420,7 +548,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 			st_.proportional = false;
 			break;
 		case 'W': st_.expanded = (b & 1); break;            // p283
-		case 'A': st_.line_spacing_in = (float)b / denom_A_; break; // p285
+		case 'A': set_line_spacing_72(b); break;            // p285
 		case '3': st_.line_spacing_in = (float)b / denom_3_; break; // p285
 		case 'J':                                            // p285
 			flush_pending_line();
@@ -444,9 +572,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'I':
 			st_.printable_low_controls = (b & 1);
 			break;
-		case '/':
-			st_.vtab_channel = b & 7;
-			break;
+		case '/': select_vertical_tab_channel(b); break;
 		case '%':
 			st_.use_user_chars = (b & 1);
 			break;
@@ -462,17 +588,9 @@ void EscpPrinter::parse_byte(uint8_t b)
 				st_.y_pos = st_.top_margin_in;
 			finish_printed_line();
 			break;
-		case 'l':
-			cancel_pending_line();
-			st_.left_margin_in = (float)b / (float)st_.pitch_cpi;
-			st_.x_pos = st_.left_margin_in;
-			break;  // p286
-		case 'Q':
-			cancel_pending_line();
-			st_.right_margin_in = (float)b / (float)st_.pitch_cpi;
-			st_.x_pos = st_.left_margin_in;
-			break; // p286
-		case 'N': st_.perf_skip_lines = b; break;            // p285
+		case 'l': set_left_margin(b); break;                // p286
+		case 'Q': set_right_margin(b); break;               // p286
+		case 'N': set_skip_over_perforation(b); break;      // p285
 		case 'p':                                            // p283
 			st_.proportional = (b & 1);
 			if (st_.proportional) {
@@ -483,15 +601,8 @@ void EscpPrinter::parse_byte(uint8_t b)
 				st_.double_strike = false;
 			}
 			break;
-		case 'C':                                             // p285
-			if (b == 0) {
-				expect_ = Expect::FormLenInch;
-				return;
-			}
-			if (b >= 1)
-				st_.page_height_in = (float)b * st_.line_spacing_in;
-			break;
-		case 'R': st_.charset = b; break;                    // p284
+		case 'C': set_form_length_lines(b); break;          // p285
+		case 'R': select_international_set(b); break;       // p284
 		default: break;
 		}
 		return;
@@ -499,8 +610,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 	// --- ESC C 0 n: form length in inches ---
 	case Expect::FormLenInch:
 		expect_ = Expect::Normal;
-		if (b >= 1)
-			st_.page_height_in = (float)b;
+		set_form_length_inches(b);
 		return;
 
 	// --- Master Select: ESC ! n ---
@@ -578,8 +688,15 @@ void EscpPrinter::parse_byte(uint8_t b)
 		if (b == 0 || b <= htab_last_stop_) {
 			expect_ = Expect::Normal;
 		} else {
-			if (st_.tab_count < 32)
-				st_.tab_stops[st_.tab_count++] = b;
+			float pos = st_.left_margin_in +
+			    static_cast<float>(b) * current_pitch_width_in();
+			if (st_.tab_count >= 32 || pos > st_.right_margin_in) {
+				expect_ = Expect::Normal;
+				return;
+			}
+			st_.tab_stops[st_.tab_count] = b;
+			st_.tab_stops_in[st_.tab_count] = pos;
+			st_.tab_count++;
 			htab_last_stop_ = b;
 		}
 		return;
@@ -600,7 +717,13 @@ void EscpPrinter::parse_byte(uint8_t b)
 		return;
 
 	case Expect::EscBChannel:
-		begin_vertical_tabs(b & 7);
+		{
+			uint8_t v = static_cast<uint8_t>(b & 0x7F);
+			if (v < 8)
+				begin_vertical_tabs(v);
+			else
+				expect_ = Expect::Normal;
+		}
 		return;
 
 	case Expect::VTabStops:
@@ -908,8 +1031,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 		return;
 	case 0x09:                                         // p286: HT
 		for (int i = 0; i < st_.tab_count; i++) {
-			float tab_pos = st_.left_margin_in +
-			    (float)st_.tab_stops[i] / (float)st_.pitch_cpi;
+			float tab_pos = st_.tab_stops_in[i];
 			if (tab_pos > st_.x_pos) {
 				st_.x_pos = tab_pos;
 				return;
