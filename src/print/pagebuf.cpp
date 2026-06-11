@@ -7,30 +7,54 @@
 
 PageBitmap::PageBitmap(int width_px, int height_px)
 	: w_(width_px), h_(height_px),
-	  buf_(std::make_unique<uint8_t[]>((size_t)w_ * (size_t)h_))
+	  buf_(std::make_unique<uint8_t[]>(raw_size()))
 {
 	clear();
 }
 
 void PageBitmap::clear(uint8_t val)
 {
-	std::memset(buf_.get(), val, (size_t)w_ * (size_t)h_);
+	std::memset(buf_.get(), val, raw_size());
+}
+
+bool PageBitmap::is_grayscale() const
+{
+	for (int y = 0; y < h_; y++) {
+		const uint8_t *row = buf_.get() + (size_t)y * (size_t)stride();
+		for (int x = 0; x < w_; x++) {
+			const uint8_t *p = row + (size_t)x * (size_t)channels();
+			if (p[0] != p[1] || p[0] != p[2])
+				return false;
+		}
+	}
+	return true;
 }
 
 uint8_t PageBitmap::pixel(int x, int y) const
 {
 	if (x < 0 || x >= w_ || y < 0 || y >= h_) return 255;
-	return buf_[(size_t)y * (size_t)w_ + (size_t)x];
+	const uint8_t *p = buf_.get() + (size_t)y * (size_t)stride() +
+	                   (size_t)x * (size_t)channels();
+	return (uint8_t)(((int)p[0] + (int)p[1] + (int)p[2]) / 3);
 }
 
 void PageBitmap::set_pixel(int x, int y, uint8_t val)
 {
 	if (x < 0 || x >= w_ || y < 0 || y >= h_) return;
-	buf_[(size_t)y * (size_t)w_ + (size_t)x] = val;
+	uint8_t *p = buf_.get() + (size_t)y * (size_t)stride() +
+	             (size_t)x * (size_t)channels();
+	p[0] = p[1] = p[2] = val;
 }
 
 void PageBitmap::stamp_dot(float cx, float cy, float radius, float intensity,
                            float sharpness)
+{
+	stamp_dot_rgb(cx, cy, radius, intensity, sharpness, 0.0f, 0.0f, 0.0f);
+}
+
+void PageBitmap::stamp_dot_rgb(float cx, float cy, float radius, float intensity,
+                               float sharpness, float red, float green,
+                               float blue)
 {
 	int x0 = (int)std::floor(cx - radius);
 	int y0 = (int)std::floor(cy - radius);
@@ -53,10 +77,15 @@ void PageBitmap::stamp_dot(float cx, float cy, float radius, float intensity,
 			float t = 1.0f - d2 / r2;
 			float ink = intensity * std::pow(t, sharpness);
 
-			size_t idx = (size_t)y * (size_t)w_ + (size_t)x;
-			float cur = buf_[idx] / 255.0f;
-			float result = cur * (1.0f - ink);
-			buf_[idx] = (uint8_t)std::max(0.0f, std::min(255.0f, result * 255.0f));
+			uint8_t *p = buf_.get() + (size_t)y * (size_t)stride() +
+			             (size_t)x * (size_t)channels();
+			float target[3] = { red, green, blue };
+			for (int c = 0; c < channels(); c++) {
+				float cur = p[c] / 255.0f;
+				float result = cur * (1.0f - ink * (1.0f - target[c]));
+				p[c] = (uint8_t)std::max(0.0f,
+				          std::min(255.0f, result * 255.0f));
+			}
 		}
 	}
 }
@@ -86,10 +115,13 @@ void PageBitmap::stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
 			float coverage = std::exp(-(dx * dx * inv_2sx2 + dy * dy * inv_2sy2));
 			if (coverage < 0.002f) continue;
 
-			size_t idx = (size_t)y * (size_t)w_ + (size_t)x;
-			float cur = buf_[idx] / 255.0f;
-			float result = cur * std::exp(-density * coverage);
-			buf_[idx] = (uint8_t)std::max(0.0f, std::min(255.0f, result * 255.0f));
+			uint8_t *p = buf_.get() + (size_t)y * (size_t)stride() +
+			             (size_t)x * (size_t)channels();
+			float transmit = std::exp(-density * coverage);
+			for (int c = 0; c < channels(); c++) {
+				p[c] = (uint8_t)std::max(0.0f, std::min(255.0f,
+				                     (float)p[c] * transmit));
+			}
 		}
 	}
 }

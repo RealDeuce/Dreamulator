@@ -27,7 +27,16 @@ public:
 	void stamp_pin(PageBitmap &page, float x_in, float y_in,
 	               int dpi, float radius_mm, float jitter_mm,
 	               float intensity, float sharpness);
+	void set_ink_color(float red, float green, float blue);
+	void set_ribbon_mask(uint8_t mask);
 
+private:
+	float ink_red_ = 0.0f;
+	float ink_green_ = 0.0f;
+	float ink_blue_ = 0.0f;
+	uint8_t ribbon_mask_ = 0;
+
+public:
 	std::mt19937 rng_{42};
 };
 
@@ -80,5 +89,6 @@ std::vector<uint64_t> build_bj10e_glyph_columns(const PrinterState &st,
                                                 uint8_t ch);
 void stamp_bj10e_dot(PageBitmap &page, const PrinterProfile &prof,
                      int xdot, int ydot);
+void set_ribbon_ink(DotRenderer &dr, uint8_t color);
 
 #endif

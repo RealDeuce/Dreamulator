@@ -118,6 +118,7 @@ struct PrinterState {
 	bool  lf_when_full = false;
 	bool  proportional = false;
 	bool  codepage_850 = false;
+	uint8_t ribbon_color = 8;
 	bool  bj10e_graphics_density_omit = false;
 	bool  bj10e_use_downloaded_font = false;
 	const Bj10eUserFont *bj10e_user_font = nullptr;
@@ -126,6 +127,7 @@ struct PrinterState {
 	bool  printable_high_controls = false;
 	int   msb_mode = 0; // -1 force 0, 0 accept as sent, 1 force 1
 	bool  use_user_chars = false;
+	bool  use_high_user_chars = false;
 	int   prop_dpi = 144;
 	int   prop_spacing = 0;
 	int   tab_stops[32] = {};
@@ -136,7 +138,7 @@ struct PrinterState {
 	int   vtab_channel = 0;
 	bool  user_char_defined[256] = {};
 	uint8_t user_char_prefix[256] = {};
-	uint16_t user_char_glyph[256][12] = {};
+	uint16_t user_char_glyph[256][16] = {};
 };
 
 class DotRenderer;
@@ -185,6 +187,7 @@ protected:
 	void form_feed();
 	void new_page_if_needed();
 	void mark_line_output(bool force_ltr = false);
+	void advance_line_direction();
 	void finish_printed_line();
 
 	PrinterState st_;

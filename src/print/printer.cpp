@@ -356,6 +356,9 @@ void PrinterSim::emit_char(uint8_t ch)
 		ch = static_cast<uint8_t>(ch + 0x80);
 
 	uint8_t render_ch = ch;
+	if (prof_.model == PrinterModel::ImageWriter && st_.use_user_chars &&
+	    st_.use_high_user_chars && render_ch >= 0x20 && render_ch <= 0x6F)
+		render_ch = static_cast<uint8_t>(render_ch | 0x80);
 	if (st_.slashed_zero) {
 		if (render_ch == 0x30) render_ch = prof_.model == PrinterModel::CanonBJ10e ? 0x00 : 0x7F;
 		else if (render_ch == 0xB0) render_ch = 0xFF;
@@ -371,7 +374,9 @@ void PrinterSim::emit_char(uint8_t ch)
 	if (prof_.model == PrinterModel::CanonBJ10e && st_.condensed && !st_.proportional)
 		char_w_in = 21.0f / 360.0f;
 	if (st_.proportional && prof_.model == PrinterModel::ImageWriter) {
-		uint8_t gw = get_iw2_corr_prop_width(ch);
+		uint8_t gw = (st_.use_user_chars && st_.user_char_defined[render_ch])
+		    ? static_cast<uint8_t>(st_.user_char_prefix[render_ch] & 0x1F)
+		    : get_iw2_corr_prop_width(ch);
 		if (gw > 0)
 			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
 			            static_cast<float>(st_.prop_dpi);
@@ -446,7 +451,8 @@ void PrinterSim::emit_char(uint8_t ch)
 
 	if (st_.x_pos >= st_.right_margin_in - 0.001f) {
 		carriage_return();
-		line_feed();
+		if (prof_.model != PrinterModel::ImageWriter || st_.lf_when_full)
+			line_feed();
 	}
 }
 
@@ -470,7 +476,11 @@ void PrinterSim::flush_pending_line()
 	for (const auto &entry : pending_line_) {
 		if (entry.has_text)
 			append_text_glyph(text_buf_, entry.text);
-		dots_->render_char(*page_, entry.state, prof_, entry.ch);
+		PrinterState render_state = entry.state;
+		bool force_ltr = st_.unidirectional || st_.unidirectional_line ||
+		                 line_force_ltr_;
+		render_state.line_dir_ltr = force_ltr ? true : st_.line_dir_ltr;
+		dots_->render_char(*page_, render_state, prof_, entry.ch);
 	}
 	pending_line_.clear();
 	mark_line_output();
@@ -500,6 +510,18 @@ void PrinterSim::mark_line_output(bool force_ltr)
 		line_force_ltr_ = true;
 		st_.line_dir_ltr = true;
 	}
+}
+
+void PrinterSim::advance_line_direction()
+{
+	if (!line_output_)
+		return;
+
+	bool force_ltr = st_.unidirectional || st_.unidirectional_line || line_force_ltr_;
+	if (force_ltr)
+		st_.line_dir_ltr = true;
+	else
+		st_.line_dir_ltr = !st_.line_dir_ltr;
 }
 
 void PrinterSim::finish_printed_line()
@@ -547,11 +569,7 @@ void PrinterSim::apply_config(const PrinterConfig &cfg)
 void PrinterSim::carriage_return()
 {
 	flush_pending_line();
-	bool force_ltr = st_.unidirectional || st_.unidirectional_line || line_force_ltr_;
-	if (!force_ltr && line_output_)
-		st_.line_dir_ltr = !st_.line_dir_ltr;
-	else if (force_ltr)
-		st_.line_dir_ltr = true;
+	advance_line_direction();
 	st_.x_pos = st_.left_margin_in;
 	st_.expanded_line = false;
 	finish_printed_line();
@@ -581,12 +599,14 @@ void PrinterSim::line_feed()
 		if (st_.y_pos >= bottom)
 			form_feed();
 	}
+	advance_line_direction();
 	finish_printed_line();
 }
 
 void PrinterSim::form_feed()
 {
 	flush_pending_line();
+	advance_line_direction();
 	finish_printed_line();
 	if (page_ && page_dirty_) {
 		pdf_.add_page(*page_, prof_.render_dpi, text_buf_);

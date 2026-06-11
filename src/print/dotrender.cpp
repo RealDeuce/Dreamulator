@@ -10,19 +10,56 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
                             int dpi, float radius_mm, float jitter_mm,
                             float intensity, float sharpness)
 {
-	std::normal_distribution<float> jdist(0.0f, jitter_mm);
-	float jx = jdist(rng_);
-	float jy = jdist(rng_);
+	auto stamp_component = [&](float red, float green, float blue) {
+		std::normal_distribution<float> jdist(0.0f, jitter_mm);
+		float jx = jdist(rng_);
+		float jy = jdist(rng_);
 
-	float px = (x_in + jx / 25.4f) * (float)dpi;
-	float py = (y_in + jy / 25.4f) * (float)dpi;
-	std::normal_distribution<float> rdist(radius_mm, radius_mm * 0.075f);
-	float r_px = std::max(radius_mm * 0.7f, rdist(rng_)) / 25.4f * (float)dpi;
+		float px = (x_in + jx / 25.4f) * (float)dpi;
+		float py = (y_in + jy / 25.4f) * (float)dpi;
+		std::normal_distribution<float> rdist(radius_mm, radius_mm * 0.075f);
+		float r_px = std::max(radius_mm * 0.7f, rdist(rng_)) / 25.4f * (float)dpi;
 
-	std::normal_distribution<float> idist(intensity, intensity * 0.075f);
-	float ink = std::max(0.3f, std::min(1.0f, idist(rng_)));
+		std::normal_distribution<float> idist(intensity, intensity * 0.075f);
+		float ink = std::max(0.3f, std::min(1.0f, idist(rng_)));
 
-	page.stamp_dot(px, py, r_px, ink, sharpness);
+		page.stamp_dot_rgb(px, py, r_px, ink, sharpness,
+		                   red, green, blue);
+	};
+
+	if (ribbon_mask_ == 0) {
+		stamp_component(ink_red_, ink_green_, ink_blue_);
+		return;
+	}
+
+	if (ribbon_mask_ & 0x08) {
+		stamp_component(0.00f, 0.00f, 0.00f);
+		return;
+	}
+	if (ribbon_mask_ & 0x01)
+		stamp_component(1.00f, 0.86f, 0.04f); // yellow
+	if (ribbon_mask_ & 0x02)
+		stamp_component(0.85f, 0.08f, 0.58f); // magenta
+	if (ribbon_mask_ & 0x04)
+		stamp_component(0.04f, 0.47f, 0.82f); // cyan
+}
+
+void DotRenderer::set_ink_color(float red, float green, float blue)
+{
+	ink_red_ = std::max(0.0f, std::min(1.0f, red));
+	ink_green_ = std::max(0.0f, std::min(1.0f, green));
+	ink_blue_ = std::max(0.0f, std::min(1.0f, blue));
+	ribbon_mask_ = 0;
+}
+
+void DotRenderer::set_ribbon_mask(uint8_t mask)
+{
+	ribbon_mask_ = mask & 0x0F;
+}
+
+void set_ribbon_ink(DotRenderer &dr, uint8_t color)
+{
+	dr.set_ribbon_mask(color);
 }
 
 static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
@@ -49,6 +86,10 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 
 	float ink = prof.dot_intensity;
 	float sharp = prof.dot_sharpness;
+	if (prof.model == PrinterModel::ImageWriter)
+		set_ribbon_ink(dr, st.ribbon_color);
+	else
+		dr.set_ink_color(0.0f, 0.0f, 0.0f);
 
 	constexpr float vib_decay = 0.85f;
 	constexpr float vib_kick = 0.25f;
@@ -272,7 +313,12 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 		const uint16_t *glyph = nullptr;
 		const uint16_t *glyph_p2 = nullptr;
 		int w = 8;
-		if (eff_mode == 2) {
+		if (st.use_user_chars && st.user_char_defined[ch]) {
+			glyph = st.user_char_glyph[ch];
+			w = st.user_char_prefix[ch] & 0x1F;
+			if (w == 0) w = 8;
+			if (w > 16) w = 16;
+		} else if (eff_mode == 2) {
 			if (st.proportional) {
 				glyph = get_iw2_nlq_prop_p1_glyph(ch);
 				glyph_p2 = get_iw2_nlq_prop_p2_glyph(ch);
@@ -467,14 +513,19 @@ static void stamp_bj10e_drop(PageBitmap &page, const Bj10eInkKernel &kernel,
 	uint8_t *buf = page.data();
 	int w = page.width();
 	int h = page.height();
+	int stride = page.stride();
+	int channels = page.channels();
 	for (const Bj10eInkSample &s : kernel.samples) {
 		int x = base_x + s.dx;
 		int y = base_y + s.dy;
 		if (x < 0 || x >= w || y < 0 || y >= h)
 			continue;
-		size_t idx = (size_t)y * (size_t)w + (size_t)x;
-		buf[idx] = (uint8_t)std::max(0.0f, std::min(255.0f,
-		                     (float)buf[idx] * s.transmit));
+		uint8_t *p = buf + (size_t)y * (size_t)stride +
+		             (size_t)x * (size_t)channels;
+		for (int c = 0; c < channels; c++) {
+			p[c] = (uint8_t)std::max(0.0f, std::min(255.0f,
+			                     (float)p[c] * s.transmit));
+		}
 	}
 }
 

@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd
 // Apple ImageWriter II emulation per Technical Reference Manual (1986)
 // Appendix A command summary, pages 141-146.
+#include "dotrender.h"
 #include "printer.h"
 #include <cstdio>
 #include <cstring>
@@ -22,6 +23,17 @@ private:
 		EscA,
 		EscCrIns,
 		MultiLF,
+		BackspaceChar,
+		CustomLoadChar,
+		CustomLoadPrefix,
+		CustomLoadColumns,
+		GfxData,
+		GfxRepeatByte,
+		CtrlBracketFirstValue,
+		CtrlBracketFirstAt,
+		CtrlBracketBodyValue,
+		CtrlBracketBodyAt,
+		CtrlBracketTrailer,
 	};
 	State state_ = State::Normal;
 	uint8_t esc_cmd_ = 0;
@@ -30,11 +42,34 @@ private:
 	int digit_expect_ = 0;
 	uint8_t sw_p1_ = 0;
 	bool sw_is_z_ = false;
+	int gfx_remaining_ = 0;
+	bool ctrl_bracket_end_ = false;
+	bool ctrl_bracket_return_ = false;
+	bool software_select_response_ = false;
+	bool lf_ff_print_trigger_ = true;
+	int custom_load_width_ = 8;
+	uint8_t custom_load_char_ = 0;
+	int custom_load_pos_ = 0;
+	int custom_load_remaining_ = 0;
+	bool custom_load_bottom_wires_ = false;
 
 	void start_digits(uint8_t cmd, int count);
 	void dispatch_digits(int val);
 	void dispatch_sw(uint8_t p1, uint8_t p2);
 	int parse_digit_val() const;
+	uint8_t command_byte(uint8_t b) const;
+	float char_advance(uint8_t ch) const;
+	float graphics_hdpi() const;
+	float graphics_dot_width() const;
+	void emit_gfx_col(uint8_t data);
+	void clear_custom_chars();
+	bool begin_custom_char(uint8_t ch);
+	bool begin_custom_columns(uint8_t width_code);
+	void store_custom_col(uint8_t data);
+	void begin_ctrl_bracket();
+	void consume_ctrl_bracket_value(uint8_t b);
+	void feed_without_print(float delta);
+	static uint8_t ribbon_command_color(int val);
 };
 
 void ImageWriterPrinter::start_digits(uint8_t cmd, int count)
@@ -57,6 +92,179 @@ int ImageWriterPrinter::parse_digit_val() const
 	return val;
 }
 
+uint8_t ImageWriterPrinter::command_byte(uint8_t b) const
+{
+	return st_.include_8th_bit ? b : static_cast<uint8_t>(b & 0x7F);
+}
+
+float ImageWriterPrinter::char_advance(uint8_t ch) const
+{
+	ch = command_byte(ch);
+	if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F)
+		ch = static_cast<uint8_t>(ch + 0x80);
+	if (st_.use_user_chars && st_.use_high_user_chars && ch >= 0x20 && ch <= 0x6F)
+		ch = static_cast<uint8_t>(ch | 0x80);
+
+	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
+	if (st_.proportional) {
+		uint8_t gw = (st_.use_user_chars && st_.user_char_defined[ch])
+		    ? static_cast<uint8_t>(st_.user_char_prefix[ch] & 0x1F)
+		    : get_iw2_corr_prop_width(ch);
+		if (gw > 0)
+			char_w_in = static_cast<float>(gw + st_.prop_spacing) /
+			            static_cast<float>(st_.prop_dpi);
+	}
+	if (st_.expanded || st_.expanded_line)
+		char_w_in *= 2.0f;
+	return char_w_in;
+}
+
+float ImageWriterPrinter::graphics_hdpi() const
+{
+	return st_.proportional
+	    ? static_cast<float>(st_.prop_dpi)
+	    : st_.pitch_cpi * 8.0f;
+}
+
+float ImageWriterPrinter::graphics_dot_width() const
+{
+	float dpi = graphics_hdpi();
+	return 1.0f / dpi;
+}
+
+uint8_t ImageWriterPrinter::ribbon_command_color(int val)
+{
+	if (val == 0)
+		return 0x08;
+	if (val == 3)
+		return 0x04;
+	if (val == 4)
+		return 0x03;
+	return static_cast<uint8_t>(val & 0x0F);
+}
+
+void ImageWriterPrinter::emit_gfx_col(uint8_t data)
+{
+	float dot_w = graphics_dot_width();
+	bool expanded = st_.expanded || st_.expanded_line;
+	float advance = expanded ? dot_w * 2.0f : dot_w;
+	if (data == 0) {
+		st_.x_pos += advance;
+		return;
+	}
+
+	flush_pending_line();
+	new_page_if_needed();
+	mark_line_output();
+	page_dirty_ = true;
+
+	constexpr float pin_h = 1.0f / 72.0f;
+	float bold_off = (1.0f / 80.0f) * 0.5f;
+	bool force_ltr = st_.unidirectional || st_.unidirectional_line || line_force_ltr_;
+	float bidi_offset = (force_ltr || st_.line_dir_ltr) ? 0.0f : (1.0f / 120.0f);
+	set_ribbon_ink(*dots_, st_.ribbon_color);
+
+	for (int pin = 0; pin < 8; pin++) {
+		if (!(data & (1U << pin)))
+			continue;
+
+		float x = st_.x_pos + bidi_offset;
+		float y = st_.y_pos + static_cast<float>(pin) * pin_h - 9.0f * pin_h;
+		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
+		                 prof_.dot_radius_mm, prof_.jitter_mm,
+		                 prof_.dot_intensity, prof_.dot_sharpness);
+		if (expanded) {
+			dots_->stamp_pin(*page_, x + dot_w, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
+		}
+		if (st_.bold) {
+			dots_->stamp_pin(*page_, x + bold_off, y, prof_.render_dpi,
+			                 prof_.dot_radius_mm, prof_.jitter_mm,
+			                 prof_.dot_intensity, prof_.dot_sharpness);
+			if (expanded) {
+				dots_->stamp_pin(*page_, x + dot_w + bold_off, y,
+				                 prof_.render_dpi, prof_.dot_radius_mm,
+				                 prof_.jitter_mm, prof_.dot_intensity,
+				                 prof_.dot_sharpness);
+			}
+		}
+	}
+
+	st_.x_pos += advance;
+}
+
+void ImageWriterPrinter::clear_custom_chars()
+{
+	std::memset(st_.user_char_defined, 0, sizeof(st_.user_char_defined));
+	std::memset(st_.user_char_prefix, 0, sizeof(st_.user_char_prefix));
+	std::memset(st_.user_char_glyph, 0, sizeof(st_.user_char_glyph));
+}
+
+bool ImageWriterPrinter::begin_custom_char(uint8_t ch)
+{
+	ch = command_byte(ch);
+
+	if (ch == 0x04)
+		return false;
+
+	if (ch >= 0x20 && ch <= 0x7E) {
+		custom_load_char_ = ch;
+	} else if (custom_load_width_ <= 8 && ch >= 0xA0 && ch <= 0xEF) {
+		custom_load_char_ = ch;
+	} else {
+		state_ = State::Normal;
+		return false;
+	}
+
+	custom_load_pos_ = 0;
+	custom_load_remaining_ = 0;
+	custom_load_bottom_wires_ = false;
+	std::memset(st_.user_char_glyph[custom_load_char_], 0,
+	            sizeof(st_.user_char_glyph[custom_load_char_]));
+	st_.user_char_prefix[custom_load_char_] = 0;
+	st_.user_char_defined[custom_load_char_] = false;
+	state_ = State::CustomLoadPrefix;
+	return true;
+}
+
+bool ImageWriterPrinter::begin_custom_columns(uint8_t width_code)
+{
+	uint8_t width = static_cast<uint8_t>(width_code & 0x1F);
+	bool top = width_code >= 'A' && width_code <= 'P';
+	bool bottom = width_code >= 'a' && width_code <= 'p';
+	if ((!top && !bottom) || width == 0 || width > custom_load_width_) {
+		state_ = State::Normal;
+		return false;
+	}
+
+	st_.user_char_prefix[custom_load_char_] = width_code;
+	custom_load_bottom_wires_ = bottom;
+	custom_load_pos_ = 0;
+	custom_load_remaining_ = width;
+	state_ = State::CustomLoadColumns;
+	return true;
+}
+
+void ImageWriterPrinter::store_custom_col(uint8_t data)
+{
+	if (custom_load_remaining_ <= 0 || custom_load_pos_ >= 16)
+		return;
+
+	uint16_t col = 0;
+	for (int pin = 0; pin < 8; pin++) {
+		if (data & (1U << pin))
+			col |= static_cast<uint16_t>(1U << pin);
+	}
+	if (custom_load_bottom_wires_)
+		col = static_cast<uint16_t>((col << 1) & 0x1FF);
+	st_.user_char_glyph[custom_load_char_][custom_load_pos_++] = col;
+	if (--custom_load_remaining_ == 0) {
+		st_.user_char_defined[custom_load_char_] = true;
+		state_ = State::CustomLoadChar;
+	}
+}
+
 void ImageWriterPrinter::dispatch_digits(int val)
 {
 	switch (esc_cmd_) {
@@ -69,18 +277,24 @@ void ImageWriterPrinter::dispatch_digits(int val)
 		                     static_cast<float>(st_.pitch_cpi);
 		break;
 	case 'H':  // Table A-13: page length nnnn/144 inch
-		if (val >= 1 && val <= 9999)
+		if (val >= 1 && val <= 9999 &&
+		    (st_.perf_skip_lines == 0 || val > 0x0090))
 			st_.page_height_in = static_cast<float>(val) / 144.0f;
 		break;
 	case 'F': { // Table A-14/A-17: place head nnnn dot columns from left margin
-		float dpi = st_.proportional
-		    ? static_cast<float>(st_.prop_dpi)
-		    : st_.pitch_cpi * 8.0f;
-		st_.x_pos = st_.left_margin_in + static_cast<float>(val) / dpi;
+		float dpi = graphics_hdpi();
+		int max_col = static_cast<int>(dpi * 8.0f + 0.5f) - 1;
+		float target = st_.left_margin_in + static_cast<float>(val) / dpi;
+		if (val <= max_col && target > st_.x_pos + 0.00001f)
+			st_.x_pos = target;
 		break;
 	}
 	case 's':  // Table A-11: set proportional dot spacing (0-9)
 		st_.prop_spacing = val;
+		break;
+	case 'K':  // Table A-18: color select
+		if (val >= 0 && val <= 6)
+			st_.ribbon_color = ribbon_command_color(val);
 		break;
 	case 'u': { // Table A-14: add one tab stop at column nnn
 		if (st_.tab_count < 32 && val >= 1)
@@ -92,6 +306,19 @@ void ImageWriterPrinter::dispatch_digits(int val)
 		digit_buf_[0] = static_cast<char>(val & 0xFF);
 		digit_buf_[1] = static_cast<char>((val >> 8) & 0xFF);
 		state_ = State::CollectRepChar;
+		return;
+	case 'G':
+	case 'S':
+		gfx_remaining_ = val;
+		state_ = gfx_remaining_ > 0 ? State::GfxData : State::Normal;
+		return;
+	case 'g':
+		gfx_remaining_ = val * 8;
+		state_ = gfx_remaining_ > 0 ? State::GfxData : State::Normal;
+		return;
+	case 'V':
+		gfx_remaining_ = val;
+		state_ = State::GfxRepeatByte;
 		return;
 	default:
 		break;
@@ -113,9 +340,13 @@ void ImageWriterPrinter::dispatch_sw(uint8_t p1, uint8_t p2)
 	else if (p1 == 0x00 && p2 == 0x20) {
 		st_.include_8th_bit = sw_is_z_;
 	}
+	// Table A-19: software select response
+	else if (p1 == 0x10 && p2 == 0x00) {
+		software_select_response_ = sw_is_z_;
+	}
 	// Table A-16: CR-only vs CR+LF+FF
 	else if (p1 == 0x40 && p2 == 0x00) {
-		// stored as flag if needed
+		lf_ff_print_trigger_ = !sw_is_z_;
 	}
 	// Table A-16: auto LF after CR
 	// ESC D = adds auto LF, ESC Z = no auto LF
@@ -137,10 +368,35 @@ void ImageWriterPrinter::dispatch_sw(uint8_t p1, uint8_t p2)
 	}
 }
 
+void ImageWriterPrinter::begin_ctrl_bracket()
+{
+	ctrl_bracket_end_ = false;
+	ctrl_bracket_return_ = false;
+	state_ = State::CtrlBracketFirstValue;
+}
+
+void ImageWriterPrinter::consume_ctrl_bracket_value(uint8_t b)
+{
+	uint8_t v = static_cast<uint8_t>(b & 0x7F);
+	ctrl_bracket_end_ = (v == 'A');
+	ctrl_bracket_return_ = (v == 'C') || (v != 'A' && (v & 1) != 0);
+	state_ = State::CtrlBracketBodyAt;
+}
+
+void ImageWriterPrinter::feed_without_print(float delta)
+{
+	new_page_if_needed();
+	page_dirty_ = true;
+	st_.y_pos += st_.reverse_lf ? -delta : delta;
+	if (st_.y_pos < st_.top_margin_in)
+		st_.y_pos = st_.top_margin_in;
+}
+
 void ImageWriterPrinter::parse_byte(uint8_t b)
 {
 	switch (state_) {
 	case State::CollectDigits:
+		b = command_byte(b);
 		if ((b >= '0' && b <= '9') || b == ' ') {
 			digit_buf_[digit_pos_++] = (b == ' ') ? '0' : static_cast<char>(b);
 			if (digit_pos_ >= digit_expect_) {
@@ -175,6 +431,7 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		return;
 
 	case State::EscA:
+		b = command_byte(b);
 		state_ = State::Normal;
 		if (b == '0')      st_.font_mode = 0;
 		else if (b == '1') st_.font_mode = 1;
@@ -182,11 +439,13 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		return;
 
 	case State::EscCrIns:  // Table A-16: ESC l 0/1
+		b = command_byte(b);
 		state_ = State::Normal;
 		st_.cr_insertion = (b == '0');
 		return;
 
 	case State::MultiLF: { // CTRL-_ n: feed 1-15 lines
+		b = command_byte(b);
 		state_ = State::Normal;
 		int n = 0;
 		if (b >= '1' && b <= '9')
@@ -200,11 +459,88 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		return;
 	}
 
+	case State::BackspaceChar: {
+		b = command_byte(b);
+		state_ = State::Normal;
+		st_.x_pos -= char_advance(b);
+		if (st_.x_pos < st_.left_margin_in)
+			st_.x_pos = st_.left_margin_in;
+		emit_char(b);
+		return;
+	}
+
+	case State::CustomLoadChar:
+		if (command_byte(b) == 0x04) {
+			state_ = State::Normal;
+			return;
+		}
+		begin_custom_char(b);
+		return;
+
+	case State::CustomLoadPrefix:
+		begin_custom_columns(command_byte(b));
+		return;
+
+	case State::CustomLoadColumns:
+		store_custom_col(b);
+		return;
+
+	case State::GfxRepeatByte:
+		for (int i = 0; i < gfx_remaining_; i++)
+			emit_gfx_col(b);
+		gfx_remaining_ = 0;
+		state_ = State::Normal;
+		return;
+
+	case State::GfxData:
+		emit_gfx_col(b);
+		if (gfx_remaining_ > 0)
+			gfx_remaining_--;
+		if (gfx_remaining_ <= 0)
+			state_ = State::Normal;
+		return;
+
+	case State::CtrlBracketFirstValue:
+		if ((b & 0x7F) == 'A')
+			state_ = State::CtrlBracketFirstAt;
+		else
+			state_ = State::Normal;
+		return;
+
+	case State::CtrlBracketFirstAt:
+		state_ = ((b & 0x7F) == '@') ? State::CtrlBracketBodyValue
+		                             : State::Normal;
+		return;
+
+	case State::CtrlBracketBodyValue:
+		consume_ctrl_bracket_value(b);
+		return;
+
+	case State::CtrlBracketBodyAt:
+		if ((b & 0x7F) != '@') {
+			state_ = State::Normal;
+			return;
+		}
+		if (ctrl_bracket_return_) {
+			state_ = State::Normal;
+			return;
+		}
+		state_ = ctrl_bracket_end_ ? State::CtrlBracketTrailer
+		                          : State::CtrlBracketBodyValue;
+		return;
+
+	case State::CtrlBracketTrailer:
+		state_ = State::Normal;
+		if ((b & 0x7F) == 0x1E)
+			fprintf(stderr, "ImageWriter: CTRL-] trailer 1E would hang real firmware\n");
+		return;
+
 	case State::Esc:
+		b = command_byte(b);
 		state_ = State::Normal;
 		switch (b) {
 		// Table A-19: reset defaults
-		case 'c': cancel_pending_line(); st_ = PrinterState{}; apply_config(cfg_); break;
+		case 'c': flush_pending_line(); st_ = PrinterState{}; apply_config(cfg_); break;
 
 		// Table A-12: boldface
 		case '!': st_.bold = true; break;
@@ -246,16 +582,41 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		case '<': st_.unidirectional = false; break;
 
 		// Table A-15: TOF set
-		case 'v': break;
+		case 'v': st_.top_margin_in = st_.y_pos - st_.line_spacing_in; break;
 
 		// Table A-15: paper-out sensor
 		case 'O': break;
 		case 'o': break;
 
 		// Table A-9: user-designed characters
-		case '-': break;  // max custom width 8 dots (no-op)
-		case '+': break;  // max custom width 16 dots (no-op)
-		case '$': st_.mousetext_mode = false; break;  // back to normal font
+		case '-':
+			custom_load_width_ = 8;
+			st_.include_8th_bit = true;
+			clear_custom_chars();
+			break;
+		case '+':
+			custom_load_width_ = 16;
+			st_.include_8th_bit = true;
+			clear_custom_chars();
+			break;
+		case '$':
+			st_.mousetext_mode = false;
+			st_.use_user_chars = false;
+			st_.use_high_user_chars = false;
+			break;
+		case '\'':
+			st_.mousetext_mode = false;
+			st_.use_user_chars = true;
+			st_.use_high_user_chars = false;
+			break;
+		case '*':
+			st_.mousetext_mode = false;
+			st_.use_user_chars = true;
+			st_.use_high_user_chars = true;
+			break;
+		case 'I':
+			state_ = State::CustomLoadChar;
+			break;
 
 		// Font selection (IW native)
 		case 'm': st_.font_mode = 0; break;
@@ -263,7 +624,11 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		case 'a': state_ = State::EscA; break;
 
 		// Table A-9: MouseText / custom font
-		case '&': st_.mousetext_mode = true; break;
+		case '&':
+			st_.mousetext_mode = true;
+			st_.use_user_chars = false;
+			st_.use_high_user_chars = false;
+			break;
 
 		// Table A-18: color select (1 ASCII digit param)
 		case 'K': start_digits('K', 1); break;
@@ -299,7 +664,10 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		// Table A-17: graphics — ESC S nnnn (same as ESC G)
 		// Table A-17: graphics — ESC g nnn (3 ASCII digits, nnn*8 data)
 		// Table A-17: graphics — ESC V nnnn c (4 digits + 1 byte)
-		// Not yet implemented — would need GfxData state
+		case 'G': start_digits('G', 4); break;
+		case 'S': start_digits('S', 4); break;
+		case 'g': start_digits('g', 3); break;
+		case 'V': start_digits('V', 4); break;
 
 		// Table A-16/A-19: software switches
 		case 'Z':
@@ -322,18 +690,58 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		break;
 	}
 
+	b = command_byte(b);
+
+	if (!st_.selected && b != 0x11)
+		return;
+
 	// Control codes
 	switch (b) {
 	case 0x1B: state_ = State::Esc; return;
 	case 0x0D: carriage_return(); return;           // Table A-14
-	case 0x0A: line_feed(); return;                 // Table A-15
-	case 0x0C: form_feed(); return;                 // Table A-15
+	case 0x0A:                                      // Table A-15
+		if (st_.cr_insertion)
+			st_.x_pos = st_.left_margin_in;
+		if (lf_ff_print_trigger_)
+			line_feed();
+		else
+			feed_without_print(st_.line_spacing_in);
+		return;
+	case 0x0B:                                      // ROM-observed vertical feed
+		if (lf_ff_print_trigger_)
+			flush_pending_line();
+		feed_without_print(2.0f / 144.0f);
+		st_.x_pos = st_.left_margin_in;
+		st_.expanded_line = false;
+		advance_line_direction();
+		finish_printed_line();
+		return;
+	case 0x0C:                                      // Table A-15
+		if (st_.cr_insertion)
+			st_.x_pos = st_.left_margin_in;
+		if (lf_ff_print_trigger_)
+			form_feed();
+		else {
+			if (page_ && page_dirty_) {
+				pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
+				text_buf_.clear();
+				page_dirty_ = false;
+			}
+			page_.reset();
+		}
+		return;
 	case 0x0E: st_.expanded = true; return;         // Table A-10/A-12
 	case 0x0F: st_.expanded = false; return;        // Table A-10/A-12
+	case 0x11:
+		if (software_select_response_)
+			st_.selected = true;
+		return;
+	case 0x13:
+		if (software_select_response_)
+			st_.selected = false;
+		return;
 	case 0x08:                                      // Table A-14: backspace
-		st_.x_pos -= 1.0f / static_cast<float>(st_.pitch_cpi);
-		if (st_.x_pos < st_.left_margin_in)
-			st_.x_pos = st_.left_margin_in;
+		state_ = State::BackspaceChar;
 		return;
 	case 0x09:                                      // Table A-14: tab
 		for (int i = 0; i < st_.tab_count; i++) {
@@ -349,6 +757,9 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 	case 0x18:                                      // Table A-19: CAN
 		cancel_pending_line();
 		st_.x_pos = st_.left_margin_in;
+		return;
+	case 0x1D:
+		begin_ctrl_bracket();
 		return;
 	case 0x1F:                                      // Table A-15: multi-LF
 		state_ = State::MultiLF;

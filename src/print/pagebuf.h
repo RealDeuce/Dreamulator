@@ -13,7 +13,10 @@ public:
 
 	int width() const { return w_; }
 	int height() const { return h_; }
-	int stride() const { return w_; }
+	int channels() const { return 3; }
+	int stride() const { return w_ * channels(); }
+	size_t raw_size() const { return (size_t)stride() * (size_t)h_; }
+	bool is_grayscale() const;
 	const uint8_t *data() const { return buf_.get(); }
 	uint8_t *data() { return buf_.get(); }
 
@@ -24,6 +27,8 @@ public:
 
 	void stamp_dot(float cx, float cy, float radius, float intensity,
 	               float sharpness = 2.0f);
+	void stamp_dot_rgb(float cx, float cy, float radius, float intensity,
+	                   float sharpness, float red, float green, float blue);
 	void stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
 	                   float density);
 

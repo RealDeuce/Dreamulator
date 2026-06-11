@@ -54,11 +54,25 @@ void PdfWriter::end_obj()
 
 long PdfWriter::write_image_stream(const PageBitmap &bmp)
 {
-	size_t raw_len = (size_t)bmp.width() * (size_t)bmp.height();
+	bool grayscale = bmp.is_grayscale();
+	std::vector<uint8_t> gray;
+	const uint8_t *raw = bmp.data();
+	size_t raw_len = bmp.raw_size();
+	if (grayscale) {
+		gray.resize((size_t)bmp.width() * (size_t)bmp.height());
+		for (int y = 0; y < bmp.height(); y++) {
+			const uint8_t *src = bmp.data() + (size_t)y * (size_t)bmp.stride();
+			uint8_t *dst = gray.data() + (size_t)y * (size_t)bmp.width();
+			for (int x = 0; x < bmp.width(); x++)
+				dst[x] = src[(size_t)x * (size_t)bmp.channels()];
+		}
+		raw = gray.data();
+		raw_len = gray.size();
+	}
 	uLong bound = compressBound((uLong)raw_len);
 	std::vector<uint8_t> comp(bound);
 	uLong comp_len = bound;
-	int rc = compress2(comp.data(), &comp_len, bmp.data(), (uLong)raw_len, 6);
+	int rc = compress2(comp.data(), &comp_len, raw, (uLong)raw_len, 6);
 	if (rc != Z_OK)
 		throw std::runtime_error("zlib compress failed");
 
@@ -66,7 +80,8 @@ long PdfWriter::write_image_stream(const PageBitmap &bmp)
 	begin_obj(img_id);
 	fprintf(fp_, "<< /Type /XObject /Subtype /Image\n");
 	fprintf(fp_, "   /Width %d /Height %d\n", bmp.width(), bmp.height());
-	fprintf(fp_, "   /ColorSpace /DeviceGray /BitsPerComponent 8\n");
+	fprintf(fp_, "   /ColorSpace /%s /BitsPerComponent 8\n",
+	        grayscale ? "DeviceGray" : "DeviceRGB");
 	fprintf(fp_, "   /Filter /FlateDecode /Length %lu >>\n", (unsigned long)comp_len);
 	fprintf(fp_, "stream\n");
 	fwrite(comp.data(), 1, comp_len, fp_);
