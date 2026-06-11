@@ -79,7 +79,9 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	    ? (expanded ? 2.0f : 1.0f) / static_cast<float>(st.prop_dpi)
 	    : (cw_in / static_cast<float>(glyph_w));
 	bool script = st.superscript || st.subscript;
-	float expand_dup = expanded ? dot_w_in : 0.0f;
+	float expand_dup = expanded
+	    ? (prof.model == PrinterModel::EpsonFX ? dot_w_in : dot_w_in * 0.5f)
+	    : 0.0f;
 	float dot_pitch = (prof.model == PrinterModel::ImageWriter)
 	    ? (1.0f / 80.0f) : (1.0f / 60.0f);
 	float bold_off = dot_pitch * 0.5f;
