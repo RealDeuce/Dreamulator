@@ -405,6 +405,13 @@ void PrinterSim::emit_char(uint8_t ch)
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
 
+	if (!pending_line_.empty() &&
+	    st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+		bool feed_when_full =
+		    prof_.model != PrinterModel::ImageWriter || st_.lf_when_full;
+		wrap_full_line(feed_when_full);
+	}
+
 	{
 		size_t bj10e_dot_count = 0;
 		if (prof_.model == PrinterModel::CanonBJ10e)
@@ -448,12 +455,6 @@ void PrinterSim::emit_char(uint8_t ch)
 	}
 
 	st_.x_pos += char_w_in;
-
-	if (st_.x_pos >= st_.right_margin_in - 0.001f) {
-		carriage_return();
-		if (prof_.model != PrinterModel::ImageWriter || st_.lf_when_full)
-			line_feed();
-	}
 }
 
 void PrinterSim::flush_pending_line()
@@ -501,6 +502,36 @@ void PrinterSim::delete_pending_char()
 	while (dot_count-- > 0 && !bj10e_pending_dots_.empty())
 		bj10e_pending_dots_.pop_back();
 	pending_line_.pop_back();
+}
+
+void PrinterSim::reset_printer_state(const PrinterConfig &cfg)
+{
+	bool preserve_position = page_ != nullptr;
+	float x_pos = st_.x_pos;
+	float y_pos = st_.y_pos;
+
+	st_ = PrinterState{};
+	apply_config(cfg);
+
+	if (preserve_position) {
+		st_.x_pos = x_pos;
+		st_.y_pos = y_pos;
+	}
+	line_output_ = false;
+	line_force_ltr_ = false;
+}
+
+void PrinterSim::wrap_full_line(bool feed)
+{
+	flush_pending_line();
+	st_.x_pos = st_.left_margin_in;
+	st_.expanded_line = false;
+	if (feed) {
+		line_feed();
+	} else {
+		advance_line_direction();
+		finish_printed_line();
+	}
 }
 
 void PrinterSim::mark_line_output(bool force_ltr)

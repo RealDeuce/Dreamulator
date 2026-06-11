@@ -540,7 +540,7 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		state_ = State::Normal;
 		switch (b) {
 		// Table A-19: reset defaults
-		case 'c': flush_pending_line(); st_ = PrinterState{}; apply_config(cfg_); break;
+		case 'c': flush_pending_line(); reset_printer_state(cfg_); break;
 
 		// Table A-12: boldface
 		case '!': st_.bold = true; break;

@@ -156,6 +156,9 @@ private:
 		FsCJAmount,
 		FsCB1,
 		FsCB2,
+		FsCBCountLo,
+		FsCBCountHi,
+		FsCBData,
 		MasterSel,
 		EscLowerP,
 		Sink1,
@@ -640,7 +643,8 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case 'S':                                            // p283
 			st_.superscript = (b == 0);
 			st_.subscript = (b == 1);
-			st_.proportional = false;
+			if (prof_.model != PrinterModel::CanonBJ10e)
+				st_.proportional = false;
 			break;
 		case 'W': st_.expanded = (b & 1); break;            // p283
 		case 'A': set_line_spacing_72(b); break;            // p285
@@ -942,8 +946,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 		// Reset — p284
 		case '@':
 			cancel_pending_line();
-			st_ = PrinterState{};
-			apply_config(cfg_);
+			reset_printer_state(cfg_);
 			set_default_horizontal_tabs();
 			set_default_vertical_tabs();
 			reset_graphics_reassignments();
@@ -1212,6 +1215,30 @@ static bool canon_star_mode(uint8_t mode, CanonGraphicsMode &out)
 	case 0x40: out = { 1.0f / 360.0f, 1.0f / 360.0f, 8 }; return true;
 	default: return false;
 	}
+}
+
+static bool canon_fs_cb_mode(uint8_t selector1, uint8_t selector2,
+                             CanonGraphicsMode &out)
+{
+	uint8_t s1 = selector1 & 0x0F;
+	uint8_t s2 = selector2 & 0x0F;
+	if (s1 == 0x00 && s2 == 0x00) {
+		out = { 1.0f / 180.0f, 1.0f / 180.0f, 3 };
+		return true;
+	}
+	if (s1 == 0x04 && s2 == 0x00) {
+		out = { 1.0f / 180.0f, 1.0f / 360.0f, 6 };
+		return true;
+	}
+	if (s1 == 0x00 && s2 == 0x04) {
+		out = { 1.0f / 360.0f, 1.0f / 180.0f, 3 };
+		return true;
+	}
+	if (s1 == 0x04 && s2 == 0x04) {
+		out = { 1.0f / 360.0f, 1.0f / 360.0f, 6 };
+		return true;
+	}
+	return false;
 }
 
 void CanonBj10ePrinter::derive_print_mode()
@@ -1543,8 +1570,7 @@ void CanonBj10ePrinter::finish_counted_sequence()
 		bool factory_init = init == 4 || init == 5 || init == 255;
 		if (user_init || factory_init) {
 			cancel_pending_line();
-			st_ = PrinterState{};
-			apply_config(factory_init ? default_config_for(PrinterModel::CanonBJ10e) : cfg_);
+			reset_printer_state(factory_init ? default_config_for(PrinterModel::CanonBJ10e) : cfg_);
 			set_default_horizontal_tabs();
 			set_default_vertical_tabs();
 			reset_graphics_reassignments();
@@ -1552,20 +1578,21 @@ void CanonBj10ePrinter::finish_counted_sequence()
 		}
 	}
 	if (canon_cmd_ == 'I' && mode2_ && canon_payload_len_ > 0) {
-		uint8_t mode = canon_payload_[0];
-		if (canon_payload_len_ > 1) {
-			switch (mode) {
-			case 0x00: case 0x02: case 0x03: case 0x04:
-			case 0x06: case 0x07: case 0x08: case 0x0A:
-			case 0x0C: case 0x0E: case 0x10: case 0x12:
-			case 0x14: case 0x16:
-				break;
-			default:
-				mode = canon_payload_[1];
-				break;
-			}
+		if (canon_payload_len_ >= 5) {
+			uint16_t metric = (uint16_t)(((uint16_t)canon_payload_[2] << 8) |
+			                             canon_payload_[3]);
+			bj_raw_12_ = false;
+			bj_raw_17_ = false;
+			bj_raw_proportional_ = false;
+			if (metric == 0x0078)
+				bj_raw_12_ = true;
+			else if (metric == 0x0054) {
+				bj_raw_17_ = true;
+				bj_raw_emphasized_ = false;
+			} else if (metric != 0x0090)
+				bj_raw_proportional_ = true;
+			derive_print_mode();
 		}
-		apply_print_mode(mode);
 	}
 
 	canon_expect_ = CanonExpect::Normal;
@@ -1875,8 +1902,51 @@ void CanonBj10ePrinter::parse_byte(uint8_t b)
 		canon_expect_ = CanonExpect::FsCB2;
 		return;
 	case CanonExpect::FsCB2:
-		(void)canon_p1_;
-		canon_expect_ = CanonExpect::Normal;
+		{
+			CanonGraphicsMode mode;
+			if (canon_fs_cb_mode(canon_p1_, b, mode)) {
+				counted_graphics_ = true;
+				counted_graphics_dot_w_ = mode.dot_w;
+				counted_graphics_pin_h_ = mode.pin_h;
+				counted_graphics_bytes_per_col_ = mode.bytes_per_col;
+				counted_graphics_buf_len_ = 0;
+				canon_expect_ = CanonExpect::FsCBCountLo;
+			} else {
+				canon_expect_ = CanonExpect::Normal;
+			}
+		}
+		return;
+	case CanonExpect::FsCBCountLo:
+		canon_p1_ = b;
+		canon_expect_ = CanonExpect::FsCBCountHi;
+		return;
+	case CanonExpect::FsCBCountHi:
+		canon_star_remain_ = (int)((uint16_t)canon_p1_ | ((uint16_t)b << 8));
+		canon_expect_ = canon_star_remain_ > 0 ? CanonExpect::FsCBData
+		                                       : CanonExpect::Normal;
+		if (canon_star_remain_ <= 0) {
+			counted_graphics_ = false;
+			counted_graphics_buf_len_ = 0;
+		}
+		return;
+	case CanonExpect::FsCBData:
+		if (counted_graphics_) {
+			float old_w = gfx_dot_w_;
+			gfx_dot_w_ = counted_graphics_dot_w_;
+			counted_graphics_buf_[counted_graphics_buf_len_++] = b;
+			if (counted_graphics_buf_len_ >= counted_graphics_bytes_per_col_) {
+				emit_gfx_col_bytes(counted_graphics_buf_,
+				                   counted_graphics_bytes_per_col_,
+				                   counted_graphics_pin_h_);
+				counted_graphics_buf_len_ = 0;
+			}
+			gfx_dot_w_ = old_w;
+		}
+		if (--canon_star_remain_ <= 0) {
+			canon_expect_ = CanonExpect::Normal;
+			counted_graphics_ = false;
+			counted_graphics_buf_len_ = 0;
+		}
 		return;
 	}
 

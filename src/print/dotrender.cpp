@@ -3,7 +3,6 @@
 #include "dotrender.h"
 #include <algorithm>
 #include <cmath>
-#include <utility>
 #include <vector>
 
 void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
@@ -36,6 +35,7 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
 		stamp_component(0.00f, 0.00f, 0.00f);
 		return;
 	}
+
 	if (ribbon_mask_ & 0x01)
 		stamp_component(1.00f, 0.86f, 0.04f); // yellow
 	if (ribbon_mask_ & 0x02)
@@ -265,6 +265,27 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	}
 }
 
+static void render_iw_glyph_9pin(DotRenderer &dr, PageBitmap &page,
+                                  const PrinterState &st,
+                                  const PrinterProfile &prof,
+                                  const uint16_t *glyph, int glyph_w,
+                                  float *pin_vib)
+{
+	uint8_t component_mask = st.ribbon_color & 0x07;
+	bool composite = component_mask && (component_mask & (component_mask - 1)) != 0;
+	if ((st.ribbon_color & 0x08) || !composite) {
+		render_glyph_9pin(dr, page, st, prof, glyph, glyph_w, pin_vib);
+		return;
+	}
+
+	for (uint8_t remaining = component_mask; remaining; remaining &= (remaining - 1)) {
+		uint8_t component = remaining & (uint8_t)(-remaining);
+		PrinterState component_state = st;
+		component_state.ribbon_color = component;
+		render_glyph_9pin(dr, page, component_state, prof, glyph, glyph_w, pin_vib);
+	}
+}
+
 void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
                               const PrinterProfile &prof, uint8_t ch)
 {
@@ -344,11 +365,11 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 			w = 8;
 		}
 		if (!glyph) return;
-		render_glyph_9pin(*this, page, st, prof, glyph, w, pin_vib_);
+		render_iw_glyph_9pin(*this, page, st, prof, glyph, w, pin_vib_);
 		if (glyph_p2) {
 			PrinterState st2 = st;
 			st2.y_pos += 1.0f / 144.0f;
-			render_glyph_9pin(*this, page, st2, prof, glyph_p2, w, pin_vib_);
+			render_iw_glyph_9pin(*this, page, st2, prof, glyph_p2, w, pin_vib_);
 		}
 	} else {
 		const uint16_t *glyph = get_9pin_glyph(ch);
@@ -581,11 +602,52 @@ static void bj10e_apply_overline(uint64_t *cols, int count)
 		cols[i] |= overline;
 }
 
+static uint64_t bj10e_mask_column(const uint8_t *table, int table_len,
+                                  int active_bytes, int col)
+{
+	uint64_t mask = 0;
+	int index = (col * 8) % table_len;
+	for (int byte = 0; byte < active_bytes; byte++) {
+		uint8_t value = table[index % table_len];
+		for (int bit = 0; bit < 8; bit++) {
+			if (value & (0x80 >> bit))
+				mask |= 1ULL << (byte * 8 + bit);
+		}
+		index++;
+	}
+	return mask;
+}
+
 static void bj10e_apply_presentation_highlight(uint64_t *cols, int count)
 {
-	constexpr uint64_t mask = 0x002492492492ULL;
+	static constexpr uint8_t or_mask[] = {
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60,
+		0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60, 0x60,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x06, 0x00, 0x06, 0x00, 0x06, 0x00, 0x06, 0x00,
+		0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06,
+		0x00, 0x06, 0x00, 0x06, 0x00, 0x06, 0x00, 0x06,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	};
 	for (int i = 0; i < count; i++)
-		cols[i] |= (i & 1) ? (mask << 1) : mask;
+		cols[i] |= bj10e_mask_column(or_mask, (int)sizeof(or_mask), 6, i);
+}
+
+static void bj10e_apply_script(uint64_t *cols, int count, bool subscript)
+{
+	for (int i = 0; i < count; i++) {
+		uint64_t out = 0;
+		for (int src_row = 0; src_row < 48; src_row += 2) {
+			if (!(cols[i] & (1ULL << src_row)))
+				continue;
+			int dst_row = src_row / 2 + (subscript ? 20 : 0);
+			if (dst_row < 48)
+				out |= 1ULL << dst_row;
+		}
+		cols[i] = out;
+	}
 }
 
 static void stamp_bj10e_column(PageBitmap &page,
@@ -641,6 +703,8 @@ std::vector<uint64_t> build_bj10e_glyph_columns(const PrinterState &st,
 	while (col_count < advance_dots && col_count < BJ10E_MAX_GLYPH_COLS)
 		cols[col_count++] = 0;
 
+	if (st.superscript || st.subscript)
+		bj10e_apply_script(cols, col_count, st.subscript);
 	if (st.bold)
 		bj10e_apply_emphasis(cols, col_count);
 	if (st.underline)

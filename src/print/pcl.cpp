@@ -49,8 +49,7 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::Esc:
 		if (b == 'E') {
 			cancel_pending_line();
-			st_ = PrinterState{};
-			apply_config(cfg_);
+			reset_printer_state(cfg_);
 			state_ = State::Normal;
 		} else if (b == '9') {
 			state_ = State::Normal;

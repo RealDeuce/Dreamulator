@@ -179,6 +179,8 @@ protected:
 	void flush_pending_line();
 	void cancel_pending_line();
 	void delete_pending_char();
+	void reset_printer_state(const PrinterConfig &cfg);
+	void wrap_full_line(bool feed);
 	size_t queue_bj10e_text_dots(uint8_t ch, const PrinterState &state);
 	void queue_bj10e_graphics_dot(float x_in, float y_in, bool omit);
 	void flush_bj10e_pending_dots();
