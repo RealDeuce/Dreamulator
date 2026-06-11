@@ -3,6 +3,7 @@
 *.nvram
 *.out
 *.pdf
+*.pyc
 /build/
 /build-*/
 /card.bin
