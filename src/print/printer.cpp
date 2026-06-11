@@ -13,10 +13,10 @@ static constexpr PrinterProfile profiles[] = {
 	{ PrinterModel::IbmX24E,    "IBM X24E",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.03f, 0.90f, 2.0f },
 	{ PrinterModel::IbmXIII,    "IBM XIII",        DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24, 0.30f, 0.025f, 0.85f, 2.0f },
 	{ PrinterModel::EpsonLQ,    "Epson LQ",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.015f, 0.90f, 2.0f },
-	{ PrinterModel::EpsonFX,    "Epson FX",       DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24,  0.30f, 0.025f, 0.85f, 2.0f },
+	{ PrinterModel::EpsonFX,    "Epson FX",       DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24,  0.27f, 0.025f, 0.72f, 2.0f },
 	{ PrinterModel::CanonBJ10e, "Canon BJ-10e",   DotTech::Inkjet,   360, 360,360, 360,360, 36,48, 30,  0.050f, 0.0f, 0.68f, 1.0f },
 	{ PrinterModel::HpJet,      "HP JET",         DotTech::Toner,    600, 300,300, 300,300, 30,50, 30,   0.13f, 0.01f, 0.98f, 0.3f },
-	{ PrinterModel::ImageWriter, "ImageWriter",   DotTech::Impact9,  720,  72, 72, 144,144,  8, 8, 16,  0.30f, 0.025f, 0.85f, 2.0f },
+	{ PrinterModel::ImageWriter, "ImageWriter",   DotTech::Impact9,  720,  72, 72, 144,144,  8, 8, 16,  0.27f, 0.025f, 0.72f, 2.0f },
 };
 
 const PrinterProfile &profile_for(PrinterModel m)
