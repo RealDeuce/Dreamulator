@@ -24,8 +24,6 @@ def sample_text() -> bytes:
 def fx80_master_select(
     bold: bool,
     double_strike: bool,
-    italic: bool,
-    underline: bool,
     expanded: bool,
 ) -> bytes:
     value = 0
@@ -35,11 +33,21 @@ def fx80_master_select(
         value |= 0x10
     if expanded:
         value |= 0x20
-    if italic:
-        value |= 0x40
-    if underline:
-        value |= 0x80
     return ESC + b"!" + bytes([value])
+
+
+def fx80_text_style(
+    bold: bool,
+    double_strike: bool,
+    italic: bool,
+    underline: bool,
+    expanded: bool,
+) -> bytes:
+    return (
+        fx80_master_select(bold, double_strike, expanded)
+        + (ESC + b"4" if italic else ESC + b"5")
+        + ESC + b"-" + (b"\x01" if underline else b"\x00")
+    )
 
 
 def fx80_script(script: str) -> bytes:
@@ -68,7 +76,7 @@ def fx80_reset() -> bytes:
 
 def fx80_plain() -> bytes:
     return (
-        fx80_master_select(False, False, False, False, False)
+        fx80_text_style(False, False, False, False, False)
         + fx80_pitch("10cpi")
         + fx80_script("normal")
     )
@@ -117,7 +125,7 @@ def build_fx80() -> bytes:
                                     out += fx80_plain() + font_cmd
                                     out += label(parts) + b"\r\n"
                                     out += font_cmd
-                                    out += fx80_master_select(
+                                    out += fx80_text_style(
                                         bold, double_strike, italic, underline, expanded
                                     )
                                     out += fx80_script(script)

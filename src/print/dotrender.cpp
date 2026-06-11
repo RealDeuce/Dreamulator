@@ -79,10 +79,11 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	    ? (expanded ? 2.0f : 1.0f) / static_cast<float>(st.prop_dpi)
 	    : (cw_in / static_cast<float>(glyph_w));
 	bool script = st.superscript || st.subscript;
-	float expand_dup = expanded ? (dot_w_in * 0.5f) : 0.0f;
+	float expand_dup = expanded ? dot_w_in : 0.0f;
 	float dot_pitch = (prof.model == PrinterModel::ImageWriter)
 	    ? (1.0f / 80.0f) : (1.0f / 60.0f);
 	float bold_off = dot_pitch * 0.5f;
+	float double_strike_off = 1.0f / 216.0f;
 
 	float ink = prof.dot_intensity;
 	float sharp = prof.dot_sharpness;
@@ -95,6 +96,29 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	constexpr float vib_kick = 0.25f;
 	constexpr float vib_floor = 0.33f;
 	float bidi_offset = st.line_dir_ltr ? 0.0f : (1.0f / 120.0f);
+	bool fx_double_strike = prof.model == PrinterModel::EpsonFX &&
+	    (st.double_strike || script);
+
+	auto stamp_text_dot = [&](float x, float y, float radius_mm, float jitter_mm) {
+		auto stamp_pass = [&](float y_off) {
+			dr.stamp_pin(page, x, y + y_off, prof.render_dpi,
+			             radius_mm, jitter_mm, ink, sharp);
+			if (expanded)
+				dr.stamp_pin(page, x + expand_dup, y + y_off, prof.render_dpi,
+				             radius_mm, jitter_mm, ink, sharp);
+			if (st.bold) {
+				dr.stamp_pin(page, x + bold_off, y + y_off,
+				             prof.render_dpi, radius_mm, jitter_mm, ink, sharp);
+				if (expanded)
+					dr.stamp_pin(page, x + expand_dup + bold_off, y + y_off,
+					             prof.render_dpi, radius_mm, jitter_mm, ink, sharp);
+			}
+		};
+
+		stamp_pass(0.0f);
+		if (fx_double_strike)
+			stamp_pass(double_strike_off);
+	};
 
 	// Script mode: two-pass interleaved printing at half height
 	// Pass 1: glyph rows 1,3,5,7 → pins 0-3
@@ -133,18 +157,7 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					pin_vib[p + 3] = std::min(1.0f, pin_vib[p + 3] + vib_kick);
 					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p + 3];
 				}
-				dr.stamp_pin(page, x, y, prof.render_dpi,
-				             prof.dot_radius_mm, jit, ink, sharp);
-				if (expanded)
-					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-				if (st.bold) {
-					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + bold_off, y,
-						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
-				}
+				stamp_text_dot(x, y, prof.dot_radius_mm, jit);
 			}
 			for (int p = 0; p < 4; p++) {
 				int row = hh_odd_rows[p];
@@ -156,18 +169,7 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					pin_vib[p + 3] = std::min(1.0f, pin_vib[p + 3] + vib_kick);
 					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p + 3];
 				}
-				dr.stamp_pin(page, x, y, prof.render_dpi,
-				             prof.dot_radius_mm, jit, ink, sharp);
-				if (expanded)
-					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-				if (st.bold) {
-					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + bold_off, y,
-						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
-				}
+				stamp_text_dot(x, y, prof.dot_radius_mm, jit);
 			}
 		} else if (script) {
 			float x = st.x_pos + (float)col * dot_w_in + bidi_offset;
@@ -182,18 +184,7 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					pin_vib[p] = std::min(1.0f, pin_vib[p] + vib_kick);
 					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p];
 				}
-				dr.stamp_pin(page, x, y, prof.render_dpi,
-				             prof.dot_radius_mm, jit, ink, sharp);
-				if (expanded)
-					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-				if (st.bold) {
-					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + bold_off, y,
-						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
-				}
+				stamp_text_dot(x, y, prof.dot_radius_mm, jit);
 			}
 			for (int p = 0; p < 5; p++) {
 				int row = script_pass2_rows[p];
@@ -205,18 +196,7 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 					pin_vib[p] = std::min(1.0f, pin_vib[p] + vib_kick);
 					jit *= vib_floor + (1.0f - vib_floor) * pin_vib[p];
 				}
-				dr.stamp_pin(page, x, y, prof.render_dpi,
-				             prof.dot_radius_mm, jit, ink, sharp);
-				if (expanded)
-					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-				if (st.bold) {
-					dr.stamp_pin(page, x + bold_off, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + bold_off, y,
-						             prof.render_dpi, prof.dot_radius_mm, jit, ink, sharp);
-				}
+				stamp_text_dot(x, y, prof.dot_radius_mm, jit);
 			}
 		} else {
 			for (int pin = 0; pin < 9; pin++) {
@@ -232,21 +212,7 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 				float y = st.y_pos + ((float)pin * dot_h_in)
 				          - (9.0f * dot_h_in);
 
-				dr.stamp_pin(page, x, y, prof.render_dpi,
-				             prof.dot_radius_mm, jit, ink, sharp);
-				if (expanded)
-					dr.stamp_pin(page, x + expand_dup, y, prof.render_dpi,
-					             prof.dot_radius_mm, jit, ink, sharp);
-
-				if (st.bold) {
-					dr.stamp_pin(page, x + bold_off, y,
-					             prof.render_dpi, prof.dot_radius_mm,
-					             jit, ink, sharp);
-					if (expanded)
-						dr.stamp_pin(page, x + expand_dup + bold_off, y,
-						             prof.render_dpi, prof.dot_radius_mm,
-						             jit, ink, sharp);
-				}
+				stamp_text_dot(x, y, prof.dot_radius_mm, jit);
 			}
 		}
 	}

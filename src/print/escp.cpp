@@ -723,9 +723,10 @@ void EscpPrinter::parse_byte(uint8_t b)
 		st_.bold = !!(b & 0x08);
 		st_.double_strike = !!(b & 0x10);
 		st_.expanded = !!(b & 0x20);
-		if (prof_.model != PrinterModel::EpsonFX)
+		if (prof_.model != PrinterModel::EpsonFX) {
 			st_.italic = !!(b & 0x40);
-		st_.underline = !!(b & 0x80);
+			st_.underline = !!(b & 0x80);
+		}
 		return;
 
 	// --- Graphics: nL ---
