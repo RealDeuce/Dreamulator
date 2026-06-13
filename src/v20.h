@@ -67,6 +67,7 @@ struct v20_t {
 	RegByte bh() { return {bx, 8}; }
 
 	bool     halted = false;
+	bool     mode_8080 = false;
 	bool     irq_line = false;
 	uint8_t  irq_vector = 0;
 	bool     nmi_line = false;

@@ -200,7 +200,11 @@ static uint32_t shf(v20_t *c, int op, uint32_t val, int cnt, int w)
 
 static void do_int(v20_t *c, uint8_t vec)
 {
-	push(c, c->flags);
+	// Bit 15 (MD flag): 1=native mode, 0=8080 emulation mode.
+	// Saved so IRET can restore the correct mode.
+	uint16_t saved_flags = c->flags;
+	if (!c->mode_8080) saved_flags |= 0x8000;
+	push(c, saved_flags);
 	push(c, c->cs);
 	push(c, c->ip);
 	c->flags &= ~(V20_IF | V20_TF);
@@ -271,10 +275,10 @@ static int s_lodsw(v20_t *c, bool rep) {
 	do { c->ax=MRW(ss,c->si); c->si+=d; n++;
 	     if(!rep) return 5; c->cx--; } while(c->cx); return 5+2*n;
 }
-static int s_cmpsb(v20_t *c, bool rep, bool repne) {
+static int s_cmpsb(v20_t *c, bool rep, bool repne, bool repc, bool repnc) {
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
-	bool has_rep = rep||repne;
+	bool has_rep = rep||repne||repc||repnc;
 	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, MRB(ss,c->si), MRB(c->es,c->di), 0);
@@ -283,12 +287,14 @@ static int s_cmpsb(v20_t *c, bool rep, bool repne) {
 		c->cx--;
 		if (rep   && !(c->flags&V20_ZF)) return 5+2*n;
 		if (repne &&  (c->flags&V20_ZF)) return 5+2*n;
+		if (repc  && !(c->flags&V20_CF)) return 5+2*n;
+		if (repnc &&  (c->flags&V20_CF)) return 5+2*n;
 	} while(c->cx); return 5+2*n;
 }
-static int s_cmpsw(v20_t *c, bool rep, bool repne) {
+static int s_cmpsw(v20_t *c, bool rep, bool repne, bool repc, bool repnc) {
 	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
-	bool has_rep = rep||repne;
+	bool has_rep = rep||repne||repc||repnc;
 	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, MRW(ss,c->si), MRW(c->es,c->di), 1);
@@ -297,11 +303,13 @@ static int s_cmpsw(v20_t *c, bool rep, bool repne) {
 		c->cx--;
 		if (rep   && !(c->flags&V20_ZF)) return 5+2*n;
 		if (repne &&  (c->flags&V20_ZF)) return 5+2*n;
+		if (repc  && !(c->flags&V20_CF)) return 5+2*n;
+		if (repnc &&  (c->flags&V20_CF)) return 5+2*n;
 	} while(c->cx); return 5+2*n;
 }
-static int s_scasb(v20_t *c, bool rep, bool repne) {
+static int s_scasb(v20_t *c, bool rep, bool repne, bool repc, bool repnc) {
 	int d = (c->flags&V20_DF)?-1:1; int n=0;
-	bool has_rep = rep||repne;
+	bool has_rep = rep||repne||repc||repnc;
 	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, c->al(), MRB(c->es,c->di), 0);
@@ -310,11 +318,13 @@ static int s_scasb(v20_t *c, bool rep, bool repne) {
 		c->cx--;
 		if (rep   && !(c->flags&V20_ZF)) return 5+2*n;
 		if (repne &&  (c->flags&V20_ZF)) return 5+2*n;
+		if (repc  && !(c->flags&V20_CF)) return 5+2*n;
+		if (repnc &&  (c->flags&V20_CF)) return 5+2*n;
 	} while(c->cx); return 5+2*n;
 }
-static int s_scasw(v20_t *c, bool rep, bool repne) {
+static int s_scasw(v20_t *c, bool rep, bool repne, bool repc, bool repnc) {
 	int d = (c->flags&V20_DF)?-2:2; int n=0;
-	bool has_rep = rep||repne;
+	bool has_rep = rep||repne||repc||repnc;
 	if (has_rep && !c->cx) return 5;
 	do {
 		alu(c, 7, c->ax, MRW(c->es,c->di), 1);
@@ -323,8 +333,44 @@ static int s_scasw(v20_t *c, bool rep, bool repne) {
 		c->cx--;
 		if (rep   && !(c->flags&V20_ZF)) return 5+2*n;
 		if (repne &&  (c->flags&V20_ZF)) return 5+2*n;
+		if (repc  && !(c->flags&V20_CF)) return 5+2*n;
+		if (repnc &&  (c->flags&V20_CF)) return 5+2*n;
 	} while(c->cx); return 5+2*n;
 }
+
+/* ---- INS / OUTS string I/O ---- */
+
+static int s_insb(v20_t *c, bool rep) {
+	int d = (c->flags&V20_DF)?-1:1; int n=0;
+	if (rep && !c->cx) return 5;
+	do { MWB(c->es,c->di,c->io_read(c->ctx,c->dx)); c->di+=d; n++;
+	     if(!rep) return 8; c->cx--; } while(c->cx); return 5+2*n;
+}
+static int s_insw(v20_t *c, bool rep) {
+	int d = (c->flags&V20_DF)?-2:2; int n=0;
+	if (rep && !c->cx) return 5;
+	do { uint8_t lo=c->io_read(c->ctx,c->dx); uint8_t hi=c->io_read(c->ctx,(uint16_t)(c->dx+1));
+	     MWW(c->es,c->di,(uint16_t)(lo|(hi<<8))); c->di+=d; n++;
+	     if(!rep) return 8; c->cx--; } while(c->cx); return 5+2*n;
+}
+static int s_outsb(v20_t *c, bool rep) {
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
+	int d = (c->flags&V20_DF)?-1:1; int n=0;
+	if (rep && !c->cx) return 5;
+	do { c->io_write(c->ctx,c->dx,MRB(ss,c->si)); c->si+=d; n++;
+	     if(!rep) return 8; c->cx--; } while(c->cx); return 5+2*n;
+}
+static int s_outsw(v20_t *c, bool rep) {
+	uint16_t ss = c->seg_override ? *srp(c, *c->seg_override) : c->ds;
+	int d = (c->flags&V20_DF)?-2:2; int n=0;
+	if (rep && !c->cx) return 5;
+	do { uint16_t v=MRW(ss,c->si);
+	     c->io_write(c->ctx,c->dx,(uint8_t)v); c->io_write(c->ctx,(uint16_t)(c->dx+1),(uint8_t)(v>>8));
+	     c->si+=d; n++;
+	     if(!rep) return 8; c->cx--; } while(c->cx); return 5+2*n;
+}
+
+static uint16_t flags_from_8080(uint8_t f);  // forward decl
 
 /* ---- V20 extensions (0x0F prefix) ---- */
 
@@ -477,7 +523,43 @@ static void exec_0f(v20_t *c)
 	case 0x26: v20_cmp4s(c); break;
 	case 0x28: v20_rol4(c); break;
 	case 0x2A: v20_ror4(c); break;
-	case 0xFF: do_int(c, f8(c)); break; /* BRKEM */
+	case 0x31: { /* INS (bit field insert) */
+		ea_t e = decode_ea(c);
+		int bitpos = c->cl() & 0x0F;
+		int width = ((c->cl() >> 4) & 0x0F) + 1;
+		uint16_t src = *r16p(c, e.reg);
+		uint16_t dst = ea_rw(c, &e);
+		uint16_t mask = (uint16_t)(((1U << width) - 1) << bitpos);
+		dst = (uint16_t)((dst & ~mask) | ((src << bitpos) & mask));
+		ea_ww(c, &e, dst);
+		break;
+	}
+	case 0x33: { /* EXT (bit field extract) */
+		ea_t e = decode_ea(c);
+		int bitpos = c->cl() & 0x0F;
+		int width = ((c->cl() >> 4) & 0x0F) + 1;
+		uint16_t src = ea_rw(c, &e);
+		*r16p(c, e.reg) = (uint16_t)((src >> bitpos) & ((1U << width) - 1));
+		break;
+	}
+	case 0xFD: { /* RETEM - return from emulation to 8080 mode */
+		/* Pop PC, PS, PSW from 8080 stack (BP) and re-enter 8080 mode */
+		uint16_t pc_val = MRW(c->ds, c->bp); c->bp += 2;
+		uint16_t ps_val = MRW(c->ds, c->bp); c->bp += 2;
+		uint16_t psw = MRW(c->ds, c->bp); c->bp += 2;
+		c->ip = pc_val;
+		c->cs = ps_val;
+		c->flags = flags_from_8080((uint8_t)psw);
+		c->al() = (uint8_t)(psw >> 8);
+		c->mode_8080 = true;
+		break;
+	}
+	case 0xFF: { /* BRKEM - enter 8080 emulation mode */
+		uint8_t vec = f8(c);
+		do_int(c, vec);
+		c->mode_8080 = true;
+		break;
+	}
 	default:
 		fprintf(stderr, "UNIMPL 0F %02X at %04X:%04X\n", op2, c->cs, (uint16_t)(c->ip-2));
 		break;
@@ -514,6 +596,7 @@ static int exec_one(v20_t *c)
 {
 	std::optional<int> sov;
 	bool rep = false, repne = false;
+	bool repc = false, repnc = false;
 	uint8_t op;
 	int cyc = 0;
 
@@ -525,8 +608,10 @@ pfx:
 	case 0x36: sov=2; cyc+=2; goto pfx;
 	case 0x3e: sov=3; cyc+=2; goto pfx;
 	case 0xf0: cyc+=2; goto pfx;
-	case 0xf2: repne=true; rep=false; cyc+=2; goto pfx;
-	case 0xf3: rep=true; repne=false; cyc+=2; goto pfx;
+	case 0xf2: repne=true; rep=false; repc=false; repnc=false; cyc+=2; goto pfx;
+	case 0xf3: rep=true; repne=false; repc=false; repnc=false; cyc+=2; goto pfx;
+	case 0x64: repnc=true; rep=false; repne=false; repc=false; cyc+=2; goto pfx;
+	case 0x65: repc=true; rep=false; repne=false; repnc=false; cyc+=2; goto pfx;
 	default: break;
 	}
 	c->seg_override = sov;
@@ -637,7 +722,14 @@ pfx:
 	case 0x61: { for(int i=7;i>=0;i--) { uint16_t v=pop(c); if(i!=4) *r16p(c,i)=v; } cyc+=40; break; }
 
 	/* ---- BOUND ---- */
-	case 0x62: { [[maybe_unused]] ea_t e=decode_ea(c); cyc+=13; break; }
+	case 0x62: {
+		ea_t e=decode_ea(c);
+		int16_t idx=(int16_t)*r16p(c,e.reg);
+		int16_t lo=(int16_t)MRW(e.seg,e.off);
+		int16_t hi=(int16_t)MRW(e.seg,(uint16_t)(e.off+2));
+		if(idx<lo||idx>hi) do_int(c,5);
+		cyc+=13; break;
+	}
 
 	/* ---- PUSH imm ---- */
 	case 0x68: push(c, f16(c)); cyc+=12; break;
@@ -653,8 +745,11 @@ pfx:
 		c->flags &= ~(V20_CF|V20_OF); if(r!=(int16_t)r) c->flags|=V20_CF|V20_OF;
 		cyc+=(e.mod==3)?34:44; break; }
 
-	/* ---- INS / OUTS (stub) ---- */
-	case 0x6c: case 0x6d: case 0x6e: case 0x6f: cyc+=8; break;
+	/* ---- INS / OUTS ---- */
+	case 0x6c: cyc+=s_insb(c, rep); break;
+	case 0x6d: cyc+=s_insw(c, rep); break;
+	case 0x6e: cyc+=s_outsb(c, rep); break;
+	case 0x6f: cyc+=s_outsw(c, rep); break;
 
 	/* ---- Jcc ---- */
 	case 0x70: case 0x71: case 0x72: case 0x73:
@@ -733,8 +828,8 @@ pfx:
 	/* ---- string ops ---- */
 	case 0xa4: cyc+=s_movsb(c, rep); break;
 	case 0xa5: cyc+=s_movsw(c, rep); break;
-	case 0xa6: cyc+=s_cmpsb(c, rep, repne); break;
-	case 0xa7: cyc+=s_cmpsw(c, rep, repne); break;
+	case 0xa6: cyc+=s_cmpsb(c, rep, repne, repc, repnc); break;
+	case 0xa7: cyc+=s_cmpsw(c, rep, repne, repc, repnc); break;
 
 	/* ---- TEST AL/AX, imm ---- */
 	case 0xa8: alu(c,4,c->al(),f8(c),0); cyc+=4; break;
@@ -744,8 +839,8 @@ pfx:
 	case 0xab: cyc+=s_stosw(c, rep); break;
 	case 0xac: cyc+=s_lodsb(c, rep); break;
 	case 0xad: cyc+=s_lodsw(c, rep); break;
-	case 0xae: cyc+=s_scasb(c, rep, repne); break;
-	case 0xaf: cyc+=s_scasw(c, rep, repne); break;
+	case 0xae: cyc+=s_scasb(c, rep, repne, repc, repnc); break;
+	case 0xaf: cyc+=s_scasw(c, rep, repne, repc, repnc); break;
 
 	/* ---- MOV reg8, imm8 ---- */
 	case 0xb0: case 0xb1: case 0xb2: case 0xb3:
@@ -797,7 +892,13 @@ pfx:
 	case 0xce: if (c->flags & V20_OF) { do_int(c, 4); cyc+=52; } else { cyc+=4; } break;
 
 	/* ---- IRET ---- */
-	case 0xcf: c->ip=pop(c); c->cs=pop(c); c->flags=pop(c); cyc+=32; break;
+	case 0xcf: {
+		c->ip=pop(c); c->cs=pop(c); uint16_t f=pop(c);
+		// MD flag (bit 15): if clear, re-enter 8080 emulation mode
+		c->mode_8080 = !(f & 0x8000);
+		c->flags = f & 0x0FFF;
+		cyc+=32; break;
+	}
 
 	/* ---- shifts r/m, 1 / CL ---- */
 	case 0xd0: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),1,0)); cyc+=(e.mod==3)?3:24; break; }
@@ -973,6 +1074,493 @@ pfx:
 	return cyc ? cyc : 4;
 }
 
+/* ---- 8080 emulation mode ---- */
+
+// 8080 flag byte: bit 7=S, 6=Z, 4=AC, 2=P, 1=always 1, 0=CY
+static uint8_t flags_to_8080(uint16_t f)
+{
+	uint8_t r = 0x02; // bit 1 always set
+	if (f & V20_CF) r |= 0x01;
+	if (f & V20_PF) r |= 0x04;
+	if (f & V20_AF) r |= 0x10;
+	if (f & V20_ZF) r |= 0x40;
+	if (f & V20_SF) r |= 0x80;
+	return r;
+}
+
+static uint16_t flags_from_8080(uint8_t f)
+{
+	uint16_t r = 0x0002; // bit 1 always set in x86 flags too
+	if (f & 0x01) r |= V20_CF;
+	if (f & 0x04) r |= V20_PF;
+	if (f & 0x10) r |= V20_AF;
+	if (f & 0x40) r |= V20_ZF;
+	if (f & 0x80) r |= V20_SF;
+	return r;
+}
+
+// 8080 register accessors using V20 register mapping
+#define E80_A(c)  (c)->al()
+#define E80_F(c)  (c)->ah()
+#define E80_B(c)  (c)->ch()
+#define E80_C(c)  (c)->cl()
+#define E80_D(c)  (c)->dh()
+#define E80_E(c)  (c)->dl()
+#define E80_H(c)  (c)->bh()
+#define E80_L(c)  (c)->bl()
+#define E80_BC(c) (c)->cx
+#define E80_DE(c) (c)->dx
+#define E80_HL(c) (c)->bx
+
+// 8080 memory access through DS segment
+#define E80_RB(c,a) MRB((c)->ds, (a))
+#define E80_WB(c,a,v) MWB((c)->ds, (a), (v))
+#define E80_RW(c,a) MRW((c)->ds, (a))
+#define E80_WW(c,a,v) MWW((c)->ds, (a), (v))
+
+// 8080 ALU with flag setting
+static uint8_t e80_alu_add(v20_t *c, uint8_t a, uint8_t b, uint8_t cy)
+{
+	uint16_t r = (uint16_t)a + b + cy;
+	uint16_t f = 0x02;
+	if (r & 0x100)   f |= V20_CF;
+	if (!(r & 0xFF))  f |= V20_ZF;
+	if (r & 0x80)    f |= V20_SF;
+	if (ptab[r & 0xFF]) f |= V20_PF;
+	if ((a ^ b ^ r) & 0x10) f |= V20_AF;
+	c->flags = f;
+	return (uint8_t)r;
+}
+
+static uint8_t e80_alu_sub(v20_t *c, uint8_t a, uint8_t b, uint8_t cy)
+{
+	uint16_t r = (uint16_t)a - b - cy;
+	uint16_t f = 0x02;
+	if (r & 0x100)   f |= V20_CF;
+	if (!(r & 0xFF))  f |= V20_ZF;
+	if (r & 0x80)    f |= V20_SF;
+	if (ptab[r & 0xFF]) f |= V20_PF;
+	if ((a ^ b ^ r) & 0x10) f |= V20_AF;
+	c->flags = f;
+	return (uint8_t)r;
+}
+
+static void e80_alu_logic(v20_t *c, uint8_t r)
+{
+	uint16_t f = 0x02;
+	if (!r) f |= V20_ZF;
+	if (r & 0x80) f |= V20_SF;
+	if (ptab[r]) f |= V20_PF;
+	c->flags = f; // CF=0, AF=0 for logic ops
+}
+
+static inline uint8_t e80_get_r(v20_t *c, int r)
+{
+	switch (r) {
+	case 0: return (uint8_t)E80_B(c); case 1: return (uint8_t)E80_C(c);
+	case 2: return (uint8_t)E80_D(c); case 3: return (uint8_t)E80_E(c);
+	case 4: return (uint8_t)E80_H(c); case 5: return (uint8_t)E80_L(c);
+	case 6: return E80_RB(c, E80_HL(c));
+	case 7: return (uint8_t)E80_A(c);
+	default: return 0;
+	}
+}
+
+static inline void e80_set_r(v20_t *c, int r, uint8_t v)
+{
+	switch (r) {
+	case 0: E80_B(c) = v; break; case 1: E80_C(c) = v; break;
+	case 2: E80_D(c) = v; break; case 3: E80_E(c) = v; break;
+	case 4: E80_H(c) = v; break; case 5: E80_L(c) = v; break;
+	case 6: E80_WB(c, E80_HL(c), v); break;
+	case 7: E80_A(c) = v; break;
+	}
+}
+
+static inline uint16_t *e80_rp(v20_t *c, int rp)
+{
+	switch (rp) {
+	case 0: return &c->cx;  // BC
+	case 1: return &c->dx;  // DE
+	case 2: return &c->bx;  // HL
+	case 3: return &c->bp;  // SP (8080 SP = V20 BP)
+	default: return &c->bx;
+	}
+}
+
+// Push/pop in 8080 mode use DS0:BP (BP is the 8080 stack pointer)
+static inline void e80_push(v20_t *c, uint16_t v)
+{
+	c->bp -= 2;
+	E80_WW(c, c->bp, v);
+}
+
+static inline uint16_t e80_pop(v20_t *c)
+{
+	uint16_t v = E80_RW(c, c->bp);
+	c->bp += 2;
+	return v;
+}
+
+// Cycle counts use the closest V20 native instruction equivalent where
+// a clear mapping exists.  NEC did not document 8080-mode cycle counts;
+// these are best-effort approximations, not authoritative values.
+static int exec_8080(v20_t *c)
+{
+	uint8_t op = E80_RB(c, c->ip);
+	c->ip++;
+	int cyc = 3;  // NOP default — native NOP is 3
+
+	uint8_t a = (uint8_t)E80_A(c);
+	int dst = (op >> 3) & 7;
+	int src = op & 7;
+	int rp  = (op >> 4) & 3;
+
+	switch (op) {
+	case 0x00: break; // NOP — native NOP=3
+
+	// LXI rp, d16 — native MOV r16,imm16 = 4
+	case 0x01: case 0x11: case 0x21: case 0x31:
+		*e80_rp(c, rp) = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2; cyc = 4; break;
+
+	// STAX B/D — native MOV [reg],AL mem = 9
+	case 0x02: E80_WB(c, E80_BC(c), a); cyc=9; break;
+	case 0x12: E80_WB(c, E80_DE(c), a); cyc=9; break;
+
+	// INX rp — native INC r16 = 2
+	case 0x03: case 0x13: case 0x23: case 0x33:
+		(*e80_rp(c, rp))++; cyc=2; break;
+
+	// INR r — native INC r/m8: reg=2, mem=16
+	case 0x04: case 0x0c: case 0x14: case 0x1c:
+	case 0x24: case 0x2c: case 0x34: case 0x3c: {
+		uint8_t v = e80_get_r(c, dst);
+		uint8_t r = v + 1;
+		uint16_t f = (c->flags & V20_CF) | 0x02;
+		if (!r) f |= V20_ZF;
+		if (r & 0x80) f |= V20_SF;
+		if (ptab[r]) f |= V20_PF;
+		if ((v ^ 1 ^ r) & 0x10) f |= V20_AF;
+		c->flags = f;
+		e80_set_r(c, dst, r);
+		cyc = (dst == 6) ? 16 : 2;
+		break;
+	}
+
+	// DCR r — native DEC r/m8: reg=2, mem=16
+	case 0x05: case 0x0d: case 0x15: case 0x1d:
+	case 0x25: case 0x2d: case 0x35: case 0x3d: {
+		uint8_t v = e80_get_r(c, dst);
+		uint8_t r = v - 1;
+		uint16_t f = (c->flags & V20_CF) | 0x02;
+		if (!r) f |= V20_ZF;
+		if (r & 0x80) f |= V20_SF;
+		if (ptab[r]) f |= V20_PF;
+		if ((v ^ 1 ^ r) & 0x10) f |= V20_AF;
+		c->flags = f;
+		e80_set_r(c, dst, r);
+		cyc = (dst == 6) ? 16 : 2;
+		break;
+	}
+
+	// MVI r, d8 — native MOV r/m8,imm: reg=4, mem=13
+	case 0x06: case 0x0e: case 0x16: case 0x1e:
+	case 0x26: case 0x2e: case 0x36: case 0x3e:
+		e80_set_r(c, dst, E80_RB(c, c->ip)); c->ip++;
+		cyc = (dst == 6) ? 13 : 4; break;
+
+	// RLC — native ROL AL,1 reg = 3
+	case 0x07: {
+		uint8_t cy = (a >> 7) & 1;
+		E80_A(c) = (uint8_t)((a << 1) | cy);
+		c->flags = (c->flags & ~V20_CF) | (cy ? V20_CF : 0);
+		cyc = 3; break;
+	}
+
+	// DAD rp — native ADD r16,r16 reg = 3
+	case 0x09: case 0x19: case 0x29: case 0x39: {
+		uint32_t r = (uint32_t)E80_HL(c) + *e80_rp(c, rp);
+		c->flags = (c->flags & ~V20_CF) | ((r & 0x10000) ? V20_CF : 0);
+		E80_HL(c) = (uint16_t)r;
+		cyc = 3; break;
+	}
+
+	// LDAX B/D — native MOV AL,[reg] mem = 11
+	case 0x0a: E80_A(c) = E80_RB(c, E80_BC(c)); cyc=11; break;
+	case 0x1a: E80_A(c) = E80_RB(c, E80_DE(c)); cyc=11; break;
+
+	// DCX rp — native DEC r16 = 2
+	case 0x0b: case 0x1b: case 0x2b: case 0x3b:
+		(*e80_rp(c, rp))--; cyc=2; break;
+
+	// RRC — native ROR AL,1 reg = 3
+	case 0x0f: {
+		uint8_t cy = a & 1;
+		E80_A(c) = (uint8_t)((a >> 1) | (cy << 7));
+		c->flags = (c->flags & ~V20_CF) | (cy ? V20_CF : 0);
+		cyc = 3; break;
+	}
+
+	// RAL — native RCL AL,1 reg = 3
+	case 0x17: {
+		uint8_t cy = (c->flags & V20_CF) ? 1 : 0;
+		c->flags = (c->flags & ~V20_CF) | ((a & 0x80) ? V20_CF : 0);
+		E80_A(c) = (uint8_t)((a << 1) | cy);
+		cyc = 3; break;
+	}
+
+	// RAR — native RCR AL,1 reg = 3
+	case 0x1f: {
+		uint8_t cy = (c->flags & V20_CF) ? 1 : 0;
+		c->flags = (c->flags & ~V20_CF) | ((a & 1) ? V20_CF : 0);
+		E80_A(c) = (uint8_t)((a >> 1) | (cy << 7));
+		cyc = 3; break;
+	}
+
+	// SHLD addr — native MOV [addr],r16 = 13
+	case 0x22: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		E80_WW(c, addr, E80_HL(c));
+		cyc = 13; break;
+	}
+
+	// DAA — native DAA = 10
+	case 0x27: {
+		uint8_t v = (uint8_t)E80_A(c);
+		uint16_t f = c->flags;
+		if ((v & 0x0F) > 9 || (f & V20_AF)) { v += 6; f |= V20_AF; } else f &= ~V20_AF;
+		if (v > 0x9F || (f & V20_CF)) { v += 0x60; f |= V20_CF; }
+		if (!v) f |= V20_ZF; else f &= ~V20_ZF;
+		if (v & 0x80) f |= V20_SF; else f &= ~V20_SF;
+		if (ptab[v]) f |= V20_PF; else f &= ~V20_PF;
+		c->flags = f;
+		E80_A(c) = v;
+		cyc = 10; break;
+	}
+
+	// LHLD addr — native MOV r16,[addr] = 10
+	case 0x2a: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		E80_HL(c) = E80_RW(c, addr);
+		cyc = 10; break;
+	}
+
+	// CMA — native NOT AL = 3
+	case 0x2f: E80_A(c) = (uint8_t)~a; cyc=3; break;
+
+	// STA addr — native MOV [addr],AL = 10
+	case 0x32: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		E80_WB(c, addr, a);
+		cyc = 10; break;
+	}
+
+	// STC — native STC = 2
+	case 0x37: c->flags |= V20_CF; cyc=2; break;
+
+	// LDA addr — native MOV AL,[addr] = 10
+	case 0x3a: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		E80_A(c) = E80_RB(c, addr);
+		cyc = 10; break;
+	}
+
+	// CMC — native CMC = 2
+	case 0x3f: c->flags ^= V20_CF; cyc=2; break;
+
+	// MOV dst,src — native MOV r/m8,r/m8: reg=2, mem=9/11
+	case 0x76: c->halted = true; cyc=2; break; // HLT — native HLT=2
+	case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47:
+	case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f:
+	case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57:
+	case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f:
+	case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67:
+	case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+	case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x77:
+	case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
+		e80_set_r(c, dst, e80_get_r(c, src));
+		cyc = (dst == 6) ? 9 : (src == 6) ? 11 : 2;
+		break;
+
+	// ADD/ADC/SUB/SBB/ANA/XRA/ORA/CMP r — native ALU r/m8: reg=2, mem=10
+	case 0x80: case 0x81: case 0x82: case 0x83: case 0x84: case 0x85: case 0x86: case 0x87:
+		E80_A(c) = e80_alu_add(c, a, e80_get_r(c, src), 0); cyc=(src==6)?10:2; break;
+	case 0x88: case 0x89: case 0x8a: case 0x8b: case 0x8c: case 0x8d: case 0x8e: case 0x8f:
+		E80_A(c) = e80_alu_add(c, a, e80_get_r(c, src), (c->flags&V20_CF)?1:0); cyc=(src==6)?10:2; break;
+	case 0x90: case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97:
+		E80_A(c) = e80_alu_sub(c, a, e80_get_r(c, src), 0); cyc=(src==6)?10:2; break;
+	case 0x98: case 0x99: case 0x9a: case 0x9b: case 0x9c: case 0x9d: case 0x9e: case 0x9f:
+		E80_A(c) = e80_alu_sub(c, a, e80_get_r(c, src), (c->flags&V20_CF)?1:0); cyc=(src==6)?10:2; break;
+	case 0xa0: case 0xa1: case 0xa2: case 0xa3: case 0xa4: case 0xa5: case 0xa6: case 0xa7:
+		E80_A(c) = a & e80_get_r(c, src); e80_alu_logic(c, (uint8_t)E80_A(c)); cyc=(src==6)?10:2; break;
+	case 0xa8: case 0xa9: case 0xaa: case 0xab: case 0xac: case 0xad: case 0xae: case 0xaf:
+		E80_A(c) = a ^ e80_get_r(c, src); e80_alu_logic(c, (uint8_t)E80_A(c)); cyc=(src==6)?10:2; break;
+	case 0xb0: case 0xb1: case 0xb2: case 0xb3: case 0xb4: case 0xb5: case 0xb6: case 0xb7:
+		E80_A(c) = a | e80_get_r(c, src); e80_alu_logic(c, (uint8_t)E80_A(c)); cyc=(src==6)?10:2; break;
+	case 0xb8: case 0xb9: case 0xba: case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf:
+		e80_alu_sub(c, a, e80_get_r(c, src), 0); cyc=(src==6)?10:2; break;
+
+	// Rcc — native RET near=8, Jcc overhead ~4 not-taken
+	case 0xc0: if(!(c->flags&V20_ZF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xc8: if( (c->flags&V20_ZF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xd0: if(!(c->flags&V20_CF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xd8: if( (c->flags&V20_CF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xe0: if(!(c->flags&V20_PF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xe8: if( (c->flags&V20_PF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xf0: if(!(c->flags&V20_SF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+	case 0xf8: if( (c->flags&V20_SF)){c->ip=e80_pop(c);cyc=12;}else cyc=4; break;
+
+	// POP rp / POP PSW — native POP = 12
+	case 0xc1: E80_BC(c) = e80_pop(c); cyc=12; break;
+	case 0xd1: E80_DE(c) = e80_pop(c); cyc=12; break;
+	case 0xe1: E80_HL(c) = e80_pop(c); cyc=12; break;
+	case 0xf1: { uint16_t v=e80_pop(c); E80_A(c)=(uint8_t)(v>>8); c->flags=flags_from_8080((uint8_t)v); cyc=12; break; }
+
+	// Jcc addr — native Jcc: taken=14, not-taken=4
+	case 0xc2: case 0xca: case 0xd2: case 0xda:
+	case 0xe2: case 0xea: case 0xf2: case 0xfa: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		bool cond;
+		switch ((op >> 3) & 7) {
+		case 0: cond = !(c->flags & V20_ZF); break;
+		case 1: cond =  (c->flags & V20_ZF) != 0; break;
+		case 2: cond = !(c->flags & V20_CF); break;
+		case 3: cond =  (c->flags & V20_CF) != 0; break;
+		case 4: cond = !(c->flags & V20_PF); break;
+		case 5: cond =  (c->flags & V20_PF) != 0; break;
+		case 6: cond = !(c->flags & V20_SF); break;
+		case 7: cond =  (c->flags & V20_SF) != 0; break;
+		default: cond = false;
+		}
+		if (cond) { c->ip = addr; cyc = 14; } else cyc = 4;
+		break;
+	}
+
+	// JMP addr — native JMP near = 10
+	case 0xc3:
+		c->ip = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		cyc = 10; break;
+
+	// Ccc addr — native CALL near=19, Jcc not-taken=4
+	case 0xc4: case 0xcc: case 0xd4: case 0xdc:
+	case 0xe4: case 0xec: case 0xf4: case 0xfc: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		bool cond;
+		switch ((op >> 3) & 7) {
+		case 0: cond = !(c->flags & V20_ZF); break;
+		case 1: cond =  (c->flags & V20_ZF) != 0; break;
+		case 2: cond = !(c->flags & V20_CF); break;
+		case 3: cond =  (c->flags & V20_CF) != 0; break;
+		case 4: cond = !(c->flags & V20_PF); break;
+		case 5: cond =  (c->flags & V20_PF) != 0; break;
+		case 6: cond = !(c->flags & V20_SF); break;
+		case 7: cond =  (c->flags & V20_SF) != 0; break;
+		default: cond = false;
+		}
+		if (cond) { e80_push(c, c->ip); c->ip = addr; cyc=19; }
+		else cyc=4;
+		break;
+	}
+
+	// PUSH rp / PUSH PSW — native PUSH = 12
+	case 0xc5: e80_push(c, E80_BC(c)); cyc=12; break;
+	case 0xd5: e80_push(c, E80_DE(c)); cyc=12; break;
+	case 0xe5: e80_push(c, E80_HL(c)); cyc=12; break;
+	case 0xf5: e80_push(c, (uint16_t)(((uint16_t)(uint8_t)E80_A(c) << 8) | flags_to_8080(c->flags))); cyc=12; break;
+
+	// ADI/ACI/SUI/SBI/ANI/XRI/ORI/CPI imm8 — native ALU AL,imm8 = 4
+	case 0xc6: E80_A(c) = e80_alu_add(c, a, E80_RB(c, c->ip), 0); c->ip++; cyc=4; break;
+	case 0xce: E80_A(c) = e80_alu_add(c, a, E80_RB(c, c->ip), (c->flags&V20_CF)?1:0); c->ip++; cyc=4; break;
+	case 0xd6: E80_A(c) = e80_alu_sub(c, a, E80_RB(c, c->ip), 0); c->ip++; cyc=4; break;
+	case 0xde: E80_A(c) = e80_alu_sub(c, a, E80_RB(c, c->ip), (c->flags&V20_CF)?1:0); c->ip++; cyc=4; break;
+	case 0xe6: E80_A(c) = a & E80_RB(c, c->ip); e80_alu_logic(c, (uint8_t)E80_A(c)); c->ip++; cyc=4; break;
+	case 0xee: E80_A(c) = a ^ E80_RB(c, c->ip); e80_alu_logic(c, (uint8_t)E80_A(c)); c->ip++; cyc=4; break;
+	case 0xf6: E80_A(c) = a | E80_RB(c, c->ip); e80_alu_logic(c, (uint8_t)E80_A(c)); c->ip++; cyc=4; break;
+	case 0xfe: e80_alu_sub(c, a, E80_RB(c, c->ip), 0); c->ip++; cyc=4; break;
+
+	// RST n — native CALL near=19 (push + jump to fixed addr)
+	case 0xc7: case 0xcf: case 0xd7: case 0xdf:
+	case 0xe7: case 0xef: case 0xf7: case 0xff:
+		e80_push(c, c->ip); c->ip = (uint16_t)(op & 0x38); cyc=19; break;
+
+	// RET — native RET near = 8
+	case 0xc9: c->ip = e80_pop(c); cyc=8; break;
+
+	// CALL addr — native CALL near = 19
+	case 0xcd: {
+		uint16_t addr = (uint16_t)(E80_RB(c, c->ip) | (E80_RB(c, (uint16_t)(c->ip+1)) << 8));
+		c->ip += 2;
+		e80_push(c, c->ip);
+		c->ip = addr;
+		cyc = 19; break;
+	}
+
+	// OUT port — native OUT imm8 = 10
+	case 0xd3:
+		c->io_write(c->ctx, E80_RB(c, c->ip), a);
+		c->ip++; cyc=10; break;
+
+	// IN port — native IN imm8 = 10
+	case 0xdb:
+		E80_A(c) = c->io_read(c->ctx, E80_RB(c, c->ip));
+		c->ip++; cyc=10; break;
+
+	// XTHL — no native equivalent; 8080 timing
+	case 0xe3: {
+		uint16_t t = E80_RW(c, c->bp);
+		E80_WW(c, c->bp, E80_HL(c));
+		E80_HL(c) = t;
+		cyc = 18; break;
+	}
+
+	// PCHL — native JMP r/m16 = 11
+	case 0xe9: c->ip = E80_HL(c); cyc=11; break;
+
+	// XCHG — native XCHG = 3
+	case 0xeb: { uint16_t t=E80_DE(c); E80_DE(c)=E80_HL(c); E80_HL(c)=t; cyc=3; break; }
+
+	// CALLN imm8: call native mode routine from 8080 mode.
+	// Push PSW, PS, PC onto 8080 stack (BP). Set MD=1 (native).
+	// Load PS:PC from IVT. Native ISR returns via RETI which
+	// restores MD=0 to re-enter 8080 mode.
+	case 0xed: {
+		uint8_t vec = E80_RB(c, c->ip); c->ip++;
+		// Push PSW (flags in low byte, A in high byte)
+		e80_push(c, (uint16_t)(((uint16_t)(uint8_t)E80_A(c) << 8) | flags_to_8080(c->flags)));
+		// Push PS (code segment)
+		e80_push(c, c->cs);
+		// Push PC
+		e80_push(c, c->ip);
+		// Load PS:PC from IVT
+		uint32_t ivt = (uint32_t)vec * 4;
+		c->ip = rw(c, ivt);
+		c->cs = rw(c, ivt + 2);
+		c->mode_8080 = false;
+		cyc = 19; break;
+	}
+
+	// DI / EI — native CLI/STI = 2
+	case 0xf3: c->flags &= ~V20_IF; cyc=2; break;
+	case 0xfb: c->flags |= V20_IF; cyc=2; break;
+
+	// SPHL — 8080 SP is V20 BP
+	case 0xf9: c->bp = E80_HL(c); cyc=2; break;
+
+	default:
+		fprintf(stderr, "UNIMPL 8080 %02X at DS:%04X\n", op, (uint16_t)(c->ip-1));
+		cyc = 4;
+		break;
+	}
+	return cyc;
+}
+
 /* ---- interrupt check ---- */
 
 static void check_irq(v20_t *c)
@@ -1007,6 +1595,7 @@ void v20_reset(v20_t *c)
 	c->ip = 0x0000;
 	c->flags = 0x0002;
 	c->halted = false;
+	c->mode_8080 = false;
 	c->irq_line = false;
 	c->nmi_line = false;
 	c->nmi_prev = false;
@@ -1047,7 +1636,7 @@ int v20_exec(v20_t *c, int target)
 		if (c->trace_enabled)
 			record_trace(c, c->mem_read(c->ctx, ((uint32_t)c->cs << 4) + c->ip));
 
-		done += exec_one(c);
+		done += c->mode_8080 ? exec_8080(c) : exec_one(c);
 
 		if (c->debug_step) {
 			c->debug_step = false;
