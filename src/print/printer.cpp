@@ -683,7 +683,7 @@ PrinterConfig default_config_for(PrinterModel model)
 	PrinterConfig cfg;
 	if (model == PrinterModel::ImageWriter) {
 		cfg.pitch_cpi = 12;
-		cfg.font_mode = 0;
+		cfg.font_mode = 2;  // ROM 0x39DB initializes AA70/AA71 to NLQ
 		cfg.page_length_lines = 66;
 	} else if (model == PrinterModel::CanonBJ10e) {
 		cfg.auto_lf = false;
@@ -752,9 +752,9 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 			else cfg.perf_skip = atoi(val);
 		} else if (strcasecmp(key, "font") == 0) {
 			if (is_iw) {
-				if (strcasecmp(val, "draft") == 0)          cfg.font_mode = 1;
+				if (strcasecmp(val, "draft") == 0)          cfg.font_mode = 2;
 				else if (strcasecmp(val, "standard") == 0)  cfg.font_mode = 0;
-				else if (strcasecmp(val, "nlq") == 0)       cfg.font_mode = 2;
+				else if (strcasecmp(val, "nlq") == 0)       cfg.font_mode = 1;
 			} else if (model == PrinterModel::CanonBJ10e) {
 				if (strcasecmp(val, "economy") == 0)        cfg.font_mode = 1;
 				else if (strcasecmp(val, "hq") == 0 ||

@@ -704,9 +704,9 @@ static bool show_iw_dip_dialog(PrinterConfig &cfg)
 	hdr2.align(FL_ALIGN_LEFT | FL_ALIGN_INSIDE);
 
 	Fl_Choice font(160, 200, 170, 25, "Print Quality:");
-	font.add("Draft");
 	font.add("Standard");
 	font.add("Near Letter Quality");
+	font.add("Draft");
 	font.value(cfg.font_mode);
 
 	Fl_Check_Button slashed(10, 235, 320, 25, "Slashed Zeros");

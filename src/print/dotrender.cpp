@@ -284,17 +284,18 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 		render_glyph_9pin(*this, page, st2, prof, glyph, w, pin_vib_);
 	} else if (prof.model == PrinterModel::ImageWriter) {
 		// IW II font switching rules per Technical Reference Manual Ch.4:
-		// Draft (font_mode=1) does NOT support bold, expanded, half-height,
+		// Internal values match ROM AA70/AA71: 0=corr, 1=NLQ, 2=draft.
+		// Draft (font_mode=2) does NOT support bold, expanded, half-height,
 		// super/subscript, or proportional — these force correspondence.
-		// NLQ (font_mode=2) does NOT support half-height or super/subscript
+		// NLQ (font_mode=1) does NOT support half-height or super/subscript
 		// — these force correspondence.
 		int eff_mode = st.font_mode;
 		bool expanded = st.expanded || st.expanded_line;
 		bool script = st.superscript || st.subscript;
-		if (eff_mode == 1) {
+		if (eff_mode == 2) {
 			if (st.bold || expanded || st.half_height || script || st.proportional)
 				eff_mode = 0;
-		} else if (eff_mode == 2) {
+		} else if (eff_mode == 1) {
 			if (st.half_height || script)
 				eff_mode = 0;
 		}
@@ -307,7 +308,7 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 			w = st.user_char_prefix[ch] & 0x1F;
 			if (w == 0) w = 8;
 			if (w > 16) w = 16;
-		} else if (eff_mode == 2) {
+		} else if (eff_mode == 1) {
 			if (st.proportional) {
 				glyph = get_iw2_nlq_prop_p1_glyph(ch);
 				glyph_p2 = get_iw2_nlq_prop_p2_glyph(ch);

@@ -531,9 +531,9 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 	case State::EscA:
 		b = command_byte(b);
 		state_ = State::Normal;
-		if (b == '0')      st_.font_mode = 0;
-		else if (b == '1') st_.font_mode = 1;
-		else if (b == '2') st_.font_mode = 2;
+		if (b == '0')      st_.font_mode = 0;  // correspondence
+		else if (b == '1') st_.font_mode = 2;  // draft (ROM AA70 value 2)
+		else if (b == '2') st_.font_mode = 1;  // NLQ (ROM AA70 value 1)
 		return;
 
 	case State::EscCrIns:  // Table A-16: ESC l 0/1
@@ -717,8 +717,8 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 			break;
 
 		// Font selection (IW native)
-		case 'm': st_.font_mode = 0; break;
-		case 'M': st_.font_mode = 2; break;
+		case 'm': st_.font_mode = 0; break;  // correspondence
+		case 'M': st_.font_mode = 1; break;  // NLQ (ROM AA70 value 1)
 		case 'a': state_ = State::EscA; break;
 
 		// Table A-9: MouseText / custom font

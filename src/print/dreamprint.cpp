@@ -95,9 +95,9 @@ int main(int argc, char *argv[])
 		    : default_config_for(model);
 
 		if (font_arg) {
-			if (!strcasecmp(font_arg, "draft"))         cfg.font_mode = 1;
+			if (!strcasecmp(font_arg, "draft"))         cfg.font_mode = 2;
 			else if (!strcasecmp(font_arg, "standard")) cfg.font_mode = 0;
-			else if (!strcasecmp(font_arg, "nlq"))      cfg.font_mode = 2;
+			else if (!strcasecmp(font_arg, "nlq"))      cfg.font_mode = 1;
 		}
 		if (pitch_arg)
 			cfg.pitch_cpi = parse_pitch(pitch_arg, model);
