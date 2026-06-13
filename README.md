@@ -75,6 +75,52 @@ Options:
 - **NVRAM:** Battery-backed RAM via mmap — always persistent, no save needed
 - **Power:** Graceful shutdown triggers firmware save/suspend before exit
 
+## Emulated Printers
+
+The Centronics parallel port drives a printer emulation that renders output
+to PDF with physically modeled dot patterns.  Seven printer models are
+supported at varying levels of completeness:
+
+| Model | CLI Name | Technology | Status |
+|-------|----------|------------|--------|
+| Epson FX | `FX` | 9-pin impact | Complete — full ESC/P protocol |
+| Epson LQ | `LQ` | 24-pin impact | Partial — FX engine with LQ spacing, no ESC/P2 commands |
+| Canon BJ-10e | `BJ10e` | Inkjet | Complete — full BJ-10e command set |
+| Apple ImageWriter II | `WRITER` | 9-pin impact | Substantial — most commands implemented |
+| IBM Proprinter X24E | `X24E` | 24-pin impact | Partial — base ESC/P only, no PPDS extensions |
+| IBM Proprinter III | `XIII` | 9-pin impact | Partial — base ESC/P only, no PPDS extensions |
+| HP LaserJet/DeskJet | `JET` | Toner | Minimal — text-only PCL subset, no graphics |
+
+The Epson FX and Canon BJ-10e emulations are based on the original hardware
+manuals and cover the full command sets of their respective printers.  The
+ImageWriter II emulation covers most of the Technical Reference Manual
+including graphics, color ribbon, custom characters, and MouseText.  The
+Epson LQ reuses the FX engine with adjusted line spacing denominators but
+does not implement ESC/P2 commands.  The IBM models inherit the base ESC/P
+engine but lack IBM-specific PPDS commands.  The HP PCL implementation
+handles basic text formatting and margins but not raster graphics.
+
+The default model is Epson FX.  Printer output is accessed from the
+**Media → Printer Output** menu item.
+
+## dreamprint
+
+`dreamprint` is a standalone command-line tool that renders raw printer byte
+streams to PDF without running the full emulator.  It accepts the same
+printer models listed above.
+
+```
+dreamprint [options] input.bin output.pdf
+
+Options:
+  --model MODEL    Printer model (default: FX)
+  --config PATH    Printer config file
+  --font MODE      Initial font: draft, standard, nlq (ImageWriter)
+  --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)
+```
+
+Sample input streams are provided in `samples/dreamprint/`.
+
 ## GUI
 
 Built with [FLTK](https://www.fltk.org/).  The menu bar provides runtime

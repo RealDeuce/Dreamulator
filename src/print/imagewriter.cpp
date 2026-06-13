@@ -29,6 +29,8 @@ private:
 		CustomLoadColumns,
 		GfxData,
 		GfxRepeatByte,
+		TabListDigits,
+		TabListDelim,
 		CtrlBracketFirstValue,
 		CtrlBracketFirstAt,
 		CtrlBracketBodyValue,
@@ -52,6 +54,9 @@ private:
 	int custom_load_pos_ = 0;
 	int custom_load_remaining_ = 0;
 	bool custom_load_bottom_wires_ = false;
+	bool tab_list_is_clear_ = false;
+	int tab_list_prev_ = 0;
+	int tab_list_count_ = 0;
 
 	void start_digits(uint8_t cmd, int count);
 	void dispatch_digits(int val);
@@ -68,6 +73,9 @@ private:
 	void store_custom_col(uint8_t data);
 	void begin_ctrl_bracket();
 	void consume_ctrl_bracket_value(uint8_t b);
+	void start_tab_list(bool is_clear);
+	void dispatch_tab_value(int val);
+	void compact_tab_table();
 	void feed_without_print(float delta);
 	static uint8_t ribbon_command_color(int val);
 };
@@ -265,6 +273,55 @@ void ImageWriterPrinter::store_custom_col(uint8_t data)
 	}
 }
 
+void ImageWriterPrinter::start_tab_list(bool is_clear)
+{
+	tab_list_is_clear_ = is_clear;
+	tab_list_prev_ = 0;
+	tab_list_count_ = 0;
+	if (!is_clear)
+		st_.tab_count = 0;
+	digit_pos_ = 0;
+	digit_expect_ = 3;
+	memset(digit_buf_, 0, sizeof(digit_buf_));
+	state_ = State::TabListDigits;
+}
+
+void ImageWriterPrinter::dispatch_tab_value(int val)
+{
+	if (val < 1 || val >= 140) {
+		st_.tab_count = 0;
+		state_ = State::Normal;
+		return;
+	}
+	if (tab_list_is_clear_) {
+		// Scan and zero matching entries
+		for (int i = 0; i < st_.tab_count; i++) {
+			if (st_.tab_stops[i] == val)
+				st_.tab_stops[i] = 0;
+		}
+	} else {
+		// Set: values must be strictly increasing
+		if (val <= tab_list_prev_ || st_.tab_count >= 32) {
+			st_.tab_count = 0;
+			state_ = State::Normal;
+			return;
+		}
+		st_.tab_stops[st_.tab_count++] = val;
+		tab_list_prev_ = val;
+	}
+	state_ = State::TabListDelim;
+}
+
+void ImageWriterPrinter::compact_tab_table()
+{
+	int dst = 0;
+	for (int src = 0; src < st_.tab_count; src++) {
+		if (st_.tab_stops[src] != 0)
+			st_.tab_stops[dst++] = st_.tab_stops[src];
+	}
+	st_.tab_count = dst;
+}
+
 void ImageWriterPrinter::dispatch_digits(int val)
 {
 	switch (esc_cmd_) {
@@ -418,6 +475,47 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 			for (int i = 0; i < count; i++)
 				emit_char(b);
 		}
+		return;
+
+	case State::TabListDigits:
+		b = command_byte(b);
+		if ((b >= '0' && b <= '9') || b == ' ') {
+			digit_buf_[digit_pos_++] = (b == ' ') ? '0' : static_cast<char>(b);
+			if (digit_pos_ >= digit_expect_) {
+				int val = parse_digit_val();
+				dispatch_tab_value(val);
+			}
+			return;
+		}
+		// Non-digit before completing a value: clear table
+		st_.tab_count = 0;
+		state_ = State::Normal;
+		return;
+
+	case State::TabListDelim:
+		b = command_byte(b);
+		if (b == ',') {
+			if (++tab_list_count_ >= 32) {
+				// Max entries reached; treat as done
+				if (tab_list_is_clear_)
+					compact_tab_table();
+				state_ = State::Normal;
+				return;
+			}
+			digit_pos_ = 0;
+			memset(digit_buf_, 0, sizeof(digit_buf_));
+			state_ = State::TabListDigits;
+			return;
+		}
+		if (b == '.') {
+			if (tab_list_is_clear_)
+				compact_tab_table();
+			state_ = State::Normal;
+			return;
+		}
+		// Unrecognized terminator: clear table
+		st_.tab_count = 0;
+		state_ = State::Normal;
 		return;
 
 	case State::CollectSw1:
@@ -633,8 +731,19 @@ void ImageWriterPrinter::parse_byte(uint8_t b)
 		// Table A-18: color select (1 ASCII digit param)
 		case 'K': start_digits('K', 1); break;
 
+		// Table A-14: tab set/clear lists
+		case '(': start_tab_list(false); break;
+		case ')': start_tab_list(true); break;
+
 		// Table A-14: clear all tabs
 		case '0': st_.tab_count = 0; break;
+
+		// Table A-11: extra proportional dot spacing (only in proportional pitch)
+		case '1': case '2': case '3': case '4': case '5': case '6':
+			if (st_.proportional)
+				st_.x_pos += static_cast<float>(b - '0') /
+				             static_cast<float>(st_.prop_dpi);
+			break;
 
 		// Table A-11: proportional dot spacing
 		case 's': start_digits('s', 1); break;
