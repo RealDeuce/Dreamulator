@@ -16,6 +16,7 @@
 #define V20_IF 0x0200
 #define V20_DF 0x0400
 #define V20_OF 0x0800
+#define V20_MD 0x8000
 
 constexpr int V20_MAX_BP    = 8;
 constexpr int V20_TRACE_SIZE = 2048;

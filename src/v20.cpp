@@ -200,14 +200,12 @@ static uint32_t shf(v20_t *c, int op, uint32_t val, int cnt, int w)
 
 static void do_int(v20_t *c, uint8_t vec)
 {
-	// Bit 15 (MD flag): 1=native mode, 0=8080 emulation mode.
-	// Saved so IRET can restore the correct mode.
-	uint16_t saved_flags = c->flags;
-	if (!c->mode_8080) saved_flags |= 0x8000;
-	push(c, saved_flags);
+	push(c, c->flags);  // MD (bit 15) reflects current mode
 	push(c, c->cs);
 	push(c, c->ip);
 	c->flags &= ~(V20_IF | V20_TF);
+	c->flags |= V20_MD;  // ISR runs in native mode
+	c->mode_8080 = false;
 	c->ip = rw(c, (uint32_t)vec * 4);
 	c->cs = rw(c, (uint32_t)vec * 4 + 2);
 }
@@ -549,15 +547,16 @@ static void exec_0f(v20_t *c)
 		uint16_t psw = MRW(c->ds, c->bp); c->bp += 2;
 		c->ip = pc_val;
 		c->cs = ps_val;
-		c->flags = flags_from_8080((uint8_t)psw);
+		c->flags = flags_from_8080((uint8_t)psw) & ~V20_MD; // MD=0: 8080 mode
 		c->al() = (uint8_t)(psw >> 8);
 		c->mode_8080 = true;
 		break;
 	}
 	case 0xFF: { /* BRKEM - enter 8080 emulation mode */
 		uint8_t vec = f8(c);
-		do_int(c, vec);
+		do_int(c, vec);  // pushes flags with MD=1 (native), loads IVT
 		c->mode_8080 = true;
+		c->flags &= ~V20_MD;  // now in 8080 mode: MD=0
 		break;
 	}
 	default:
@@ -812,8 +811,9 @@ pfx:
 	case 0x9b: cyc+=3; break; /* WAIT */
 
 	/* ---- PUSHF / POPF ---- */
-	case 0x9c: push(c, (c->flags & 0x0FD5) | 0xF002); cyc+=12; break;
-	case 0x9d: c->flags = (pop(c) & 0x0FD5) | 0x0002; cyc+=12; break;
+	case 0x9c: push(c, (c->flags & (0x0FD5 | V20_MD)) | 0x7002); cyc+=12; break;
+	case 0x9d: { uint16_t f=pop(c); c->flags = (f & (0x0FD5 | V20_MD)) | 0x0002;
+		c->mode_8080 = !(c->flags & V20_MD); cyc+=12; break; }
 
 	/* ---- SAHF / LAHF ---- */
 	case 0x9e: c->flags = (c->flags & 0xFF00) | (c->ah() & 0xD5) | 0x02; cyc+=3; break;
@@ -892,13 +892,10 @@ pfx:
 	case 0xce: if (c->flags & V20_OF) { do_int(c, 4); cyc+=52; } else { cyc+=4; } break;
 
 	/* ---- IRET ---- */
-	case 0xcf: {
-		c->ip=pop(c); c->cs=pop(c); uint16_t f=pop(c);
-		// MD flag (bit 15): if clear, re-enter 8080 emulation mode
-		c->mode_8080 = !(f & 0x8000);
-		c->flags = f & 0x0FFF;
+	case 0xcf:
+		c->ip=pop(c); c->cs=pop(c); c->flags=pop(c);
+		c->mode_8080 = !(c->flags & V20_MD);
 		cyc+=32; break;
-	}
 
 	/* ---- shifts r/m, 1 / CL ---- */
 	case 0xd0: { ea_t e=decode_ea(c); ea_wb(c,&e,(uint8_t)shf(c,e.reg,ea_rb(c,&e),1,0)); cyc+=(e.mod==3)?3:24; break; }
@@ -1543,6 +1540,7 @@ static int exec_8080(v20_t *c)
 		c->ip = rw(c, ivt);
 		c->cs = rw(c, ivt + 2);
 		c->mode_8080 = false;
+		c->flags |= V20_MD;  // now in native mode
 		cyc = 19; break;
 	}
 
@@ -1593,7 +1591,7 @@ void v20_reset(v20_t *c)
 	c->ds = c->es = c->ss = 0;
 	c->cs = 0xFFFF;
 	c->ip = 0x0000;
-	c->flags = 0x0002;
+	c->flags = V20_MD | 0x0002;  // MD=1 (native mode), bit 1 always set
 	c->halted = false;
 	c->mode_8080 = false;
 	c->irq_line = false;
