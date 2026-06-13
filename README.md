@@ -86,19 +86,20 @@ supported at varying levels of completeness:
 | Epson FX | `FX` | 9-pin impact | Complete — full ESC/P protocol |
 | Epson LQ | `LQ` | 24-pin impact | Partial — FX engine with LQ spacing, no ESC/P2 commands |
 | Canon BJ-10e | `BJ10e` | Inkjet | Complete — full BJ-10e command set |
-| Apple ImageWriter II | `WRITER` | 9-pin impact | Substantial — most commands implemented |
+| Apple ImageWriter II | `WRITER` | 9-pin impact | Complete — full command set from ROM analysis |
 | IBM Proprinter X24E | `X24E` | 24-pin impact | Partial — base ESC/P only, no PPDS extensions |
 | IBM Proprinter III | `XIII` | 9-pin impact | Partial — base ESC/P only, no PPDS extensions |
 | HP LaserJet/DeskJet | `JET` | Toner | Minimal — text-only PCL subset, no graphics |
 
-The Epson FX and Canon BJ-10e emulations are based on the original hardware
-manuals and cover the full command sets of their respective printers.  The
-ImageWriter II emulation covers most of the Technical Reference Manual
-including graphics, color ribbon, custom characters, and MouseText.  The
-Epson LQ reuses the FX engine with adjusted line spacing denominators but
-does not implement ESC/P2 commands.  The IBM models inherit the base ESC/P
-engine but lack IBM-specific PPDS commands.  The HP PCL implementation
-handles basic text formatting and margins but not raster graphics.
+The [Epson FX](https://github.com/RealDeuce/epsonfx80),
+[Canon BJ-10e](https://github.com/RealDeuce/canonBJ10e), and
+[ImageWriter II](https://github.com/RealDeuce/iw2analysis) emulations are
+based on original hardware manuals and validated against reverse-engineered
+ROM disassemblies, with resident font data extracted from firmware.  The Epson
+LQ reuses the FX engine with adjusted line spacing denominators but does not
+implement ESC/P2 commands.  The IBM models inherit the base ESC/P engine but
+lack IBM-specific PPDS commands.  The HP PCL implementation handles basic
+text formatting and margins but not raster graphics.
 
 The default model is Epson FX.  Printer output is accessed from the
 **Media → Printer Output** menu item.
