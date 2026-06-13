@@ -347,35 +347,74 @@ void ImpactDot9::render_char(PageBitmap &page, const PrinterState &st,
 	}
 }
 
+// Render a 24-pin glyph.
+// start_col: left-padding columns before the glyph body (used to offset
+//            the glyph within a fixed-pitch cell at native DPI).
+// native_dot_w: if > 0, use this as the horizontal dot pitch instead of
+//               spreading glyph_w columns across the full character cell.
+//               Set to 1/hres for LQ-500 fonts (1/120 draft, 1/360 LQ).
 static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
                                 const PrinterState &st, const PrinterProfile &prof,
-                                const uint8_t *glyph, int glyph_w)
+                                const uint8_t *glyph, int glyph_w,
+                                int start_col = 0, float native_dot_w = 0.0f)
 {
 	float cw_in = 1.0f / (float)st.pitch_cpi;
 	if (st.expanded || st.expanded_line) cw_in *= 2.0f;
 	if (st.condensed) cw_in *= 0.6f;
 
 	float dot_h_in = 1.0f / 180.0f;
-	float dot_w_in = cw_in / (float)glyph_w;
+	float dot_w_in = (native_dot_w > 0.0f) ? native_dot_w
+	                                        : cw_in / (float)glyph_w;
+	float x_off = (float)start_col * dot_w_in;
 
 	float y_scale = 1.0f;
 	float y_off = 0.0f;
+	if (st.double_high) { y_scale = 2.0f; }
 	if (st.superscript) { y_scale = 0.67f; y_off = 0.0f; }
 	if (st.subscript) { y_scale = 0.67f; y_off = dot_h_in * 8.0f; }
 
 	float ink = prof.dot_intensity;
 	float sharp = prof.dot_sharpness;
 
+	// Outline mode: XOR with horizontally shifted copy to get edges only
+	bool outline = (st.lq500_char_style & 1) != 0;
+	// Shadow mode: duplicate with offset
+	bool shadow = (st.lq500_char_style & 2) != 0;
+	float shadow_x_off = shadow ? dot_w_in * 0.5f : 0.0f;
+	float shadow_y_off = shadow ? dot_h_in * 0.5f : 0.0f;
+
 	for (int col = 0; col < glyph_w; col++) {
 		uint32_t column = (uint32_t)glyph[col * 3] |
 		                  ((uint32_t)glyph[col * 3 + 1] << 8) |
 		                  ((uint32_t)glyph[col * 3 + 2] << 16);
-		for (int pin = 0; pin < 24; pin++) {
-			if (!(column & (1U << pin))) continue;
 
-			float x = st.x_pos + (float)col * dot_w_in;
+		uint32_t render_col = column;
+		if (outline) {
+			// Outline: keep only edge dots (where adjacent vertical
+			// neighbors differ). Simple approach: XOR with shifted self.
+			uint32_t above = column << 1;
+			uint32_t below = column >> 1;
+			uint32_t prev_col = 0;
+			uint32_t next_col = 0;
+			if (col > 0)
+				prev_col = (uint32_t)glyph[(col - 1) * 3] |
+				           ((uint32_t)glyph[(col - 1) * 3 + 1] << 8) |
+				           ((uint32_t)glyph[(col - 1) * 3 + 2] << 16);
+			if (col + 1 < glyph_w)
+				next_col = (uint32_t)glyph[(col + 1) * 3] |
+				           ((uint32_t)glyph[(col + 1) * 3 + 1] << 8) |
+				           ((uint32_t)glyph[(col + 1) * 3 + 2] << 16);
+			// Edge = any dot that has at least one empty neighbor
+			uint32_t filled = above & below & prev_col & next_col;
+			render_col = column & ~filled;
+		}
+
+		for (int pin = 0; pin < 24; pin++) {
+			if (!(render_col & (1U << pin))) continue;
+
+			float x = st.x_pos + x_off + (float)col * dot_w_in;
 			float y = st.y_pos + ((float)pin * dot_h_in * y_scale) + y_off
-			          - (24.0f * dot_h_in);
+			          - (24.0f * dot_h_in * y_scale);
 
 			dr.stamp_pin(page, x, y, prof.render_dpi,
 			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp);
@@ -384,6 +423,13 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 				dr.stamp_pin(page, x + dot_w_in * 0.25f, y,
 				             prof.render_dpi, prof.dot_radius_mm,
 				             prof.jitter_mm, ink * 0.8f, sharp);
+			}
+
+			// Shadow: additional strike at offset
+			if (shadow) {
+				dr.stamp_pin(page, x + shadow_x_off, y + shadow_y_off,
+				             prof.render_dpi, prof.dot_radius_mm,
+				             prof.jitter_mm, ink * 0.6f, sharp);
 			}
 		}
 	}
@@ -398,14 +444,66 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			             prof.jitter_mm, ink, sharp);
 		}
 	}
+
+	if (st.overline) {
+		float ol_y = st.y_pos - 24.0f * dot_h_in * y_scale - dot_h_in;
+		int dots = (int)(cw_in / (1.0f / 360.0f));
+		float step = cw_in / (float)dots;
+		for (int i = 0; i < dots; i++) {
+			dr.stamp_pin(page, st.x_pos + (float)i * step, ol_y,
+			             prof.render_dpi, prof.dot_radius_mm,
+			             prof.jitter_mm, ink, sharp);
+		}
+	}
 }
 
 void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
                                const PrinterProfile &prof, uint8_t ch)
 {
-	const uint16_t *glyph = get_9pin_glyph(ch);
-	if (!glyph) return;
-	render_glyph_9pin(*this, page, st, prof, glyph, 12, pin_vib_);
+	if (prof.model == PrinterModel::EpsonLQ500) {
+		float hres = st.lq500_lq_mode
+		    ? static_cast<float>(prof.lq_hres)
+		    : static_cast<float>(prof.draft_hres);
+		float ndw = 1.0f / hres;
+
+		const uint8_t *data = nullptr;
+		int w = 0;
+		int sc = 0;
+
+		// User-defined 24-pin characters take priority
+		if (st.use_user_chars && st.user_char_24_defined[ch]) {
+			data = st.user_char_24_glyph[ch];
+			w = st.user_char_24_d1[ch];
+			sc = st.user_char_24_d0[ch];
+		} else {
+			int idx = lq500_font_index(st.lq500_family, st.lq500_lq_mode,
+			                            st.pitch_cpi == 12, st.proportional,
+			                            st.condensed);
+			auto info = get_lq500_glyph(idx, ch);
+			data = info.data;
+			w = info.width;
+			sc = info.start;
+		}
+		if (data && w > 0) {
+			// Pass 1: render at natural column positions
+			render_glyph_24pin(*this, page, st, prof, data, w, sc, ndw);
+
+			// Pass 2: render at +1 dot offset (two-pass interleave)
+			// LQ mode uses two carriage passes to fill gaps in the
+			// sparse 360 DPI column data, producing solid 180 DPI strokes.
+			if (st.lq500_lq_mode) {
+				PrinterState st2 = st;
+				st2.x_pos += ndw;
+				render_glyph_24pin(*this, page, st2, prof,
+				                   data, w, sc, ndw);
+			}
+		}
+		return;
+	}
+	// IBM X24E and other 24-pin models: use existing 24-pin font
+	const uint8_t *glyph = get_24pin_glyph(ch);
+	if (glyph)
+		render_glyph_24pin(*this, page, st, prof, glyph, 12);
 }
 
 static constexpr uint64_t BJ10E_48_DOT_MASK = (1ULL << 48) - 1ULL;

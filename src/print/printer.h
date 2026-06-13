@@ -12,7 +12,7 @@
 enum class PrinterModel {
 	IbmX24E,
 	IbmXIII,
-	EpsonLQ,
+	EpsonLQ500,
 	EpsonFX,
 	CanonBJ10e,
 	HpJet,
@@ -128,6 +128,17 @@ struct PrinterState {
 	int   msb_mode = 0; // -1 force 0, 0 accept as sent, 1 force 1
 	bool  use_user_chars = false;
 	bool  use_high_user_chars = false;
+	uint8_t user_char_24_d0[256] = {};
+	uint8_t user_char_24_d1[256] = {};
+	uint8_t user_char_24_d2[256] = {};
+	uint8_t user_char_24_glyph[256][108] = {};  // max 36 cols × 3 bytes
+	bool    user_char_24_defined[256] = {};
+	uint8_t lq500_family = 0;     // ESC k: 0=Roman, 1=SansSerif
+	bool    lq500_lq_mode = false; // ESC x: false=Draft, true=LQ
+	uint8_t lq500_char_table = 1; // ESC t: 0=Italic, 1=Graphics, 2=remap
+	uint8_t lq500_interchar = 0;  // ESC SP: extra dot spacing
+	uint8_t lq500_justify = 0;    // ESC a: 0=left, 1=center, 2=right, 3=full
+	uint8_t lq500_char_style = 0; // ESC q: 0=normal, 1=outline, 2=shadow, 3=both
 	int   prop_dpi = 144;
 	int   prop_spacing = 0;
 	int   tab_stops[32] = {};

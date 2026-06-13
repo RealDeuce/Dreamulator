@@ -12,7 +12,7 @@ static constexpr PrinterProfile profiles[] = {
 	//                                                                                                   radius jitter intens sharp
 	{ PrinterModel::IbmX24E,    "IBM X24E",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.03f, 0.90f, 2.0f },
 	{ PrinterModel::IbmXIII,    "IBM XIII",        DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24, 0.30f, 0.025f, 0.85f, 2.0f },
-	{ PrinterModel::EpsonLQ,    "Epson LQ",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.015f, 0.90f, 2.0f },
+	{ PrinterModel::EpsonLQ500,    "Epson LQ-500",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.14f, 0.015f, 0.90f, 2.0f },
 	{ PrinterModel::EpsonFX,    "Epson FX",       DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24,  0.27f, 0.025f, 0.72f, 2.0f },
 	{ PrinterModel::CanonBJ10e, "Canon BJ-10e",   DotTech::Inkjet,   360, 360,360, 360,360, 36,48, 30,  0.050f, 0.0f, 0.68f, 1.0f },
 	{ PrinterModel::HpJet,      "HP JET",         DotTech::Toner,    600, 300,300, 300,300, 30,50, 30,   0.13f, 0.01f, 0.98f, 0.3f },
@@ -349,7 +349,7 @@ void PrinterSim::emit_char(uint8_t ch)
 	new_page_if_needed();
 
 	if (!st_.include_8th_bit && prof_.model != PrinterModel::EpsonFX &&
-	    prof_.model != PrinterModel::EpsonLQ)
+	    prof_.model != PrinterModel::EpsonLQ500)
 		ch = static_cast<uint8_t>(ch & 0x7F);
 
 	if (st_.mousetext_mode && ch >= 0x40 && ch <= 0x5F)
@@ -391,6 +391,17 @@ void PrinterSim::emit_char(uint8_t ch)
 			if (glyph.width > 0)
 				char_w_in = static_cast<float>(glyph.width) / 360.0f;
 		}
+	} else if (st_.proportional && prof_.model == PrinterModel::EpsonLQ500) {
+		int idx = lq500_font_index(st_.lq500_family, st_.lq500_lq_mode,
+		                            st_.pitch_cpi == 12, true, st_.condensed);
+		auto info = get_lq500_glyph(idx, render_ch);
+		int total = info.start + info.width + info.advance;
+		if (total > 0) {
+			float hres = st_.lq500_lq_mode
+			    ? static_cast<float>(prof_.lq_hres)
+			    : static_cast<float>(prof_.draft_hres);
+			char_w_in = static_cast<float>(total) / hres;
+		}
 	} else if (st_.proportional && prof_.model == PrinterModel::EpsonFX) {
 		bool italic = st_.italic || render_ch >= 0x80;
 		if (st_.use_user_chars && st_.user_char_defined[render_ch]) {
@@ -401,6 +412,10 @@ void PrinterSim::emit_char(uint8_t ch)
 		} else {
 			char_w_in = static_cast<float>(get_fx80_prop_width(render_ch, italic)) / 120.0f;
 		}
+	}
+	if (st_.lq500_interchar > 0 && prof_.model == PrinterModel::EpsonLQ500) {
+		float denom = st_.lq500_lq_mode ? 180.0f : 120.0f;
+		char_w_in += static_cast<float>(st_.lq500_interchar) / denom;
 	}
 	if (st_.expanded || st_.expanded_line)
 		char_w_in *= 2.0f;
@@ -473,6 +488,26 @@ void PrinterSim::flush_pending_line()
 		flush_bj10e_pending_dots();
 		mark_line_output();
 		return;
+	}
+	// LQ-500 justification: shift pending characters for center/right
+	if (st_.lq500_justify > 0 && !pending_line_.empty()) {
+		float line_end = pending_line_.back().state.x_pos +
+		                 pending_line_.back().advance_in;
+		float slack = st_.right_margin_in - line_end;
+		if (slack > 0.001f) {
+			float shift = 0.0f;
+			if (st_.lq500_justify == 1)       // center
+				shift = slack * 0.5f;
+			else if (st_.lq500_justify == 2)  // right
+				shift = slack;
+			if (shift > 0.0f) {
+				for (auto &entry : pending_line_) {
+					entry.state.x_pos += shift;
+					if (entry.has_text)
+						entry.text.x_in += shift;
+				}
+			}
+		}
 	}
 	for (const auto &entry : pending_line_) {
 		if (entry.has_text)
@@ -580,6 +615,45 @@ void PrinterSim::apply_config(const PrinterConfig &cfg)
 		}
 		st_.bold = cfg.emphasized;
 	}
+	if (prof_.model == PrinterModel::EpsonLQ500) {
+		st_.include_8th_bit = true;
+		st_.lq500_lq_mode = (cfg.font_mode != 0);
+		// DIP switch interpretation for LQ-500
+		if (cfg.dip_switches) {
+			int sw1 = cfg.dip_switches & 0xFF;
+			int sw2 = (cfg.dip_switches >> 8) & 0xFF;
+			// SW1-1..1-3: international charset
+			st_.charset = sw1 & 0x07;
+			// SW1-4..1-5: font selection
+			int font_sel = (sw1 >> 3) & 0x03;
+			switch (font_sel) {
+			case 0: st_.lq500_lq_mode = false; st_.lq500_family = 0; break; // Draft
+			case 1: st_.lq500_lq_mode = true; st_.lq500_family = 0; break;  // Roman
+			case 2: st_.lq500_lq_mode = true; st_.lq500_family = 1; break;  // SansSerif
+			default: break;
+			}
+			// SW1-6: condensed
+			if (sw1 & 0x20) st_.condensed = true;
+			// SW1-7: char table
+			st_.lq500_char_table = (sw1 & 0x40) ? 1 : 0;
+			// SW2-1: page length
+			if (sw2 & 0x01)
+				st_.page_height_in = 12.0f;
+			// SW2-3: skip-over-perforation
+			if (sw2 & 0x04)
+				st_.perf_skip_lines = 6;
+			// SW2-4: auto LF
+			st_.auto_lf = !!(sw2 & 0x08);
+			// SW2-7..2-8: pitch
+			int pitch_sel = (sw2 >> 6) & 0x03;
+			switch (pitch_sel) {
+			case 0: st_.pitch_cpi = 10; break;
+			case 1: st_.pitch_cpi = 12; break;
+			case 2: st_.pitch_cpi = 15; break;
+			default: st_.pitch_cpi = 10; break;
+			}
+		}
+	}
 	if (prof_.model == PrinterModel::CanonBJ10e) {
 		st_.include_8th_bit = true;
 		st_.expanded = cfg.double_width;
@@ -685,6 +759,12 @@ PrinterConfig default_config_for(PrinterModel model)
 		cfg.pitch_cpi = 12;
 		cfg.font_mode = 2;  // ROM 0x39DB initializes AA70/AA71 to NLQ
 		cfg.page_length_lines = 66;
+	} else if (model == PrinterModel::EpsonLQ500) {
+		cfg.pitch_cpi = 10;
+		cfg.charset = 0;       // USA
+		cfg.auto_lf = false;
+		cfg.page_length_lines = 66;  // 11" at 6 lpi
+		cfg.font_mode = 0;    // Draft
 	} else if (model == PrinterModel::CanonBJ10e) {
 		cfg.auto_lf = false;
 		cfg.page_length_lines = 66;
@@ -765,8 +845,21 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 			if (strcasecmp(val, "11") == 0) cfg.page_length_lines = 66;
 			else if (strcasecmp(val, "12") == 0) cfg.page_length_lines = 72;
 			else cfg.page_length_lines = atoi(val);
+		} else if (strcasecmp(key, "quality") == 0 &&
+		           model == PrinterModel::EpsonLQ500) {
+			if (strcasecmp(val, "draft") == 0) cfg.font_mode = 0;
+			else if (strcasecmp(val, "lq") == 0) cfg.font_mode = 1;
+		} else if (strcasecmp(key, "pitch") == 0 &&
+		           model == PrinterModel::EpsonLQ500) {
+			if (strcasecmp(val, "pica") == 0 || strcasecmp(val, "10") == 0)
+				cfg.pitch_cpi = 10;
+			else if (strcasecmp(val, "elite") == 0 || strcasecmp(val, "12") == 0)
+				cfg.pitch_cpi = 12;
+			else if (strcasecmp(val, "condensed") == 0 || strcasecmp(val, "15") == 0)
+				cfg.pitch_cpi = 15;
 		} else if (strcasecmp(key, "dip_switches") == 0) {
-			if (model == PrinterModel::CanonBJ10e)
+			if (model == PrinterModel::CanonBJ10e ||
+			    model == PrinterModel::EpsonLQ500)
 				cfg.dip_switches = atoi(val);
 		} else if (strcasecmp(key, "control_mode") == 0) {
 			if (model == PrinterModel::CanonBJ10e) {

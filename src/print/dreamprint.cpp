@@ -20,7 +20,7 @@ static void usage(const char *argv0)
 		"Models:\n"
 		"  X24E      IBM Proprinter X24E (24-pin)\n"
 		"  XIII      IBM Proprinter III (9-pin)\n"
-		"  LQ        Epson LQ (24-pin)\n"
+		"  LQ500     Epson LQ-500 (24-pin)\n"
 		"  FX        Epson FX (9-pin)\n"
 		"  BJ10e     Canon BJ-10e (inkjet)\n"
 		"  JET       HP LaserJet/DeskJet\n"
@@ -32,7 +32,8 @@ static PrinterModel parse_model(const char *name)
 {
 	if (!strcasecmp(name, "X24E"))   return PrinterModel::IbmX24E;
 	if (!strcasecmp(name, "XIII"))   return PrinterModel::IbmXIII;
-	if (!strcasecmp(name, "LQ"))     return PrinterModel::EpsonLQ;
+	if (!strcasecmp(name, "LQ500"))  return PrinterModel::EpsonLQ500;
+	if (!strcasecmp(name, "LQ"))     return PrinterModel::EpsonLQ500;
 	if (!strcasecmp(name, "FX"))     return PrinterModel::EpsonFX;
 	if (!strcasecmp(name, "BJ10e"))  return PrinterModel::CanonBJ10e;
 	if (!strcasecmp(name, "JET"))    return PrinterModel::HpJet;

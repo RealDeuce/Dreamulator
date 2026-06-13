@@ -39,6 +39,8 @@ protected:
 		EscAmpNull, EscAmpFirst, EscAmpLast, EscAmpFxData,
 		EscAmpLqFirst, EscAmpLqLast, EscAmpLqD0, EscAmpLqD1, EscAmpLqD2, EscAmpLqData,
 		EscColon1, EscColon2, EscColon3,
+		GfxData24a, GfxData24b, GfxData24c,
+		EscDollarLo, EscBackslashLo,
 	};
 	Expect expect_ = Expect::Normal;
 	uint8_t esc_cmd_ = 0;
@@ -46,6 +48,9 @@ protected:
 	int gfx_remain_ = 0;
 	float gfx_dot_w_ = 0;
 	bool gfx_9pin_ = false;
+	bool gfx_24pin_ = false;
+	uint8_t gfx_24_a_ = 0;
+	uint8_t gfx_24_b_ = 0;
 	bool gfx_adjacent_suppression_ = false;
 	uint8_t gfx_hi_byte_ = 0;
 	uint16_t gfx_prev_col_ = 0;
@@ -234,6 +239,7 @@ void EscpPrinter::reset_graphics_reassignments()
 bool EscpPrinter::set_graphics_mode(uint8_t mode)
 {
 	gfx_9pin_ = false;
+	gfx_24pin_ = false;
 	gfx_adjacent_suppression_ = false;
 	switch (mode) {                                         // FX Table 11-1 plus ROM mode 7
 	case 0: gfx_dot_w_ = 1.0f / 60.0f;  break;
@@ -244,6 +250,12 @@ bool EscpPrinter::set_graphics_mode(uint8_t mode)
 	case 5: gfx_dot_w_ = 1.0f / 72.0f;  break;
 	case 6: gfx_dot_w_ = 1.0f / 90.0f;  break;
 	case 7: gfx_dot_w_ = 1.0f / 144.0f; break;
+	// 24-pin modes (LQ-500 ESC * m)
+	case 32: gfx_dot_w_ = 1.0f / 60.0f;  gfx_24pin_ = true; break;
+	case 33: gfx_dot_w_ = 1.0f / 120.0f; gfx_24pin_ = true; break;
+	case 38: gfx_dot_w_ = 1.0f / 90.0f;  gfx_24pin_ = true; break;
+	case 39: gfx_dot_w_ = 1.0f / 180.0f; gfx_24pin_ = true; break;
+	case 40: gfx_dot_w_ = 1.0f / 360.0f; gfx_24pin_ = true; break;
 	default:
 		gfx_dot_w_ = 1.0f / 60.0f;
 		return false;
@@ -278,11 +290,34 @@ bool EscpPrinter::graphics_dot_allowed(int pin) const
 	return ((xdot + pin) & 1) == 0;
 }
 
+// Expand 8-pin graphics data to 24-pin format per LQ-500 ROM table at $0C95.
+// Each input bit maps to two adjacent pins with gaps between groups.
+static void expand_8pin_to_24pin(uint8_t data, uint8_t &top, uint8_t &mid, uint8_t &bot)
+{
+	top = 0; mid = 0; bot = 0;
+	if (data & 0x80) top |= 0xC0;  // bit 7 -> pins 1-2
+	if (data & 0x40) top |= 0x18;  // bit 6 -> pins 4-5
+	if (data & 0x20) top |= 0x03;  // bit 5 -> pins 7-8
+	if (data & 0x10) mid |= 0x60;  // bit 4 -> pins 10-11
+	if (data & 0x08) mid |= 0x0C;  // bit 3 -> pins 13-14
+	if (data & 0x04) { mid |= 0x01; bot |= 0x80; } // bit 2 -> pins 16-17
+	if (data & 0x02) bot |= 0x30;  // bit 1 -> pins 19-20
+	if (data & 0x01) bot |= 0x06;  // bit 0 -> pins 22-23
+}
+
 // Render one 8-pin graphics column at the current position.
 // Bit 7 = pin 1 (top), bit 0 = pin 8 (bottom).
 // Pin vertical spacing is 1/72".  (FX manual, Ch.10)
 void EscpPrinter::emit_gfx_col(uint8_t data)
 {
+	// LQ-500: expand 8-pin to 24-pin and use 24-pin rendering
+	if (prof_.model == PrinterModel::EpsonLQ500) {
+		uint8_t top, mid, bot;
+		expand_8pin_to_24pin(data, top, mid, bot);
+		emit_gfx_col_24pin(top, mid, bot, 1.0f / 180.0f);
+		return;
+	}
+
 	if (prof_.model != PrinterModel::CanonBJ10e)
 		flush_pending_line();
 
@@ -702,6 +737,51 @@ void EscpPrinter::parse_byte(uint8_t b)
 			break;
 		case 'C': set_form_length_lines(b); break;          // p285
 		case 'R': select_international_set(b); break;       // p284
+		case 'x':                                           // LQ-500: Draft/LQ
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_lq_mode = (b & 1);
+			break;
+		case 'k':                                           // LQ-500: typestyle
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_family = (b <= 1) ? b : 0;
+			break;
+		case 't':                                           // LQ-500: char table
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_char_table = (b <= 2) ? b : 0;
+			break;
+		case 'w':                                           // LQ-500: double-high
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.double_high = (b & 1);
+			break;
+		case 'q':                                           // LQ-500: char style
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_char_style = (b <= 3) ? b : 0;
+			break;
+		case 'a':                                           // LQ-500: justify
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_justify = (b & 3);
+			break;
+		case ' ':                                           // LQ-500: interchar space
+			if (prof_.model == PrinterModel::EpsonLQ500)
+				st_.lq500_interchar = b;
+			break;
+		case 0x19:                                          // LQ-500: CSF control
+			break;                                          // sink parameter
+		case '$':                                           // LQ-500: absolute H pos
+			if (prof_.model == PrinterModel::EpsonLQ500) {
+				int units = (int)esc_p1_ | ((int)b << 8);
+				st_.x_pos = st_.left_margin_in +
+				            static_cast<float>(units) / 60.0f;
+			}
+			break;
+		case '\\':                                          // LQ-500: relative H pos
+			if (prof_.model == PrinterModel::EpsonLQ500) {
+				int16_t units = static_cast<int16_t>(
+				    (uint16_t)esc_p1_ | ((uint16_t)b << 8));
+				float denom = st_.lq500_lq_mode ? 180.0f : 120.0f;
+				st_.x_pos += static_cast<float>(units) / denom;
+			}
+			break;
 		default: break;
 		}
 		return;
@@ -741,9 +821,14 @@ void EscpPrinter::parse_byte(uint8_t b)
 		gfx_prev_col_ = 0;
 		if (gfx_9pin_)
 			gfx_remain_ *= 2;
-		expect_ = (gfx_remain_ > 0)
-			? (gfx_9pin_ ? Expect::GfxData9Hi : Expect::GfxData)
-			: Expect::Normal;
+		if (gfx_remain_ <= 0)
+			expect_ = Expect::Normal;
+		else if (gfx_24pin_)
+			expect_ = Expect::GfxData24a;
+		else if (gfx_9pin_)
+			expect_ = Expect::GfxData9Hi;
+		else
+			expect_ = Expect::GfxData;
 		return;
 
 	// --- Graphics: 8-pin data ---
@@ -759,6 +844,37 @@ void EscpPrinter::parse_byte(uint8_t b)
 			if (--gfx_remain_ <= 0)
 				expect_ = Expect::Normal;
 		}
+		return;
+
+	// --- Graphics: 24-pin data (3 bytes per column: top, mid, bot) ---
+	case Expect::GfxData24a:
+		gfx_24_a_ = b;
+		expect_ = Expect::GfxData24b;
+		return;
+	case Expect::GfxData24b:
+		gfx_24_b_ = b;
+		expect_ = Expect::GfxData24c;
+		return;
+	case Expect::GfxData24c:
+		emit_gfx_col_24pin(gfx_24_a_, gfx_24_b_, b, 1.0f / 180.0f);
+		if (--gfx_remain_ > 0)
+			expect_ = Expect::GfxData24a;
+		else
+			expect_ = Expect::Normal;
+		return;
+
+	// --- ESC $ n1 n2: absolute horizontal position ---
+	case Expect::EscDollarLo:
+		esc_p1_ = b;
+		expect_ = Expect::Bin1;
+		esc_cmd_ = '$';
+		return;
+
+	// --- ESC \ n1 n2: relative horizontal position ---
+	case Expect::EscBackslashLo:
+		esc_p1_ = b;
+		expect_ = Expect::Bin1;
+		esc_cmd_ = '\\';
 		return;
 
 	// --- Graphics: 9-pin first byte (pins 1-8), second byte follows ---
@@ -885,27 +1001,52 @@ void EscpPrinter::parse_byte(uint8_t b)
 
 	case Expect::EscAmpLqLast:
 		user_last_ = b;
-		expect_ = Expect::EscAmpLqD0;
+		user_cur_ = user_first_;
+		expect_ = (user_last_ >= user_first_) ? Expect::EscAmpLqD0 : Expect::Normal;
 		return;
 
 	case Expect::EscAmpLqD0:
+		st_.user_char_24_d0[user_cur_] = b;
 		expect_ = Expect::EscAmpLqD1;
 		return;
 
 	case Expect::EscAmpLqD1:
-		user_lq_data_remain_ = 0;
-		if (user_last_ >= user_first_)
-			user_lq_data_remain_ = (int)(user_last_ - user_first_ + 1) * (int)b * 3;
+		st_.user_char_24_d1[user_cur_] = b;
+		user_lq_data_remain_ = (int)b * 3;
+		user_data_pos_ = 0;
+		std::memset(st_.user_char_24_glyph[user_cur_], 0,
+		            sizeof(st_.user_char_24_glyph[user_cur_]));
 		expect_ = Expect::EscAmpLqD2;
 		return;
 
 	case Expect::EscAmpLqD2:
-		expect_ = user_lq_data_remain_ > 0 ? Expect::EscAmpLqData : Expect::Normal;
+		st_.user_char_24_d2[user_cur_] = b;
+		if (user_lq_data_remain_ > 0)
+			expect_ = Expect::EscAmpLqData;
+		else {
+			st_.user_char_24_defined[user_cur_] = true;
+			if (user_cur_ >= user_last_)
+				expect_ = Expect::Normal;
+			else {
+				user_cur_++;
+				expect_ = Expect::EscAmpLqD0;
+			}
+		}
 		return;
 
 	case Expect::EscAmpLqData:
-		if (--user_lq_data_remain_ <= 0)
-			expect_ = Expect::Normal;
+		if (user_data_pos_ < (int)sizeof(st_.user_char_24_glyph[0]))
+			st_.user_char_24_glyph[user_cur_][user_data_pos_] = b;
+		user_data_pos_++;
+		if (--user_lq_data_remain_ <= 0) {
+			st_.user_char_24_defined[user_cur_] = true;
+			if (user_cur_ >= user_last_)
+				expect_ = Expect::Normal;
+			else {
+				user_cur_++;
+				expect_ = Expect::EscAmpLqD0;
+			}
+		}
 		return;
 
 	case Expect::EscColon1:
@@ -1001,10 +1142,22 @@ void EscpPrinter::parse_byte(uint8_t b)
 		case '=': st_.msb_mode = -1; break;
 		case '>': st_.msb_mode = 1; break;
 
+		// 2-byte binary parameter commands (LQ-500)
+		case '$':
+			esc_cmd_ = b;
+			expect_ = Expect::EscDollarLo;
+			break;
+		case '\\':
+			esc_cmd_ = b;
+			expect_ = Expect::EscBackslashLo;
+			break;
+
 		// 1-byte binary parameter commands
 		case '-': case '_': case 'S': case 'W': case 'U': case 'A': case '3':
 		case 'J': case 'l': case 'Q': case 'N': case 'p': case 'C':
 		case 'R': case 'I': case '/': case 'i': case 'j': case 's':
+		case 'x': case 'k': case 't': case 'w': case 'q': case 'a':
+		case ' ': case 0x19:
 			esc_cmd_ = b;
 			expect_ = Expect::Bin1;
 			break;
@@ -1096,6 +1249,7 @@ void EscpPrinter::parse_byte(uint8_t b)
 	}
 
 	switch (b) {
+	case 0x07: return;                                 // BEL: beeper, no output
 	case 0x0D: carriage_return(); return;              // p285
 	case 0x0A: line_feed(); return;                    // p285
 	case 0x0B:                                         // p285: VT
@@ -1997,7 +2151,7 @@ std::unique_ptr<PrinterSim> create_printer(PrinterModel model, PdfWriter &pdf)
 	switch (model) {
 	case PrinterModel::EpsonFX:
 		return std::make_unique<EscpPrinter>(model, pdf);
-	case PrinterModel::EpsonLQ:
+	case PrinterModel::EpsonLQ500:
 		return std::make_unique<Escp2Printer>(model, pdf);
 	case PrinterModel::CanonBJ10e:
 		return std::make_unique<CanonBj10ePrinter>(model, pdf);

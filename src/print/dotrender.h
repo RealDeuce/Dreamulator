@@ -68,6 +68,17 @@ public:
 
 std::unique_ptr<DotRenderer> create_dot_renderer(const PrinterProfile &prof);
 
+struct Lq500GlyphInfo {
+	const uint8_t *data;  // 3 bytes per column
+	uint8_t start;        // left padding columns
+	uint8_t width;        // glyph body columns
+	uint8_t advance;      // right padding columns
+};
+Lq500GlyphInfo get_lq500_glyph(int font_index, uint8_t ch);
+int lq500_font_index(uint8_t family, bool lq, bool elite,
+                     bool proportional, bool condensed);
+const uint8_t *get_lq500_sec_metrics(int base, uint8_t ch);
+
 const uint16_t *get_9pin_glyph(uint8_t ch);
 const uint8_t *get_24pin_glyph(uint8_t ch);
 uint8_t get_fx80_prefix(uint8_t ch, bool italic);
