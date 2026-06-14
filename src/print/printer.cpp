@@ -398,10 +398,12 @@ void PrinterSim::emit_char(uint8_t ch)
 		// font variant for the current pitch/quality/condensed state,
 		// and start + width + advance at the font's DPI gives the
 		// correct cell width.
+		// VV:A6 bit 4 = VV:23 bit 4 (super/subscript active only).
+		// SI/DC2 condensed does not select a different font.
 		bool script = st_.superscript || st_.subscript;
 		int idx = lq500_font_index(st_.lq500_family, st_.lq500_lq_mode,
 		                            st_.pitch_cpi == 12, st_.proportional,
-		                            st_.condensed || script);
+		                            script);
 		auto info = get_lq500_glyph(idx, render_ch);
 		int total = info.start + info.width + info.advance;
 		if (total > 0) {

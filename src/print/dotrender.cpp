@@ -432,8 +432,13 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 // Returns the (possibly reallocated) data pointer and updated width.
 static void lq500_apply_effects(const PrinterState &st,
                                  const uint8_t *src, int &w, int &sc,
-                                 std::vector<uint8_t> &buf)
+                                 std::vector<uint8_t> &buf,
+                                 const uint8_t *&dh_second_slice,
+                                 const uint8_t *&dh_third_slice,
+                                 uint8_t ch)
 {
+	dh_second_slice = nullptr;
+	dh_third_slice = nullptr;
 	// Effect #2: Condensed-Draft — merge adjacent column pairs, halve
 	// metrics. Fires only in Draft mode when condensed is active and
 	// proportional/15cpi are not.
@@ -441,7 +446,7 @@ static void lq500_apply_effects(const PrinterState &st,
 	    && !st.proportional && st.pitch_cpi != 15;
 	if (condensed_draft && w > 1) {
 		int nw = (w + 1) / 2;
-		buf.assign((size_t)nw * 3, 0);
+		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
 		uint8_t prev[3] = {};
 		for (int c = 0; c < nw; c++) {
 			int s0 = c * 2;
@@ -453,10 +458,11 @@ static void lq500_apply_effects(const PrinterState &st,
 					merged |= src[(size_t)s1 * 3 + (size_t)b];
 				// Adjacent-dot restriction against previous output
 				uint8_t restricted = (uint8_t)(merged & ~prev[b]);
-				buf[(size_t)c * 3 + (size_t)b] = restricted;
+				tmp[(size_t)c * 3 + (size_t)b] = restricted;
 				prev[b] = restricted;
 			}
 		}
+		buf = std::move(tmp);
 		w = nw;
 		sc /= 2;
 		src = buf.data();
@@ -465,28 +471,49 @@ static void lq500_apply_effects(const PrinterState &st,
 	// Effect #3: Emphasized — OR each column one position to the right
 	if (st.bold && w > 0) {
 		int nw = w + 1;
-		buf.assign((size_t)nw * 3, 0);
-		std::memcpy(buf.data(), src, (size_t)w * 3);
+		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+		std::memcpy(tmp.data(), src, (size_t)w * 3);
 		for (int c = 0; c < w; c++) {
-			buf[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
-			buf[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
-			buf[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
+			tmp[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
+			tmp[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
+			tmp[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
 		}
+		buf = std::move(tmp);
 		w = nw;
 		src = buf.data();
 	}
 
-	// Effect #5: Double-wide — duplicate each column.
-	// For LQ interleaved data: ORing with blank neighbor = duplication.
+	// Effect #5: Double-wide ($4830) — three firmware paths:
+	// Half-res ($4861, VV:29.7 set): literal column duplication,
+	//   each source column → two consecutive dest columns.
+	// Normal LQ ($48BB, VV:28.2 clear): ORs adjacent source columns
+	//   (no-op for interleaved blanks), writes with blank skip.
+	// Super/subscript ($4879, VV:28.2 set): duplication with
+	//   adjacent-dot restriction.
 	if ((st.expanded || st.expanded_line) && w > 0) {
 		int nw = w * 2;
 		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
-		for (int c = 0; c < w; c++) {
-			// Copy each source column to two destination columns
-			for (int b = 0; b < 3; b++) {
-				uint8_t v = src[(size_t)c * 3 + (size_t)b];
-				tmp[(size_t)(c * 2) * 3 + (size_t)b] = v;
-				tmp[(size_t)(c * 2 + 1) * 3 + (size_t)b] = v;
+		if (!st.lq500_lq_mode) {
+			// Half-res path: literal column duplication
+			for (int c = 0; c < w; c++) {
+				int dc = c * 2;
+				for (int b = 0; b < 3; b++) {
+					uint8_t v = src[(size_t)c * 3 + (size_t)b];
+					tmp[(size_t)dc * 3 + (size_t)b] = v;
+					tmp[(size_t)(dc + 1) * 3 + (size_t)b] = v;
+				}
+			}
+		} else {
+			// Normal LQ path: OR with right neighbor, blank skip
+			for (int c = 0; c < w; c++) {
+				int dc = c * 2;
+				for (int b = 0; b < 3; b++) {
+					uint8_t v = src[(size_t)c * 3 + (size_t)b];
+					if (c > 0 && c < w - 1)
+						v |= src[(size_t)(c + 1) * 3 + (size_t)b];
+					tmp[(size_t)dc * 3 + (size_t)b] = v;
+					// dc+1 stays zero (blank column)
+				}
 			}
 		}
 		buf = std::move(tmp);
@@ -495,28 +522,58 @@ static void lq500_apply_effects(const PrinterState &st,
 		src = buf.data();
 	}
 
-	// Effect #6: Italic shear — rightward shear across 5 columns.
-	// Bottom pins land leftmost, top pins land rightmost.
+	// Effect #6: Italic shear ($4ACE) — two paths:
+	// Normal: 4-pin nibbles across 5 destination columns.
+	// Double-wide ($4B3E): 2-bit pairs across 11 destination columns.
 	if (st.italic && w > 0) {
-		int nw = w + 5;
+		bool dw = st.expanded || st.expanded_line;
+		int spread = dw ? 11 : 5;
+		int nw = w + spread;
 		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
 		for (int c = 0; c < w; c++) {
 			uint8_t b0 = src[(size_t)c * 3 + 0]; // top pins 1-8
 			uint8_t b1 = src[(size_t)c * 3 + 1]; // mid pins 9-16
 			uint8_t b2 = src[(size_t)c * 3 + 2]; // bot pins 17-24
-			// After bit reversal: renderer 0xF0 = ROM low nibble
-			// (bottom 4 pins of group), 0x0F = ROM high nibble (top 4).
-			// Firmware routes ROM low nibble to earlier column.
-			// byte 2 (bottom) → dest cols c+0, c+1
-			tmp[(size_t)(c + 0) * 3 + 2] |= (uint8_t)(b2 & 0xF0);
-			tmp[(size_t)(c + 1) * 3 + 2] |= (uint8_t)(b2 & 0x0F);
-			// byte 1 (middle) → dest cols c+2, c+3
-			tmp[(size_t)(c + 2) * 3 + 1] |= (uint8_t)(b1 & 0xF0);
-			tmp[(size_t)(c + 3) * 3 + 1] |= (uint8_t)(b1 & 0x0F);
-			// byte 0 (top) → dest cols c+4, c+5
-			tmp[(size_t)(c + 4) * 3 + 0] |= (uint8_t)(b0 & 0xF0);
-			if (c + 5 < nw)
-				tmp[(size_t)(c + 5) * 3 + 0] |= (uint8_t)(b0 & 0x0F);
+			if (dw) {
+				// Double-wide: each byte split into four 2-bit pairs,
+				// each ORed into a separate column at DE, DE+3, DE+6, DE+9.
+				// Dest offset starts at +8 columns (EA += 24).
+				// After bit reversal: bit pairs map to 2-pin groups.
+				// byte 2 (bottom) → dest cols c+0..c+3
+				tmp[(size_t)(c+0)*3+2] |= (uint8_t)(b2 & 0xC0);
+				tmp[(size_t)(c+1)*3+2] |= (uint8_t)(b2 & 0x30);
+				tmp[(size_t)(c+2)*3+2] |= (uint8_t)(b2 & 0x0C);
+				tmp[(size_t)(c+3)*3+2] |= (uint8_t)(b2 & 0x03);
+				// byte 1 (middle) → dest cols c+4..c+7
+				tmp[(size_t)(c+4)*3+1] |= (uint8_t)(b1 & 0xC0);
+				tmp[(size_t)(c+5)*3+1] |= (uint8_t)(b1 & 0x30);
+				tmp[(size_t)(c+6)*3+1] |= (uint8_t)(b1 & 0x0C);
+				if (c+7 < nw)
+					tmp[(size_t)(c+7)*3+1] |= (uint8_t)(b1 & 0x03);
+				// byte 0 (top) → dest cols c+8..c+11
+				if (c+8 < nw)
+					tmp[(size_t)(c+8)*3+0] |= (uint8_t)(b0 & 0xC0);
+				if (c+9 < nw)
+					tmp[(size_t)(c+9)*3+0] |= (uint8_t)(b0 & 0x30);
+				if (c+10 < nw)
+					tmp[(size_t)(c+10)*3+0] |= (uint8_t)(b0 & 0x0C);
+				if (c+11 < nw)
+					tmp[(size_t)(c+11)*3+0] |= (uint8_t)(b0 & 0x03);
+			} else {
+				// Normal: 4-pin nibbles, 5-column spread.
+				// After bit reversal: 0xF0 = ROM low nibble (bottom 4),
+				// 0x0F = ROM high nibble (top 4).
+				// byte 2 (bottom) → dest cols c+0, c+1
+				tmp[(size_t)(c+0)*3+2] |= (uint8_t)(b2 & 0xF0);
+				tmp[(size_t)(c+1)*3+2] |= (uint8_t)(b2 & 0x0F);
+				// byte 1 (middle) → dest cols c+2, c+3
+				tmp[(size_t)(c+2)*3+1] |= (uint8_t)(b1 & 0xF0);
+				tmp[(size_t)(c+3)*3+1] |= (uint8_t)(b1 & 0x0F);
+				// byte 0 (top) → dest cols c+4, c+5
+				tmp[(size_t)(c+4)*3+0] |= (uint8_t)(b0 & 0xF0);
+				if (c+5 < nw)
+					tmp[(size_t)(c+5)*3+0] |= (uint8_t)(b0 & 0x0F);
+			}
 		}
 		buf = std::move(tmp);
 		w = nw;
@@ -524,97 +581,222 @@ static void lq500_apply_effects(const PrinterState &st,
 	}
 
 	// Effects #7/#8/#9: Outline+Shadow / Outline / Shadow
+	// Character-range gate ($1AF3): VV:28 bit 6 (= VV:23 bit 6) is
+	// set by the classifier at $4163 for $B0+/$F0+ characters and
+	// cleared by font reconfig at $14CC. Outline/shadow fire only
+	// for $20-$AF and user-defined characters.
+	// Firmware helpers used by all three effects:
+	// $457E (smear): 3-column horizontal OR thickening, width += 2
+	// $45F8: shift pin data downward by N, OR into dest at col offset
+	// $45B1: shift pin data upward by N, OR into dest at col offset
+	// $463F: XOR source into dest with pin 1/24 masking
 	uint8_t char_style = st.lq500_char_style;
-	if (char_style && w > 0) {
-		bool outline = (char_style & 1) != 0;
-		bool shadow  = (char_style & 2) != 0;
+	bool extended_char = (ch >= 0xB0)
+	    && !(st.use_user_chars && st.user_char_24_defined[ch]);
+	if (char_style && w > 0 && !extended_char) {
+		bool outline = (char_style & 1) != 0;  // VV:2A bit 6
+		bool shadow  = (char_style & 2) != 0;  // VV:2A bit 5
+
+		// Shift 3-byte column downward (toward pin 24) by n pins.
+		// In our bit-reversed layout: pin 1 = bit 0, pin 24 = bit 23.
+		// Downward = left shift. Carry-stick at pin 24 per $45F8.
+		auto shift_down = [](const uint8_t *in, uint8_t *out, int n) {
+			uint32_t val = (uint32_t)in[0] | ((uint32_t)in[1] << 8)
+			             | ((uint32_t)in[2] << 16);
+			uint32_t shifted = val << n;
+			if (shifted & ~0xFFFFFFu) shifted |= (1u << 23);
+			out[0] = (uint8_t)(shifted);
+			out[1] = (uint8_t)(shifted >> 8);
+			out[2] = (uint8_t)(shifted >> 16);
+		};
+		// Shift upward (toward pin 1) by n pins. Mirror of $45F8.
+		auto shift_up = [](const uint8_t *in, uint8_t *out, int n) {
+			uint32_t val = (uint32_t)in[0] | ((uint32_t)in[1] << 8)
+			             | ((uint32_t)in[2] << 16);
+			uint32_t shifted = val >> n;
+			out[0] = (uint8_t)(shifted);
+			out[1] = (uint8_t)(shifted >> 8);
+			out[2] = (uint8_t)(shifted >> 16);
+		};
+
+		// Step 1 (all effects): $457E smear — 3-column OR thickening
+		int sw = w + 2;
+		std::vector<uint8_t> smeared((size_t)sw * 3, 0);
+		for (int c = 0; c < w; c++)
+			for (int b = 0; b < 3; b++) {
+				uint8_t v = src[(size_t)c * 3 + (size_t)b];
+				smeared[(size_t)c * 3 + (size_t)b] |= v;
+				smeared[(size_t)(c+1) * 3 + (size_t)b] |= v;
+				smeared[(size_t)(c+2) * 3 + (size_t)b] |= v;
+			}
 
 		if (outline && shadow) {
-			// Effect #7: outline+shadow ($44C4) — copy + shift-left-1-col
-			// + shift-right-1-col + shift-right-1-col (horizontal shifts)
-			int nw = w + 2;
-			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
-			// Original at position +1
-			for (int c = 0; c < w; c++)
+			// Effect #7 ($44C4): outline+shadow combined
+			// smear (+2) + $4664(B=5) (+10) = w + 12
+			int nw = w + 12;
+			std::vector<uint8_t> result((size_t)nw * 3, 0);
+			// Double-smear: smear the smeared buffer into result
+			for (int c = 0; c < sw; c++)
+				for (int b = 0; b < 3; b++) {
+					uint8_t v = smeared[(size_t)c * 3 + (size_t)b];
+					result[(size_t)c * 3 + (size_t)b] |= v;
+					if (c + 1 < nw) result[(size_t)(c+1)*3+(size_t)b] |= v;
+					if (c + 2 < nw) result[(size_t)(c+2)*3+(size_t)b] |= v;
+				}
+			// Outline shifts at +1 column: shift-left 1 + shift-right 1
+			for (int c = 0; c < sw; c++) {
+				uint8_t sh[3];
+				shift_up(&smeared[(size_t)c*3], sh, 1);
 				for (int b = 0; b < 3; b++)
-					tmp[(size_t)(c+1)*3+(size_t)b] = src[(size_t)c*3+(size_t)b];
-			// OR shift-left (original at +0)
-			for (int c = 0; c < w; c++)
+					result[(size_t)(c+1)*3+(size_t)b] |= sh[b];
+				shift_down(&smeared[(size_t)c*3], sh, 1);
 				for (int b = 0; b < 3; b++)
-					tmp[(size_t)c*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
-			// OR shift-right (original at +2)
-			for (int c = 0; c < w; c++)
-				for (int b = 0; b < 3; b++)
-					tmp[(size_t)(c+2)*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
-			buf = std::move(tmp);
+					result[(size_t)(c+1)*3+(size_t)b] |= sh[b];
+			}
+			// Shadow shifts from smeared data
+			for (int c = 0; c < sw; c++) {
+				uint8_t sh[3];
+				// +3 cols, down 1
+				shift_down(&smeared[(size_t)c*3], sh, 1);
+				if (c + 3 < nw)
+					for (int b = 0; b < 3; b++)
+						result[(size_t)(c+3)*3+(size_t)b] |= sh[b];
+				// +5 cols, down 2
+				shift_down(&smeared[(size_t)c*3], sh, 2);
+				if (c + 5 < nw)
+					for (int b = 0; b < 3; b++)
+						result[(size_t)(c+5)*3+(size_t)b] |= sh[b];
+			}
+			// XOR at +1 column (VV:D1=0: mask pin 1 and pin 24)
+			for (int c = 0; c < sw; c++) {
+				uint8_t x0 = (uint8_t)(smeared[(size_t)c*3+0] & 0xFE);
+				uint8_t x1 = smeared[(size_t)c*3+1];
+				uint8_t x2 = (uint8_t)(smeared[(size_t)c*3+2] & 0x7F);
+				result[(size_t)(c+1)*3+0] ^= x0;
+				result[(size_t)(c+1)*3+1] ^= x1;
+				result[(size_t)(c+1)*3+2] ^= x2;
+			}
+			buf = std::move(result);
 			w = nw;
 		} else if (outline) {
-			// Effect #8: outline ($43DD) — shift-left-1-col +
-			// shift-right-1-col, then XOR/mask to hollow interior.
-			int nw = w + 1;
-			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
-			// Shift-left: OR original at col c-1
-			for (int c = 0; c < w; c++)
+			// Effect #8 ($43DD): outline
+			// smear (+2) + $4664(B=1) (+2) = w + 4
+			int nw = w + 4;
+			std::vector<uint8_t> result((size_t)nw * 3, 0);
+			// Double-smear into result
+			for (int c = 0; c < sw; c++)
+				for (int b = 0; b < 3; b++) {
+					uint8_t v = smeared[(size_t)c * 3 + (size_t)b];
+					result[(size_t)c * 3 + (size_t)b] |= v;
+					if (c + 1 < nw) result[(size_t)(c+1)*3+(size_t)b] |= v;
+					if (c + 2 < nw) result[(size_t)(c+2)*3+(size_t)b] |= v;
+				}
+			// At +1 column: shift-left 1 (up) + shift-right 1 (down)
+			for (int c = 0; c < sw; c++) {
+				uint8_t sh[3];
+				shift_up(&smeared[(size_t)c*3], sh, 1);
 				for (int b = 0; b < 3; b++)
-					tmp[(size_t)c*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
-			// Shift-right: OR original at col c+1
-			for (int c = 0; c < w; c++)
+					result[(size_t)(c+1)*3+(size_t)b] |= sh[b];
+				shift_down(&smeared[(size_t)c*3], sh, 1);
 				for (int b = 0; b < 3; b++)
-					tmp[(size_t)(c+1)*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
-			// XOR/mask: hollow interior by removing dots present
-			// in both the expanded and original data
-			for (int c = 0; c < nw; c++) {
-				uint8_t orig0 = (c < w) ? src[(size_t)c*3+0] : 0;
-				uint8_t orig1 = (c < w) ? src[(size_t)c*3+1] : 0;
-				uint8_t orig2 = (c < w) ? src[(size_t)c*3+2] : 0;
-				tmp[(size_t)c*3+0] ^= orig0;
-				tmp[(size_t)c*3+1] ^= orig1;
-				tmp[(size_t)c*3+2] ^= orig2;
+					result[(size_t)(c+1)*3+(size_t)b] |= sh[b];
 			}
-			buf = std::move(tmp);
+			// XOR at +1 column (VV:D1=0: mask pin 1 and pin 24)
+			for (int c = 0; c < sw; c++) {
+				uint8_t x0 = (uint8_t)(smeared[(size_t)c*3+0] & 0xFE);
+				uint8_t x1 = smeared[(size_t)c*3+1];
+				uint8_t x2 = (uint8_t)(smeared[(size_t)c*3+2] & 0x7F);
+				result[(size_t)(c+1)*3+0] ^= x0;
+				result[(size_t)(c+1)*3+1] ^= x1;
+				result[(size_t)(c+1)*3+2] ^= x2;
+			}
+			buf = std::move(result);
 			w = nw;
 		} else {
-			// Effect #9: shadow ($444A) — copy + shift right 1 column
-			int nw = w + 1;
-			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
-			std::memcpy(tmp.data(), src, (size_t)w * 3);
-			for (int c = 0; c < w; c++) {
-				tmp[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
-				tmp[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
-				tmp[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
+			// Effect #9 ($444A): shadow
+			// smear (+2) + $4664(B=5) (+10) = w + 12
+			int nw = w + 12;
+			// Start with copy of smeared data in a wider buffer
+			std::vector<uint8_t> result((size_t)nw * 3, 0);
+			std::memcpy(result.data(), smeared.data(), (size_t)sw * 3);
+			// Three shift-down-and-OR stages from smeared data
+			for (int c = 0; c < sw; c++) {
+				uint8_t sh[3];
+				// +1 col, down 1
+				shift_down(&smeared[(size_t)c*3], sh, 1);
+				for (int b = 0; b < 3; b++)
+					result[(size_t)(c+1)*3+(size_t)b] |= sh[b];
+				// +3 cols, down 1
+				shift_down(&smeared[(size_t)c*3], sh, 1);
+				if (c + 3 < nw)
+					for (int b = 0; b < 3; b++)
+						result[(size_t)(c+3)*3+(size_t)b] |= sh[b];
+				// +5 cols, down 2
+				shift_down(&smeared[(size_t)c*3], sh, 2);
+				if (c + 5 < nw)
+					for (int b = 0; b < 3; b++)
+						result[(size_t)(c+5)*3+(size_t)b] |= sh[b];
 			}
-			buf = std::move(tmp);
+			// XOR at +0 (VV:D1=1: include pin 1, exclude pin 24)
+			for (int c = 0; c < sw; c++) {
+				result[(size_t)c*3+0] ^= smeared[(size_t)c*3+0];
+				result[(size_t)c*3+1] ^= smeared[(size_t)c*3+1];
+				result[(size_t)c*3+2] ^=
+				    (uint8_t)(smeared[(size_t)c*3+2] & 0x7F);
+			}
+			buf = std::move(result);
 			w = nw;
 		}
 		src = buf.data();
 	}
-	// Effect #10: Double-height — nibble expansion via $49AD.
-	// Each 4-bit nibble → 8 bits (each dot becomes 2-dot pair).
-	// VV:89 selects which 12-pin slice fills the 24-pin output.
-	// Default slice 000 = top 10 pins (source byte 0 high nibble →
-	// dest byte 0, byte 0 low nibble → dest byte 1, byte 1 top 2
-	// bits → dest byte 2).
+	// Effect #10: Double-height ($4900) — nibble expansion via $49AD.
+	// $49AD expands high nibble: bit7→$C0, bit6→$30, bit5→$0C, bit4→$03.
+	// Firmware renders 3 slices at different paper positions:
+	//   Iter 0: slice $01 (src pins 1-10 → 20 output pins), advance 20
+	//   Iter 1: slice $02 (src pins 11-22 → 24 output pins), advance 6
+	//   Iter 2: slice $04 (src pins 23-24 → 4 output pins at pins 19-22)
+	// We produce all 3 slices; the caller renders at offsets 0, 20, 26.
 	if (st.double_high && w > 0) {
-		std::vector<uint8_t> tmp((size_t)w * 3, 0);
+		auto expand = [](uint8_t a) -> uint8_t {
+			uint8_t r = 0;
+			if (a & 0x80) r |= 0xC0;
+			if (a & 0x40) r |= 0x30;
+			if (a & 0x20) r |= 0x0C;
+			if (a & 0x10) r |= 0x03;
+			return r;
+		};
+		auto revbyte = [](uint8_t v) -> uint8_t {
+			v = (uint8_t)(((v & 0xF0) >> 4) | ((v & 0x0F) << 4));
+			v = (uint8_t)(((v & 0xCC) >> 2) | ((v & 0x33) << 2));
+			v = (uint8_t)(((v & 0xAA) >> 1) | ((v & 0x55) << 1));
+			return v;
+		};
+		// Save source before reallocating buf (src may alias buf)
+		std::vector<uint8_t> dh_src(src, src + (size_t)w * 3);
+		// 3 slices × w columns × 3 bytes
+		buf.assign((size_t)w * 3 * 3, 0);
+		uint8_t *s0out = buf.data();
+		uint8_t *s1out = buf.data() + (size_t)w * 3;
+		uint8_t *s2out = buf.data() + (size_t)w * 3 * 2;
 		for (int c = 0; c < w; c++) {
-			uint8_t b0 = src[(size_t)c * 3 + 0];
-			uint8_t b1 = src[(size_t)c * 3 + 1];
-			// $49AD: bit7→$C0, bit6→$30, bit5→$0C, bit4→$03
-			auto expand = [](uint8_t nib) -> uint8_t {
-				uint8_t r = 0;
-				if (nib & 0x80) r |= 0xC0;
-				if (nib & 0x40) r |= 0x30;
-				if (nib & 0x20) r |= 0x0C;
-				if (nib & 0x10) r |= 0x03;
-				return r;
-			};
-			// Slice 000: source pins 1-10 (top)
-			tmp[(size_t)c * 3 + 0] = expand(b0);           // high nibble of byte 0
-			tmp[(size_t)c * 3 + 1] = expand((uint8_t)(b0 << 4)); // low nibble of byte 0
-			tmp[(size_t)c * 3 + 2] = expand(b1);           // high nibble of byte 1
+			uint8_t b0 = revbyte(dh_src[(size_t)c * 3 + 0]);
+			uint8_t b1 = revbyte(dh_src[(size_t)c * 3 + 1]);
+			uint8_t b2 = revbyte(dh_src[(size_t)c * 3 + 2]);
+			// Slice $01: source pins 1-10 → output pins 1-20
+			s0out[(size_t)c*3+0] = revbyte(expand(b0));
+			s0out[(size_t)c*3+1] = revbyte(expand((uint8_t)(b0 << 4)));
+			s0out[(size_t)c*3+2] = revbyte(expand((uint8_t)(b1 & 0xC0)));
+			// Slice $02: source pins 11-22 → output pins 1-24
+			s1out[(size_t)c*3+0] = revbyte(expand((uint8_t)((b1 << 2) & 0xF0)));
+			uint8_t m1 = (uint8_t)(((b1 << 5) & 0xC0) | ((b2 >> 2) & 0x30));
+			s1out[(size_t)c*3+1] = revbyte(expand(m1));
+			s1out[(size_t)c*3+2] = revbyte(expand((uint8_t)((b2 << 2) & 0xF0)));
+			// Slice $04: source pins 23-24 → output pins 19-22
+			s2out[(size_t)c*3+2] = revbyte(expand((uint8_t)((b2 << 5) & 0x60)));
 		}
-		buf = std::move(tmp);
-		src = buf.data();
+		src = s0out;
+		dh_second_slice = s1out;
+		dh_third_slice = s2out;
 	}
 	(void)sc;
 }
@@ -631,22 +813,27 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 		const uint8_t *data = nullptr;
 		int w = 0;
 		int sc = 0;
+		int cell_total = 0;  // start + width + advance for underline
 
 		// User-defined 24-pin characters take priority
 		if (st.use_user_chars && st.user_char_24_defined[ch]) {
 			data = st.user_char_24_glyph[ch];
 			w = st.user_char_24_d1[ch];
 			sc = st.user_char_24_d0[ch];
+			cell_total = sc + w;
 		} else {
-			// VV:A6 bit 4 is set for both condensed and super/subscript
+			// VV:A6 bit 4 = VV:23 bit 4 (super/subscript active).
+			// SI/DC2 condensed (VV:22 bit 5) does NOT set this bit —
+			// condensed operates purely through effect #2 ($49C5).
 			bool script = st.superscript || st.subscript;
 			int idx = lq500_font_index(st.lq500_family, st.lq500_lq_mode,
 			                            st.pitch_cpi == 12, st.proportional,
-			                            st.condensed || script);
+			                            script);
 			auto info = get_lq500_glyph(idx, ch);
 			data = info.data;
 			w = info.width;
 			sc = info.start;
+			cell_total = info.start + info.width + info.advance;
 		}
 		if (!data || w <= 0) {
 			if (!st.underline) return;
@@ -655,27 +842,56 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 
 		// Apply print effect pipeline (column data transformations)
 		std::vector<uint8_t> effect_buf;
+		const uint8_t *dh_slice1 = nullptr;
+		const uint8_t *dh_slice2 = nullptr;
 		if (st.bold || st.italic || st.lq500_char_style || st.condensed
 		    || st.double_high || st.expanded || st.expanded_line) {
-			lq500_apply_effects(st, data, w, sc, effect_buf);
+			lq500_apply_effects(st, data, w, sc, effect_buf,
+			                    dh_slice1, dh_slice2, ch);
 			if (!effect_buf.empty())
 				data = effect_buf.data();
 		}
 
-		// Double-strike: the character is rendered into the image buffer
-		// twice (OR of identical data = no-op), then the buffer is fired
-		// via the normal two-pass carriage mechanism. For the emulator,
-		// double-strike produces identical output to normal rendering.
-		{
-			// Pass 1: render at natural column positions
+		// Render glyph (top slice, or full glyph if not double-height)
+		if (w > 0) {
 			render_glyph_24pin(*this, page, st, prof, data, w, sc, ndw);
-
-			// Pass 2: render at +1 dot offset (two-pass interleave)
 			if (st.lq500_lq_mode) {
 				PrinterState st2 = st;
 				st2.x_pos += ndw;
 				render_glyph_24pin(*this, page, st2, prof,
 				                   data, w, sc, ndw);
+			}
+		}
+
+		// Double-height: firmware renders 3 slices via VV:89 tiling:
+		//   Iter 0: slice $01 at position 0, advance 20/180"
+		//   Iter 1: slice $02 at position 20/180", advance 6/180"
+		//   Iter 2: slice $04 at position 26/180"
+		// data already points to slice 0 (top).
+		if (dh_slice1 && w > 0) {
+			float dot_h = 1.0f / 180.0f;
+			// Slice 1: pins 11-22 → 24 output pins at Y+20/180"
+			PrinterState st1 = st;
+			st1.y_pos += 20.0f * dot_h;
+			render_glyph_24pin(*this, page, st1, prof,
+			                   dh_slice1, w, sc, ndw);
+			if (st.lq500_lq_mode) {
+				st1.x_pos += ndw;
+				render_glyph_24pin(*this, page, st1, prof,
+				                   dh_slice1, w, sc, ndw);
+			}
+		}
+		if (dh_slice2 && w > 0) {
+			float dot_h = 1.0f / 180.0f;
+			// Slice 2: pins 23-24 → pins 19-22 at Y+26/180"
+			PrinterState st2dh = st;
+			st2dh.y_pos += 26.0f * dot_h;
+			render_glyph_24pin(*this, page, st2dh, prof,
+			                   dh_slice2, w, sc, ndw);
+			if (st.lq500_lq_mode) {
+				st2dh.x_pos += ndw;
+				render_glyph_24pin(*this, page, st2dh, prof,
+				                   dh_slice2, w, sc, ndw);
 			}
 		}
 
@@ -691,19 +907,30 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 			int ul_pin = st.double_high ? 21 : 23;
 			float ul_y = st.y_pos + (float)ul_pin * dot_h_in
 			             - 24.0f * dot_h_in;
-			float cw_in = 1.0f / st.pitch_cpi;
-			if (st.expanded || st.expanded_line) cw_in *= 2.0f;
-			if (st.condensed) cw_in *= 0.6f;
-			int total_cols = std::max(1, (int)(cw_in / ndw));
+			// Underline spans the full character cell from font metrics.
+			// Effects that change metrics (expanded, condensed) are
+			// already reflected in cell_total via the effect pipeline,
+			// but expanded doubles metrics at the ESC/P level too.
+			int ul_total = cell_total;
+			if (st.expanded || st.expanded_line) ul_total *= 2;
+			int total_cols = std::max(1, ul_total);
 			float ink = prof.dot_intensity;
-			for (int i = 0; i < total_cols; i += 2) {
-				stamp_pin(page, st.x_pos + (float)i * ndw,
-				          ul_y, prof.render_dpi, prof.dot_radius_mm,
-				          prof.jitter_mm, ink, prof.dot_sharpness);
-			}
 			if (st.lq500_lq_mode) {
+				// LQ: alternating dots, two-pass fills gaps
+				for (int i = 0; i < total_cols; i += 2) {
+					stamp_pin(page, st.x_pos + (float)i * ndw,
+					          ul_y, prof.render_dpi, prof.dot_radius_mm,
+					          prof.jitter_mm, ink, prof.dot_sharpness);
+				}
 				for (int i = 0; i < total_cols; i += 2) {
 					stamp_pin(page, st.x_pos + ndw + (float)i * ndw,
+					          ul_y, prof.render_dpi, prof.dot_radius_mm,
+					          prof.jitter_mm, ink, prof.dot_sharpness);
+				}
+			} else {
+				// Draft: every column at native pitch
+				for (int i = 0; i < total_cols; i++) {
+					stamp_pin(page, st.x_pos + (float)i * ndw,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
 					          prof.jitter_mm, ink, prof.dot_sharpness);
 				}

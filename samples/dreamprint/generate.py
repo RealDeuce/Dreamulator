@@ -452,80 +452,86 @@ def build_lq500() -> bytes:
     out = bytearray()
     out += lq500_reset()
     out += b"Epson LQ-500 text attribute matrix\r\n\r\n"
+
+    # Fonts: Draft Sans Serif falls back to Draft Roman (no Draft SS
+    # fonts in CG directory) — identical output, omitted.
     fonts = [
         ("draft-roman", "draft", "roman"),
         ("lq-roman", "lq", "roman"),
         ("lq-sans-serif", "lq", "sans-serif"),
     ]
-    pitches = [
-        ("10cpi", "10cpi"),
-        ("12cpi", "12cpi"),
-        ("15cpi", "15cpi"),
-        ("condensed", "condensed"),
-        ("proportional", "proportional"),
-    ]
-    scripts = [("normal", ""), ("super", "superscript"), ("sub", "subscript")]
-    for font_name, quality, family in fonts:
-        for pitch_name, pitch_mode in pitches:
-            for script, script_name in scripts:
-                for expanded in (False, True):
-                    for underline in (False, True):
-                        for italic in (False, True):
-                            for double_strike in (False, True):
-                                for bold in (False, True):
-                                    if pitch_mode == "proportional" and (
-                                        script != "normal" or double_strike
-                                    ):
-                                        continue
-                                    parts = [font_name]
-                                    parts.append(pitch_name)
-                                    if bold:
-                                        parts.append("bold")
-                                    if double_strike:
-                                        parts.append("double-strike")
-                                    if italic:
-                                        parts.append("italic")
-                                    if underline:
-                                        parts.append("underline")
-                                    if expanded:
-                                        parts.append("expanded")
-                                    if script_name:
-                                        parts.append(script_name)
 
-                                    out += lq500_quality("lq") + lq500_typestyle("roman")
-                                    out += lq500_plain()
-                                    out += label(parts) + b"\r\n"
-                                    out += lq500_quality(quality) + lq500_typestyle(family)
-                                    out += lq500_text_style(
-                                        bold, double_strike, italic, underline, expanded
-                                    )
-                                    out += lq500_script(script)
-                                    out += lq500_pitch(pitch_mode)
-                                    out += sample_text() + b"\r\n"
-                                    out += lq500_quality("lq") + lq500_typestyle("roman")
-                                    out += lq500_plain()
-                                    out += b"\r\n"
-    # Additional effects not covered by ESC ! matrix: double-height,
-    # outline, shadow, outline+shadow.
-    extras = [
-        ("double-height", ESC + b"w\x01", ESC + b"w\x00"),
-        ("outline", ESC + b"q\x01", ESC + b"q\x00"),
-        ("shadow", ESC + b"q\x02", ESC + b"q\x00"),
-        ("outline+shadow", ESC + b"q\x03", ESC + b"q\x00"),
-    ]
-    for effect_name, effect_on, effect_off in extras:
-        for quality, family in [("lq", "roman"), ("lq", "sans-serif")]:
-            font_name = f"{quality}-{family}"
-            out += lq500_quality("lq") + lq500_typestyle("roman")
-            out += lq500_plain()
-            out += label([font_name, effect_name]) + b"\r\n"
-            out += lq500_quality(quality) + lq500_typestyle(family)
-            out += effect_on
-            out += sample_text() + b"\r\n"
-            out += effect_off
-            out += lq500_quality("lq") + lq500_typestyle("roman")
-            out += lq500_plain()
-            out += b"\r\n"
+    # Pitches: all 5 for Draft; LQ omits "condensed" (SI/DC2 condensed
+    # has no visible effect in LQ — effect #2 only fires under the
+    # condensed-Draft composite flag at $14C6).
+    all_pitches = ["10cpi", "12cpi", "15cpi", "condensed", "proportional"]
+    lq_pitches = ["10cpi", "12cpi", "15cpi", "proportional"]
+
+    scripts = [("normal", ""), ("super", "superscript"), ("sub", "subscript")]
+
+    # Outline/shadow: 4 mutually exclusive states (VV:2A bits 5+6)
+    os_states = [(0, ""), (1, "outline"), (2, "shadow"),
+                 (3, "outline+shadow")]
+
+    for font_name, quality, family in fonts:
+        pitches = all_pitches if quality == "draft" else lq_pitches
+        for pitch_mode in pitches:
+            for script, script_name in scripts:
+                for dh in (False, True):
+                    for os_val, os_name in os_states:
+                        for expanded in (False, True):
+                            for underline in (False, True):
+                                for italic in (False, True):
+                                    for double_strike in (False, True):
+                                        for bold in (False, True):
+                                            parts = [font_name, pitch_mode]
+                                            if bold:
+                                                parts.append("bold")
+                                            if double_strike:
+                                                parts.append("dbl-strike")
+                                            if italic:
+                                                parts.append("italic")
+                                            if underline:
+                                                parts.append("underline")
+                                            if expanded:
+                                                parts.append("expanded")
+                                            if script_name:
+                                                parts.append(script_name)
+                                            if os_name:
+                                                parts.append(os_name)
+                                            if dh:
+                                                parts.append("dbl-height")
+
+                                            setup = (
+                                                lq500_quality(quality)
+                                                + lq500_typestyle(family)
+                                                + lq500_pitch(pitch_mode)
+                                                + lq500_script(script)
+                                                + lq500_text_style(
+                                                    bold, double_strike,
+                                                    italic, underline,
+                                                    expanded)
+                                            )
+                                            if os_val:
+                                                setup += (ESC + b"q"
+                                                          + bytes([os_val]))
+                                            if dh:
+                                                setup += ESC + b"w\x01"
+
+                                            out += (lq500_quality("lq")
+                                                    + lq500_typestyle("roman")
+                                                    + lq500_plain())
+                                            out += label(parts) + b"\r\n"
+                                            out += setup
+                                            out += sample_text() + b"\r\n"
+                                            if os_val:
+                                                out += ESC + b"q\x00"
+                                            if dh:
+                                                out += ESC + b"w\x00"
+                                            out += (lq500_quality("lq")
+                                                    + lq500_typestyle("roman")
+                                                    + lq500_plain()
+                                                    + b"\r\n")
 
     out += lq500_plain()
     out += FF

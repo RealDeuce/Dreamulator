@@ -5897,30 +5897,81 @@ int lq500_font_index(uint8_t family, bool lq, bool elite,
 	uint8_t fam = family;
 	if (fam > 1) fam = 0;  // Unknown family -> Roman
 
-	// Exact match
-	for (const auto &e : dir)
-		if (e.family == fam && e.config == config)
-			return e.index;
+	// Firmware fallback chain per $154E documentation:
+	auto search = [&](uint8_t f, uint8_t c) -> int {
+		for (const auto &e : dir)
+			if (e.family == f && e.config == c)
+				return e.index;
+		return -1;
+	};
 
-	// Fallback: drop condensed
-	uint8_t cfg2 = static_cast<uint8_t>(config & ~0x10u);
-	for (const auto &e : dir)
-		if (e.family == fam && e.config == cfg2)
-			return e.index;
+	// Pitch alternatives: cycle through pitch options
+	auto try_pitches = [&](uint8_t f, uint8_t base) -> int {
+		// base has LQ/italic/condensed bits, pitch in bits 1:0
+		uint8_t pitch = static_cast<uint8_t>(base & 0x03);
+		uint8_t rest = static_cast<uint8_t>(base & ~0x03u);
+		// Try current pitch first
+		int r = search(f, base);
+		if (r >= 0) return r;
+		// Then try alternatives in firmware order
+		static const uint8_t alt[][2] = {
+			{0x01, 0x02},  // from 10cpi: elite, proportional
+			{0x00, 0x02},  // from elite: 10cpi, proportional
+			{0x00, 0x01},  // from proportional: 10cpi, elite
+			{0x01, 0x02},  // from elite+prop (15cpi): same as 10cpi
+		};
+		int idx = (pitch < 4) ? pitch : 0;
+		for (int i = 0; i < 2; i++) {
+			r = search(f, static_cast<uint8_t>(rest | alt[idx][i]));
+			if (r >= 0) return r;
+		}
+		return -1;
+	};
 
-	// Fallback: drop proportional
-	cfg2 = static_cast<uint8_t>(config & ~0x12u);
-	for (const auto &e : dir)
-		if (e.family == fam && e.config == cfg2)
-			return e.index;
+	auto full_scan = [&](uint8_t f, uint8_t cfg) -> int {
+		// Step 1: exact match
+		int r = search(f, cfg);
+		if (r >= 0) return r;
 
-	// Fallback: just LQ/draft for this family
-	cfg2 = lq ? static_cast<uint8_t>(0x04) : static_cast<uint8_t>(0x00);
-	for (const auto &e : dir)
-		if (e.family == fam && e.config == cfg2)
-			return e.index;
+		// Step 2 ($155A): drop italic (bit 6), retry.
+		// Does NOT change bit 4 (super/subscript font selection
+		// is unaffected by the italic fallback).
+		if (cfg & 0x40) {
+			uint8_t cfg2 = static_cast<uint8_t>(cfg & ~0x40u);
+			r = search(f, cfg2);
+			if (r >= 0) return r;
+		}
 
-	// Last resort: Roman Draft (font 0)
+		// Step 3 ($156A): try alternate pitches.
+		// Each pitch is tried with and without bit 4
+		// (super/subscript) at $15C1/$15ED.
+		uint8_t cfg_no_italic = static_cast<uint8_t>(cfg & ~0x40u);
+		uint8_t cfg_no4 = static_cast<uint8_t>(cfg_no_italic & ~0x10u);
+		r = try_pitches(f, cfg_no4);
+		if (r >= 0) return r;
+
+		uint8_t cfg_w4 = static_cast<uint8_t>(cfg_no_italic | 0x10);
+		r = try_pitches(f, cfg_w4);
+		if (r >= 0) return r;
+
+		return -1;
+	};
+
+	// Try requested family
+	int r = full_scan(fam, config);
+	if (r >= 0) return r;
+
+	// Step 4: try Roman family (0x00)
+	if (fam != 0x00) {
+		r = full_scan(0x00, config);
+		if (r >= 0) return r;
+	}
+
+	// Step 4b: try Block family (0xFF)
+	r = full_scan(0xFF, config);
+	if (r >= 0) return r;
+
+	// Last resort: Roman Draft 10cpi (font 0)
 	return 0;
 }
 
