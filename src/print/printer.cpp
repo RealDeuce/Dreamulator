@@ -369,7 +369,8 @@ void PrinterSim::emit_char(uint8_t ch)
 		    : intl_substitute_fx(render_ch, st_.charset);
 
 	float char_w_in = 1.0f / static_cast<float>(st_.pitch_cpi);
-	if (st_.condensed && st_.pitch_cpi <= 10)
+	if (st_.condensed && st_.pitch_cpi <= 10 &&
+	    prof_.model != PrinterModel::EpsonLQ500)
 		char_w_in = 1.0f / 17.16f;
 	if (prof_.model == PrinterModel::CanonBJ10e && st_.condensed && !st_.proportional)
 		char_w_in = 21.0f / 360.0f;
@@ -391,9 +392,16 @@ void PrinterSim::emit_char(uint8_t ch)
 			if (glyph.width > 0)
 				char_w_in = static_cast<float>(glyph.width) / 360.0f;
 		}
-	} else if (st_.proportional && prof_.model == PrinterModel::EpsonLQ500) {
+	} else if (prof_.model == PrinterModel::EpsonLQ500) {
+		// LQ-500 character width always comes from font glyph metrics.
+		// The font selection (via lq500_font_index) picks the correct
+		// font variant for the current pitch/quality/condensed state,
+		// and start + width + advance at the font's DPI gives the
+		// correct cell width.
+		bool script = st_.superscript || st_.subscript;
 		int idx = lq500_font_index(st_.lq500_family, st_.lq500_lq_mode,
-		                            st_.pitch_cpi == 12, true, st_.condensed);
+		                            st_.pitch_cpi == 12, st_.proportional,
+		                            st_.condensed || script);
 		auto info = get_lq500_glyph(idx, render_ch);
 		int total = info.start + info.width + info.advance;
 		if (total > 0) {

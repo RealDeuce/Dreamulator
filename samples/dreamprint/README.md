@@ -7,6 +7,7 @@ implemented by `dreamprint` for the supported printer models:
 - `fx80-text-attributes.bin` for `--model FX`
 - `bj10e-text-attributes.bin` for `--model BJ10e`
 - `imagewriter-ii-text-attributes.bin` for `--model WRITER`
+- `lq500-text-attributes.bin` for `--model LQ500`
 
 The ImageWriter II sample includes a separate six-line ribbon colour section for
 the non-black colours. Colour is intentionally not included as an axis in the
@@ -22,6 +23,8 @@ Implemented font and pitch modes covered by the samples:
   high-quality proportional; normal, superscript, and subscript
 - ImageWriter II: standard, draft, NLQ; 9 cpi, 10 cpi, 12 cpi, 13.4 cpi,
   15 cpi, 17 cpi, 144 dpi proportional, 160 dpi proportional
+- Epson LQ-500: draft Roman, LQ Roman, LQ Sans Serif; 10 cpi, 12 cpi,
+  15 cpi, condensed, proportional
 
 ImageWriter II labels are printed in NLQ for readability. Its draft and NLQ
 sections include only the text attributes those fonts support in the emulator.
@@ -41,6 +44,7 @@ Generate PDFs from the repository root:
 ./build/dreamprint --model FX samples/dreamprint/fx80-text-attributes.bin fx80-text-attributes.pdf
 ./build/dreamprint --model BJ10e samples/dreamprint/bj10e-text-attributes.bin bj10e-text-attributes.pdf
 ./build/dreamprint --model WRITER samples/dreamprint/imagewriter-ii-text-attributes.bin imagewriter-ii-text-attributes.pdf
+./build/dreamprint --model LQ500 samples/dreamprint/lq500-text-attributes.bin lq500-text-attributes.pdf
 ```
 
 Regenerate the input streams after editing the matrix definitions:

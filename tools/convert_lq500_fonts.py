@@ -55,18 +55,28 @@ def parse_font_tsv(path: Path):
             half_res = int(row.get("half_res", "0"))
             hex_data = row["glyph_data_hex"].strip()
 
-            # Parse hex columns (6 hex chars = 3 bytes per column)
+            # Parse hex columns.  Normal fonts: 6 hex chars = 3 bytes
+            # per column.  Super/subscript fonts (dim1=$10): 4 hex chars
+            # = 2 bytes per column, zero-padded to 3 bytes for the
+            # renderer (matching effect #1's 2→3 byte expansion).
             col_bytes = []
             if hex_data:
                 for chunk in hex_data.split():
-                    b0 = int(chunk[0:2], 16)
-                    b1 = int(chunk[2:4], 16)
-                    b2 = int(chunk[4:6], 16)
-                    # Bit-reverse each byte: ROM MSB=top pin within
-                    # each 8-pin group, renderer LSB=top pin.
-                    rb = [reverse_byte(b0),
-                          reverse_byte(b1),
-                          reverse_byte(b2)]
+                    if len(chunk) == 4:
+                        # 2-byte column (16 dots): expand to 3 bytes.
+                        # Default alignment: upper 16 pins [data, data, 0]
+                        b0 = int(chunk[0:2], 16)
+                        b1 = int(chunk[2:4], 16)
+                        rb = [reverse_byte(b0),
+                              reverse_byte(b1),
+                              0]
+                    else:
+                        b0 = int(chunk[0:2], 16)
+                        b1 = int(chunk[2:4], 16)
+                        b2 = int(chunk[4:6], 16)
+                        rb = [reverse_byte(b0),
+                              reverse_byte(b1),
+                              reverse_byte(b2)]
                     col_bytes.extend(rb)
                     # Half-res glyphs: firmware interleaves blank
                     # columns between stored columns to reconstruct

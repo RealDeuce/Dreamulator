@@ -384,11 +384,160 @@ def build_imagewriter() -> bytes:
     return bytes(out)
 
 
+def lq500_reset() -> bytes:
+    return ESC + b"@"
+
+
+def lq500_quality(mode: str) -> bytes:
+    return ESC + b"x" + (b"\x01" if mode == "lq" else b"\x00")
+
+
+def lq500_typestyle(family: str) -> bytes:
+    families = {"roman": 0, "sans-serif": 1}
+    return ESC + b"k" + bytes([families.get(family, 0)])
+
+
+def lq500_pitch(mode: str) -> bytes:
+    if mode == "12cpi":
+        return ESC + b"p\x00" + b"\x12" + ESC + b"M"
+    if mode == "15cpi":
+        return ESC + b"p\x00" + b"\x12" + ESC + b"g"
+    if mode == "condensed":
+        return ESC + b"p\x00" + ESC + b"P" + b"\x0f"
+    if mode == "proportional":
+        return ESC + b"p\x01"
+    return ESC + b"p\x00" + b"\x12" + ESC + b"P"
+
+
+def lq500_text_style(
+    bold: bool,
+    double_strike: bool,
+    italic: bool,
+    underline: bool,
+    expanded: bool,
+) -> bytes:
+    value = 0
+    if bold:
+        value |= 0x08
+    if double_strike:
+        value |= 0x10
+    if expanded:
+        value |= 0x20
+    if italic:
+        value |= 0x40
+    if underline:
+        value |= 0x80
+    return (
+        ESC + b"!" + bytes([value])
+    )
+
+
+def lq500_script(script: str) -> bytes:
+    if script == "super":
+        return ESC + b"S\x00"
+    if script == "sub":
+        return ESC + b"S\x01"
+    return ESC + b"T"
+
+
+def lq500_plain() -> bytes:
+    return (
+        lq500_text_style(False, False, False, False, False)
+        + lq500_pitch("10cpi")
+        + lq500_script("normal")
+    )
+
+
+def build_lq500() -> bytes:
+    out = bytearray()
+    out += lq500_reset()
+    out += b"Epson LQ-500 text attribute matrix\r\n\r\n"
+    fonts = [
+        ("draft-roman", "draft", "roman"),
+        ("lq-roman", "lq", "roman"),
+        ("lq-sans-serif", "lq", "sans-serif"),
+    ]
+    pitches = [
+        ("10cpi", "10cpi"),
+        ("12cpi", "12cpi"),
+        ("15cpi", "15cpi"),
+        ("condensed", "condensed"),
+        ("proportional", "proportional"),
+    ]
+    scripts = [("normal", ""), ("super", "superscript"), ("sub", "subscript")]
+    for font_name, quality, family in fonts:
+        for pitch_name, pitch_mode in pitches:
+            for script, script_name in scripts:
+                for expanded in (False, True):
+                    for underline in (False, True):
+                        for italic in (False, True):
+                            for double_strike in (False, True):
+                                for bold in (False, True):
+                                    if pitch_mode == "proportional" and (
+                                        script != "normal" or double_strike
+                                    ):
+                                        continue
+                                    parts = [font_name]
+                                    parts.append(pitch_name)
+                                    if bold:
+                                        parts.append("bold")
+                                    if double_strike:
+                                        parts.append("double-strike")
+                                    if italic:
+                                        parts.append("italic")
+                                    if underline:
+                                        parts.append("underline")
+                                    if expanded:
+                                        parts.append("expanded")
+                                    if script_name:
+                                        parts.append(script_name)
+
+                                    out += lq500_quality("lq") + lq500_typestyle("roman")
+                                    out += lq500_plain()
+                                    out += label(parts) + b"\r\n"
+                                    out += lq500_quality(quality) + lq500_typestyle(family)
+                                    out += lq500_text_style(
+                                        bold, double_strike, italic, underline, expanded
+                                    )
+                                    out += lq500_script(script)
+                                    out += lq500_pitch(pitch_mode)
+                                    out += sample_text() + b"\r\n"
+                                    out += lq500_quality("lq") + lq500_typestyle("roman")
+                                    out += lq500_plain()
+                                    out += b"\r\n"
+    # Additional effects not covered by ESC ! matrix: double-height,
+    # outline, shadow, outline+shadow.
+    extras = [
+        ("double-height", ESC + b"w\x01", ESC + b"w\x00"),
+        ("outline", ESC + b"q\x01", ESC + b"q\x00"),
+        ("shadow", ESC + b"q\x02", ESC + b"q\x00"),
+        ("outline+shadow", ESC + b"q\x03", ESC + b"q\x00"),
+    ]
+    for effect_name, effect_on, effect_off in extras:
+        for quality, family in [("lq", "roman"), ("lq", "sans-serif")]:
+            font_name = f"{quality}-{family}"
+            out += lq500_quality("lq") + lq500_typestyle("roman")
+            out += lq500_plain()
+            out += label([font_name, effect_name]) + b"\r\n"
+            out += lq500_quality(quality) + lq500_typestyle(family)
+            out += effect_on
+            out += sample_text() + b"\r\n"
+            out += effect_off
+            out += lq500_quality("lq") + lq500_typestyle("roman")
+            out += lq500_plain()
+            out += b"\r\n"
+
+    out += lq500_plain()
+    out += FF
+    return bytes(out)
+
+
 def main() -> None:
     samples = {
         "fx80-text-attributes.bin": build_fx80(),
         "bj10e-text-attributes.bin": build_bj10e(),
         "imagewriter-ii-text-attributes.bin": build_imagewriter(),
+        "lq500-text-attributes.bin": build_lq500(),
     }
     for name, data in samples.items():
         path = OUT_DIR / name

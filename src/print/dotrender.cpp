@@ -369,48 +369,24 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 
 	float y_scale = 1.0f;
 	float y_off = 0.0f;
-	if (st.double_high) { y_scale = 2.0f; }
-	if (st.superscript) { y_scale = 0.67f; y_off = 0.0f; }
-	if (st.subscript) { y_scale = 0.67f; y_off = dot_h_in * 8.0f; }
+	// LQ-500 double-height and super/subscript are handled as column
+	// transforms in lq500_apply_effects(), not as Y coordinate scaling.
+	if (prof.model != PrinterModel::EpsonLQ500) {
+		if (st.double_high) { y_scale = 2.0f; }
+		if (st.superscript) { y_scale = 0.67f; y_off = 0.0f; }
+		if (st.subscript) { y_scale = 0.67f; y_off = dot_h_in * 8.0f; }
+	}
 
 	float ink = prof.dot_intensity;
 	float sharp = prof.dot_sharpness;
-
-	// Outline mode: XOR with horizontally shifted copy to get edges only
-	bool outline = (st.lq500_char_style & 1) != 0;
-	// Shadow mode: duplicate with offset
-	bool shadow = (st.lq500_char_style & 2) != 0;
-	float shadow_x_off = shadow ? dot_w_in * 0.5f : 0.0f;
-	float shadow_y_off = shadow ? dot_h_in * 0.5f : 0.0f;
 
 	for (int col = 0; col < glyph_w; col++) {
 		uint32_t column = (uint32_t)glyph[col * 3] |
 		                  ((uint32_t)glyph[col * 3 + 1] << 8) |
 		                  ((uint32_t)glyph[col * 3 + 2] << 16);
 
-		uint32_t render_col = column;
-		if (outline) {
-			// Outline: keep only edge dots (where adjacent vertical
-			// neighbors differ). Simple approach: XOR with shifted self.
-			uint32_t above = column << 1;
-			uint32_t below = column >> 1;
-			uint32_t prev_col = 0;
-			uint32_t next_col = 0;
-			if (col > 0)
-				prev_col = (uint32_t)glyph[(col - 1) * 3] |
-				           ((uint32_t)glyph[(col - 1) * 3 + 1] << 8) |
-				           ((uint32_t)glyph[(col - 1) * 3 + 2] << 16);
-			if (col + 1 < glyph_w)
-				next_col = (uint32_t)glyph[(col + 1) * 3] |
-				           ((uint32_t)glyph[(col + 1) * 3 + 1] << 8) |
-				           ((uint32_t)glyph[(col + 1) * 3 + 2] << 16);
-			// Edge = any dot that has at least one empty neighbor
-			uint32_t filled = above & below & prev_col & next_col;
-			render_col = column & ~filled;
-		}
-
 		for (int pin = 0; pin < 24; pin++) {
-			if (!(render_col & (1U << pin))) continue;
+			if (!(column & (1U << pin))) continue;
 
 			float x = st.x_pos + x_off + (float)col * dot_w_in;
 			float y = st.y_pos + ((float)pin * dot_h_in * y_scale) + y_off
@@ -419,42 +395,228 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			dr.stamp_pin(page, x, y, prof.render_dpi,
 			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp);
 
-			if (st.bold) {
-				dr.stamp_pin(page, x + dot_w_in * 0.25f, y,
+			// Non-LQ500 bold: extra strike at half-pitch offset
+			if (st.bold && prof.model != PrinterModel::EpsonLQ500) {
+				dr.stamp_pin(page, x + dot_w_in * 0.5f, y,
 				             prof.render_dpi, prof.dot_radius_mm,
-				             prof.jitter_mm, ink * 0.8f, sharp);
-			}
-
-			// Shadow: additional strike at offset
-			if (shadow) {
-				dr.stamp_pin(page, x + shadow_x_off, y + shadow_y_off,
-				             prof.render_dpi, prof.dot_radius_mm,
-				             prof.jitter_mm, ink * 0.6f, sharp);
+				             prof.jitter_mm, ink, sharp);
 			}
 		}
 	}
 
-	if (st.underline) {
-		float ul_y = st.y_pos + dot_h_in * 1.5f;
-		int dots = (int)(cw_in / (1.0f / 360.0f));
-		float step = cw_in / (float)dots;
-		for (int i = 0; i < dots; i++) {
-			dr.stamp_pin(page, st.x_pos + (float)i * step, ul_y,
-			             prof.render_dpi, prof.dot_radius_mm,
-			             prof.jitter_mm, ink, sharp);
+	// LQ-500 underline/overline handled in ImpactDot24::render_char()
+	// so it fires for all characters including spaces.
+	if (prof.model != PrinterModel::EpsonLQ500) {
+		if (st.underline) {
+			float ul_y = st.y_pos + dot_h_in * 1.5f;
+			int dots = (int)(cw_in / dot_w_in);
+			for (int i = 0; i < dots; i++) {
+				dr.stamp_pin(page, st.x_pos + (float)i * dot_w_in, ul_y,
+				             prof.render_dpi, prof.dot_radius_mm,
+				             prof.jitter_mm, ink, sharp);
+			}
 		}
+		if (st.overline) {
+			float ol_y = st.y_pos - (24.0f * dot_h_in * y_scale) - dot_h_in;
+			int dots = (int)(cw_in / dot_w_in);
+			for (int i = 0; i < dots; i++) {
+				dr.stamp_pin(page, st.x_pos + (float)i * dot_w_in, ol_y,
+				             prof.render_dpi, prof.dot_radius_mm,
+				             prof.jitter_mm, ink, sharp);
+			}
+		}
+	}
+}
+
+// LQ-500 effect pipeline: transform column data matching firmware order.
+// Returns the (possibly reallocated) data pointer and updated width.
+static void lq500_apply_effects(const PrinterState &st,
+                                 const uint8_t *src, int &w, int &sc,
+                                 std::vector<uint8_t> &buf)
+{
+	// Effect #2: Condensed-Draft — merge adjacent column pairs, halve
+	// metrics. Fires only in Draft mode when condensed is active and
+	// proportional/15cpi are not.
+	bool condensed_draft = st.condensed && !st.lq500_lq_mode
+	    && !st.proportional && st.pitch_cpi != 15;
+	if (condensed_draft && w > 1) {
+		int nw = (w + 1) / 2;
+		buf.assign((size_t)nw * 3, 0);
+		uint8_t prev[3] = {};
+		for (int c = 0; c < nw; c++) {
+			int s0 = c * 2;
+			int s1 = s0 + 1;
+			for (int b = 0; b < 3; b++) {
+				// Merge column pair via OR
+				uint8_t merged = src[(size_t)s0 * 3 + (size_t)b];
+				if (s1 < w)
+					merged |= src[(size_t)s1 * 3 + (size_t)b];
+				// Adjacent-dot restriction against previous output
+				uint8_t restricted = (uint8_t)(merged & ~prev[b]);
+				buf[(size_t)c * 3 + (size_t)b] = restricted;
+				prev[b] = restricted;
+			}
+		}
+		w = nw;
+		sc /= 2;
+		src = buf.data();
 	}
 
-	if (st.overline) {
-		float ol_y = st.y_pos - 24.0f * dot_h_in * y_scale - dot_h_in;
-		int dots = (int)(cw_in / (1.0f / 360.0f));
-		float step = cw_in / (float)dots;
-		for (int i = 0; i < dots; i++) {
-			dr.stamp_pin(page, st.x_pos + (float)i * step, ol_y,
-			             prof.render_dpi, prof.dot_radius_mm,
-			             prof.jitter_mm, ink, sharp);
+	// Effect #3: Emphasized — OR each column one position to the right
+	if (st.bold && w > 0) {
+		int nw = w + 1;
+		buf.assign((size_t)nw * 3, 0);
+		std::memcpy(buf.data(), src, (size_t)w * 3);
+		for (int c = 0; c < w; c++) {
+			buf[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
+			buf[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
+			buf[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
 		}
+		w = nw;
+		src = buf.data();
 	}
+
+	// Effect #5: Double-wide — duplicate each column.
+	// For LQ interleaved data: ORing with blank neighbor = duplication.
+	if ((st.expanded || st.expanded_line) && w > 0) {
+		int nw = w * 2;
+		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+		for (int c = 0; c < w; c++) {
+			// Copy each source column to two destination columns
+			for (int b = 0; b < 3; b++) {
+				uint8_t v = src[(size_t)c * 3 + (size_t)b];
+				tmp[(size_t)(c * 2) * 3 + (size_t)b] = v;
+				tmp[(size_t)(c * 2 + 1) * 3 + (size_t)b] = v;
+			}
+		}
+		buf = std::move(tmp);
+		w = nw;
+		sc *= 2;
+		src = buf.data();
+	}
+
+	// Effect #6: Italic shear — rightward shear across 5 columns.
+	// Bottom pins land leftmost, top pins land rightmost.
+	if (st.italic && w > 0) {
+		int nw = w + 5;
+		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+		for (int c = 0; c < w; c++) {
+			uint8_t b0 = src[(size_t)c * 3 + 0]; // top pins 1-8
+			uint8_t b1 = src[(size_t)c * 3 + 1]; // mid pins 9-16
+			uint8_t b2 = src[(size_t)c * 3 + 2]; // bot pins 17-24
+			// After bit reversal: renderer 0xF0 = ROM low nibble
+			// (bottom 4 pins of group), 0x0F = ROM high nibble (top 4).
+			// Firmware routes ROM low nibble to earlier column.
+			// byte 2 (bottom) → dest cols c+0, c+1
+			tmp[(size_t)(c + 0) * 3 + 2] |= (uint8_t)(b2 & 0xF0);
+			tmp[(size_t)(c + 1) * 3 + 2] |= (uint8_t)(b2 & 0x0F);
+			// byte 1 (middle) → dest cols c+2, c+3
+			tmp[(size_t)(c + 2) * 3 + 1] |= (uint8_t)(b1 & 0xF0);
+			tmp[(size_t)(c + 3) * 3 + 1] |= (uint8_t)(b1 & 0x0F);
+			// byte 0 (top) → dest cols c+4, c+5
+			tmp[(size_t)(c + 4) * 3 + 0] |= (uint8_t)(b0 & 0xF0);
+			if (c + 5 < nw)
+				tmp[(size_t)(c + 5) * 3 + 0] |= (uint8_t)(b0 & 0x0F);
+		}
+		buf = std::move(tmp);
+		w = nw;
+		src = buf.data();
+	}
+
+	// Effects #7/#8/#9: Outline+Shadow / Outline / Shadow
+	uint8_t char_style = st.lq500_char_style;
+	if (char_style && w > 0) {
+		bool outline = (char_style & 1) != 0;
+		bool shadow  = (char_style & 2) != 0;
+
+		if (outline && shadow) {
+			// Effect #7: outline+shadow ($44C4) — copy + shift-left-1-col
+			// + shift-right-1-col + shift-right-1-col (horizontal shifts)
+			int nw = w + 2;
+			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+			// Original at position +1
+			for (int c = 0; c < w; c++)
+				for (int b = 0; b < 3; b++)
+					tmp[(size_t)(c+1)*3+(size_t)b] = src[(size_t)c*3+(size_t)b];
+			// OR shift-left (original at +0)
+			for (int c = 0; c < w; c++)
+				for (int b = 0; b < 3; b++)
+					tmp[(size_t)c*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
+			// OR shift-right (original at +2)
+			for (int c = 0; c < w; c++)
+				for (int b = 0; b < 3; b++)
+					tmp[(size_t)(c+2)*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
+			buf = std::move(tmp);
+			w = nw;
+		} else if (outline) {
+			// Effect #8: outline ($43DD) — shift-left-1-col +
+			// shift-right-1-col, then XOR/mask to hollow interior.
+			int nw = w + 1;
+			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+			// Shift-left: OR original at col c-1
+			for (int c = 0; c < w; c++)
+				for (int b = 0; b < 3; b++)
+					tmp[(size_t)c*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
+			// Shift-right: OR original at col c+1
+			for (int c = 0; c < w; c++)
+				for (int b = 0; b < 3; b++)
+					tmp[(size_t)(c+1)*3+(size_t)b] |= src[(size_t)c*3+(size_t)b];
+			// XOR/mask: hollow interior by removing dots present
+			// in both the expanded and original data
+			for (int c = 0; c < nw; c++) {
+				uint8_t orig0 = (c < w) ? src[(size_t)c*3+0] : 0;
+				uint8_t orig1 = (c < w) ? src[(size_t)c*3+1] : 0;
+				uint8_t orig2 = (c < w) ? src[(size_t)c*3+2] : 0;
+				tmp[(size_t)c*3+0] ^= orig0;
+				tmp[(size_t)c*3+1] ^= orig1;
+				tmp[(size_t)c*3+2] ^= orig2;
+			}
+			buf = std::move(tmp);
+			w = nw;
+		} else {
+			// Effect #9: shadow ($444A) — copy + shift right 1 column
+			int nw = w + 1;
+			std::vector<uint8_t> tmp((size_t)nw * 3, 0);
+			std::memcpy(tmp.data(), src, (size_t)w * 3);
+			for (int c = 0; c < w; c++) {
+				tmp[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
+				tmp[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
+				tmp[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
+			}
+			buf = std::move(tmp);
+			w = nw;
+		}
+		src = buf.data();
+	}
+	// Effect #10: Double-height — nibble expansion via $49AD.
+	// Each 4-bit nibble → 8 bits (each dot becomes 2-dot pair).
+	// VV:89 selects which 12-pin slice fills the 24-pin output.
+	// Default slice 000 = top 10 pins (source byte 0 high nibble →
+	// dest byte 0, byte 0 low nibble → dest byte 1, byte 1 top 2
+	// bits → dest byte 2).
+	if (st.double_high && w > 0) {
+		std::vector<uint8_t> tmp((size_t)w * 3, 0);
+		for (int c = 0; c < w; c++) {
+			uint8_t b0 = src[(size_t)c * 3 + 0];
+			uint8_t b1 = src[(size_t)c * 3 + 1];
+			// $49AD: bit7→$C0, bit6→$30, bit5→$0C, bit4→$03
+			auto expand = [](uint8_t nib) -> uint8_t {
+				uint8_t r = 0;
+				if (nib & 0x80) r |= 0xC0;
+				if (nib & 0x40) r |= 0x30;
+				if (nib & 0x20) r |= 0x0C;
+				if (nib & 0x10) r |= 0x03;
+				return r;
+			};
+			// Slice 000: source pins 1-10 (top)
+			tmp[(size_t)c * 3 + 0] = expand(b0);           // high nibble of byte 0
+			tmp[(size_t)c * 3 + 1] = expand((uint8_t)(b0 << 4)); // low nibble of byte 0
+			tmp[(size_t)c * 3 + 2] = expand(b1);           // high nibble of byte 1
+		}
+		buf = std::move(tmp);
+		src = buf.data();
+	}
+	(void)sc;
 }
 
 void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
@@ -476,26 +638,75 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 			w = st.user_char_24_d1[ch];
 			sc = st.user_char_24_d0[ch];
 		} else {
+			// VV:A6 bit 4 is set for both condensed and super/subscript
+			bool script = st.superscript || st.subscript;
 			int idx = lq500_font_index(st.lq500_family, st.lq500_lq_mode,
 			                            st.pitch_cpi == 12, st.proportional,
-			                            st.condensed);
+			                            st.condensed || script);
 			auto info = get_lq500_glyph(idx, ch);
 			data = info.data;
 			w = info.width;
 			sc = info.start;
 		}
-		if (data && w > 0) {
+		if (!data || w <= 0) {
+			if (!st.underline) return;
+			w = 0;
+		}
+
+		// Apply print effect pipeline (column data transformations)
+		std::vector<uint8_t> effect_buf;
+		if (st.bold || st.italic || st.lq500_char_style || st.condensed
+		    || st.double_high || st.expanded || st.expanded_line) {
+			lq500_apply_effects(st, data, w, sc, effect_buf);
+			if (!effect_buf.empty())
+				data = effect_buf.data();
+		}
+
+		// Double-strike: the character is rendered into the image buffer
+		// twice (OR of identical data = no-op), then the buffer is fired
+		// via the normal two-pass carriage mechanism. For the emulator,
+		// double-strike produces identical output to normal rendering.
+		{
 			// Pass 1: render at natural column positions
 			render_glyph_24pin(*this, page, st, prof, data, w, sc, ndw);
 
 			// Pass 2: render at +1 dot offset (two-pass interleave)
-			// LQ mode uses two carriage passes to fill gaps in the
-			// sparse 360 DPI column data, producing solid 180 DPI strokes.
 			if (st.lq500_lq_mode) {
 				PrinterState st2 = st;
 				st2.x_pos += ndw;
 				render_glyph_24pin(*this, page, st2, prof,
 				                   data, w, sc, ndw);
+			}
+		}
+
+		// Underline: rendered per-character after glyph write,
+		// matching firmware $1EBC-$1F22. Fires for all characters
+		// including spaces.
+		// Confirmed pin mapping: D7..D0 → H17..H24 for byte 2.
+		// VV:B2=$01 → D0 → H24 → pin 23 (0-indexed after reversal).
+		// VV:B2=$04 → D2 → H22 → pin 21 (double-height case).
+		// Alternating dots at native dot pitch, two-pass fills gaps.
+		if (st.underline) {
+			float dot_h_in = 1.0f / 180.0f;
+			int ul_pin = st.double_high ? 21 : 23;
+			float ul_y = st.y_pos + (float)ul_pin * dot_h_in
+			             - 24.0f * dot_h_in;
+			float cw_in = 1.0f / st.pitch_cpi;
+			if (st.expanded || st.expanded_line) cw_in *= 2.0f;
+			if (st.condensed) cw_in *= 0.6f;
+			int total_cols = std::max(1, (int)(cw_in / ndw));
+			float ink = prof.dot_intensity;
+			for (int i = 0; i < total_cols; i += 2) {
+				stamp_pin(page, st.x_pos + (float)i * ndw,
+				          ul_y, prof.render_dpi, prof.dot_radius_mm,
+				          prof.jitter_mm, ink, prof.dot_sharpness);
+			}
+			if (st.lq500_lq_mode) {
+				for (int i = 0; i < total_cols; i += 2) {
+					stamp_pin(page, st.x_pos + ndw + (float)i * ndw,
+					          ul_y, prof.render_dpi, prof.dot_radius_mm,
+					          prof.jitter_mm, ink, prof.dot_sharpness);
+				}
 			}
 		}
 		return;
