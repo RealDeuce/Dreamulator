@@ -461,11 +461,13 @@ def build_lq500() -> bytes:
         ("lq-sans-serif", "lq", "sans-serif"),
     ]
 
-    # Pitches: all 5 for Draft; LQ omits "condensed" (SI/DC2 condensed
-    # has no visible effect in LQ — effect #2 only fires under the
-    # condensed-Draft composite flag at $14C6).
-    all_pitches = ["10cpi", "12cpi", "15cpi", "condensed", "proportional"]
-    lq_pitches = ["10cpi", "12cpi", "15cpi", "proportional"]
+    # Pitches per quality.  Documented collapses applied:
+    # - LQ omits "condensed" (SI/DC2 condensed has no visible effect
+    #   in LQ — effect #2 only fires under condensed-Draft composite).
+    # - 15 cpi omitted everywhere (falls back to elite font = same as
+    #   12 cpi, and advance comes from font metrics → identical output).
+    draft_pitches = ["10cpi", "12cpi", "condensed", "proportional"]
+    lq_pitches = ["10cpi", "12cpi", "proportional"]
 
     scripts = [("normal", ""), ("super", "superscript"), ("sub", "subscript")]
 
@@ -473,10 +475,23 @@ def build_lq500() -> bytes:
     os_states = [(0, ""), (1, "outline"), (2, "shadow"),
                  (3, "outline+shadow")]
 
+    count = 0
     for font_name, quality, family in fonts:
-        pitches = all_pitches if quality == "draft" else lq_pitches
+        pitches = draft_pitches if quality == "draft" else lq_pitches
         for pitch_mode in pitches:
             for script, script_name in scripts:
+                # Super/subscript pitch collapse: all non-condensed
+                # pitches select the same CG font entry and secondary
+                # metrics provide fixed per-character advance, so
+                # 10cpi/12cpi/proportional with super/sub are identical.
+                # Keep only 10cpi as the representative.
+                if script != "normal" and pitch_mode not in ("10cpi", "condensed"):
+                    continue
+                # Condensed + super/sub only meaningful in Draft
+                # (condensed effect #2 doesn't fire in LQ)
+                if script != "normal" and pitch_mode == "condensed" and quality != "draft":
+                    continue
+
                 for dh in (False, True):
                     for os_val, os_name in os_states:
                         for expanded in (False, True):
@@ -532,6 +547,8 @@ def build_lq500() -> bytes:
                                                     + lq500_typestyle("roman")
                                                     + lq500_plain()
                                                     + b"\r\n")
+                                            count += 1
+    print(f"  LQ-500 unique renderings: {count}")
 
     out += lq500_plain()
     out += FF
