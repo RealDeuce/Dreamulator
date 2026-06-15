@@ -904,8 +904,14 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 		// Alternating dots at native dot pitch, two-pass fills gaps.
 		if (st.underline) {
 			float dot_h_in = 1.0f / 180.0f;
+			// Double-height underline: VV:B2=$04 (pin 21) rendered
+			// on the last slice at Y+26/180".  Normal: VV:B2=$01
+			// (pin 23) at the current head position.
 			int ul_pin = st.double_high ? 21 : 23;
-			float ul_y = st.y_pos + (float)ul_pin * dot_h_in
+			float ul_y_base = st.double_high
+			    ? st.y_pos + 26.0f * dot_h_in
+			    : st.y_pos;
+			float ul_y = ul_y_base + (float)ul_pin * dot_h_in
 			             - 24.0f * dot_h_in;
 			// Underline spans the full character cell from font metrics.
 			// Effects that change metrics (expanded, condensed) are
