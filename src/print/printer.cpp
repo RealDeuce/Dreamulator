@@ -24,6 +24,17 @@ const PrinterProfile &profile_for(PrinterModel m)
 	return profiles[static_cast<int>(m)];
 }
 
+static int lq500_script_cell_total(const PrinterState &st, uint8_t ch,
+                                   const Lq500GlyphInfo &info)
+{
+	if (st.lq500_lq_mode && (st.superscript || st.subscript)) {
+		const uint8_t *sec = get_lq500_sec_metrics(1, ch);
+		if (sec && (sec[1] != 0 || sec[2] != 0))
+			return info.start + sec[1] + sec[2];
+	}
+	return info.start + info.width + info.advance;
+}
+
 PrinterSim::PrinterSim(PrinterModel model, PdfWriter &pdf)
 	: prof_(profile_for(model)), pdf_(pdf)
 {
@@ -405,7 +416,7 @@ void PrinterSim::emit_char(uint8_t ch)
 		                            st_.pitch_cpi == 12, st_.proportional,
 		                            script);
 		auto info = get_lq500_glyph(idx, render_ch);
-		int total = info.start + info.width + info.advance;
+		int total = lq500_script_cell_total(st_, render_ch, info);
 		if (total > 0) {
 			float hres = st_.lq500_lq_mode
 			    ? static_cast<float>(prof_.lq_hres)

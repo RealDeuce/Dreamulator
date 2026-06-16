@@ -57,8 +57,9 @@ def parse_font_tsv(path: Path):
 
             # Parse hex columns.  Normal fonts: 6 hex chars = 3 bytes
             # per column.  Super/subscript fonts (dim1=$10): 4 hex chars
-            # = 2 bytes per column, zero-padded to 3 bytes for the
-            # renderer (matching effect #1's 2→3 byte expansion).
+            # = 2 bytes per column.  Store them upper-aligned; runtime
+            # rendering shifts the same two bytes down for subscript,
+            # matching firmware effect #1 at $4AA8.
             col_bytes = []
             if hex_data:
                 for chunk in hex_data.split():
@@ -292,31 +293,62 @@ def main():
         out.write("\tuint8_t fam = family;\n")
         out.write("\tif (fam > 1) fam = 0;  // Unknown family -> Roman\n\n")
 
-        out.write("\t// Exact match\n")
-        out.write("\tfor (const auto &e : dir)\n")
-        out.write("\t\tif (e.family == fam && e.config == config)\n")
-        out.write("\t\t\treturn e.index;\n\n")
+        out.write("\t// Firmware fallback chain per $154E documentation:\n")
+        out.write("\tauto search = [&](uint8_t f, uint8_t c) -> int {\n")
+        out.write("\t\tfor (const auto &e : dir)\n")
+        out.write("\t\t\tif (e.family == f && e.config == c)\n")
+        out.write("\t\t\t\treturn e.index;\n")
+        out.write("\t\treturn -1;\n")
+        out.write("\t};\n\n")
 
-        out.write("\t// Fallback: drop condensed\n")
-        out.write("\tuint8_t cfg2 = static_cast<uint8_t>(config & ~0x10u);\n")
-        out.write("\tfor (const auto &e : dir)\n")
-        out.write("\t\tif (e.family == fam && e.config == cfg2)\n")
-        out.write("\t\t\treturn e.index;\n\n")
+        out.write("\t// Pitch alternatives: cycle through pitch options\n")
+        out.write("\tauto try_pitches = [&](uint8_t f, uint8_t base) -> int {\n")
+        out.write("\t\tuint8_t pitch = static_cast<uint8_t>(base & 0x03);\n")
+        out.write("\t\tuint8_t rest = static_cast<uint8_t>(base & ~0x03u);\n")
+        out.write("\t\tint r = search(f, base);\n")
+        out.write("\t\tif (r >= 0) return r;\n")
+        out.write("\t\tstatic const uint8_t alt[][2] = {\n")
+        out.write("\t\t\t{0x01, 0x02},\n")
+        out.write("\t\t\t{0x00, 0x02},\n")
+        out.write("\t\t\t{0x00, 0x01},\n")
+        out.write("\t\t\t{0x01, 0x02},\n")
+        out.write("\t\t};\n")
+        out.write("\t\tint idx = (pitch < 4) ? pitch : 0;\n")
+        out.write("\t\tfor (int i = 0; i < 2; i++) {\n")
+        out.write("\t\t\tr = search(f, static_cast<uint8_t>(rest | alt[idx][i]));\n")
+        out.write("\t\t\tif (r >= 0) return r;\n")
+        out.write("\t\t}\n")
+        out.write("\t\treturn -1;\n")
+        out.write("\t};\n\n")
 
-        out.write("\t// Fallback: drop proportional\n")
-        out.write("\tcfg2 = static_cast<uint8_t>(config & ~0x12u);\n")
-        out.write("\tfor (const auto &e : dir)\n")
-        out.write("\t\tif (e.family == fam && e.config == cfg2)\n")
-        out.write("\t\t\treturn e.index;\n\n")
+        out.write("\tauto full_scan = [&](uint8_t f, uint8_t cfg) -> int {\n")
+        out.write("\t\tint r = search(f, cfg);\n")
+        out.write("\t\tif (r >= 0) return r;\n")
+        out.write("\t\tif (cfg & 0x40) {\n")
+        out.write("\t\t\tuint8_t cfg2 = static_cast<uint8_t>(cfg & ~0x40u);\n")
+        out.write("\t\t\tr = search(f, cfg2);\n")
+        out.write("\t\t\tif (r >= 0) return r;\n")
+        out.write("\t\t}\n")
+        out.write("\t\tuint8_t cfg_no_italic = static_cast<uint8_t>(cfg & ~0x40u);\n")
+        out.write("\t\tuint8_t cfg_first = cfg_no_italic;\n")
+        out.write("\t\tuint8_t cfg_second = static_cast<uint8_t>(cfg_no_italic ^ 0x10u);\n")
+        out.write("\t\tif ((cfg_no_italic & 0x10u) == 0) {\n")
+        out.write("\t\t\tcfg_first = static_cast<uint8_t>(cfg_no_italic & ~0x10u);\n")
+        out.write("\t\t\tcfg_second = static_cast<uint8_t>(cfg_no_italic | 0x10u);\n")
+        out.write("\t\t}\n")
+        out.write("\t\tr = try_pitches(f, cfg_first);\n")
+        out.write("\t\tif (r >= 0) return r;\n")
+        out.write("\t\tr = try_pitches(f, cfg_second);\n")
+        out.write("\t\tif (r >= 0) return r;\n")
+        out.write("\t\treturn -1;\n")
+        out.write("\t};\n\n")
 
-        out.write("\t// Fallback: just LQ/draft for this family\n")
-        out.write("\tcfg2 = lq ? static_cast<uint8_t>(0x04) "
-                  ": static_cast<uint8_t>(0x00);\n")
-        out.write("\tfor (const auto &e : dir)\n")
-        out.write("\t\tif (e.family == fam && e.config == cfg2)\n")
-        out.write("\t\t\treturn e.index;\n\n")
-
-        out.write("\t// Last resort: Roman Draft (font 0)\n")
+        out.write("\tint r = full_scan(fam, config);\n")
+        out.write("\tif (r >= 0) return r;\n")
+        out.write("\tif (fam != 0x00) {\n")
+        out.write("\t\tr = full_scan(0x00, config);\n")
+        out.write("\t\tif (r >= 0) return r;\n")
+        out.write("\t}\n")
         out.write("\treturn 0;\n")
         out.write("}\n\n")
 

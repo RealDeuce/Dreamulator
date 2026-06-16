@@ -5943,15 +5943,19 @@ int lq500_font_index(uint8_t family, bool lq, bool elite,
 		}
 
 		// Step 3 ($156A): try alternate pitches.
-		// Each pitch is tried with and without bit 4
-		// (super/subscript) at $15C1/$15ED.
+		// Firmware preserves bit 4 first when super/subscript is active,
+		// then falls back to non-script pitch alternatives.
 		uint8_t cfg_no_italic = static_cast<uint8_t>(cfg & ~0x40u);
-		uint8_t cfg_no4 = static_cast<uint8_t>(cfg_no_italic & ~0x10u);
-		r = try_pitches(f, cfg_no4);
+		uint8_t cfg_first = cfg_no_italic;
+		uint8_t cfg_second = static_cast<uint8_t>(cfg_no_italic ^ 0x10u);
+		if ((cfg_no_italic & 0x10u) == 0) {
+			cfg_first = static_cast<uint8_t>(cfg_no_italic & ~0x10u);
+			cfg_second = static_cast<uint8_t>(cfg_no_italic | 0x10u);
+		}
+		r = try_pitches(f, cfg_first);
 		if (r >= 0) return r;
 
-		uint8_t cfg_w4 = static_cast<uint8_t>(cfg_no_italic | 0x10);
-		r = try_pitches(f, cfg_w4);
+		r = try_pitches(f, cfg_second);
 		if (r >= 0) return r;
 
 		return -1;

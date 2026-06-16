@@ -62,6 +62,18 @@ void set_ribbon_ink(DotRenderer &dr, uint8_t color)
 	dr.set_ribbon_mask(color);
 }
 
+static void lq500_apply_script_metrics(const PrinterState &st, uint8_t ch,
+                                       int &width, int &cell_total, int start)
+{
+	if (!st.lq500_lq_mode || !(st.superscript || st.subscript))
+		return;
+	const uint8_t *sec = get_lq500_sec_metrics(1, ch);
+	if (!sec || (sec[1] == 0 && sec[2] == 0))
+		return;
+	width = sec[1];
+	cell_total = start + sec[1] + sec[2];
+}
+
 static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
                                const PrinterState &st, const PrinterProfile &prof,
                                const uint16_t *glyph, int glyph_w,
@@ -815,6 +827,8 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 		int sc = 0;
 		int cell_total = 0;  // start + width + advance for underline
 
+		bool script_rom_glyph = false;
+
 		// User-defined 24-pin characters take priority
 		if (st.use_user_chars && st.user_char_24_defined[ch]) {
 			data = st.user_char_24_glyph[ch];
@@ -834,6 +848,17 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 			w = info.width;
 			sc = info.start;
 			cell_total = info.start + info.width + info.advance;
+			lq500_apply_script_metrics(st, ch, w, cell_total, sc);
+			script_rom_glyph = script;
+		}
+		std::vector<uint8_t> script_align_buf;
+		if (script_rom_glyph && data && w > 0 && st.subscript) {
+			script_align_buf.assign(static_cast<size_t>(w) * 3, 0);
+			for (int col = 0; col < w; col++) {
+				script_align_buf[static_cast<size_t>(col) * 3 + 1] = data[static_cast<size_t>(col) * 3 + 0];
+				script_align_buf[static_cast<size_t>(col) * 3 + 2] = data[static_cast<size_t>(col) * 3 + 1];
+			}
+			data = script_align_buf.data();
 		}
 		if (!data || w <= 0) {
 			if (!st.underline) return;
