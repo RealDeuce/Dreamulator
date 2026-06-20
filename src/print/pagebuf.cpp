@@ -47,14 +47,15 @@ void PageBitmap::set_pixel(int x, int y, uint8_t val)
 }
 
 void PageBitmap::stamp_dot(float cx, float cy, float radius, float intensity,
-                           float sharpness)
+                           float sharpness, float overprint_gamma)
 {
-	stamp_dot_rgb(cx, cy, radius, intensity, sharpness, 0.0f, 0.0f, 0.0f);
+	stamp_dot_rgb(cx, cy, radius, intensity, sharpness, 0.0f, 0.0f, 0.0f,
+	              overprint_gamma);
 }
 
 void PageBitmap::stamp_dot_rgb(float cx, float cy, float radius, float intensity,
                                float sharpness, float red, float green,
-                               float blue)
+                               float blue, float overprint_gamma)
 {
 	int x0 = (int)std::floor(cx - radius);
 	int y0 = (int)std::floor(cy - radius);
@@ -82,7 +83,9 @@ void PageBitmap::stamp_dot_rgb(float cx, float cy, float radius, float intensity
 			float target[3] = { red, green, blue };
 			for (int c = 0; c < channels(); c++) {
 				float cur = p[c] / 255.0f;
-				float result = cur * (1.0f - ink * (1.0f - target[c]));
+				float saturation = std::pow(cur, overprint_gamma);
+				float result = cur * (1.0f - ink * saturation *
+				                      (1.0f - target[c]));
 				p[c] = (uint8_t)std::max(0.0f,
 				          std::min(255.0f, result * 255.0f));
 			}

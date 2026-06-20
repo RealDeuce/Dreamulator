@@ -26,7 +26,10 @@ public:
 
 	void stamp_pin(PageBitmap &page, float x_in, float y_in,
 	               int dpi, float radius_mm, float jitter_mm,
-	               float intensity, float sharpness);
+	               float intensity, float sharpness,
+	               float overprint_gamma = 1.0f,
+	               float radius_variance = 0.075f,
+	               float intensity_variance = 0.075f);
 	void set_ink_color(float red, float green, float blue);
 	void set_ribbon_mask(uint8_t mask);
 

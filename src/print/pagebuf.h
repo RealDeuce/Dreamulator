@@ -26,9 +26,10 @@ public:
 	void set_pixel(int x, int y, uint8_t val);
 
 	void stamp_dot(float cx, float cy, float radius, float intensity,
-	               float sharpness = 2.0f);
+	               float sharpness = 2.0f, float overprint_gamma = 1.0f);
 	void stamp_dot_rgb(float cx, float cy, float radius, float intensity,
-	                   float sharpness, float red, float green, float blue);
+	                   float sharpness, float red, float green, float blue,
+	                   float overprint_gamma = 1.0f);
 	void stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
 	                   float density);
 

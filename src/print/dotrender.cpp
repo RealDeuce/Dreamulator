@@ -8,7 +8,10 @@
 
 void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
                             int dpi, float radius_mm, float jitter_mm,
-                            float intensity, float sharpness)
+                            float intensity, float sharpness,
+                            float overprint_gamma,
+                            float radius_variance,
+                            float intensity_variance)
 {
 	auto stamp_component = [&](float red, float green, float blue) {
 		std::normal_distribution<float> jdist(0.0f, jitter_mm);
@@ -17,14 +20,16 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
 
 		float px = (x_in + jx / 25.4f) * (float)dpi;
 		float py = (y_in + jy / 25.4f) * (float)dpi;
-		std::normal_distribution<float> rdist(radius_mm, radius_mm * 0.075f);
+		std::normal_distribution<float> rdist(radius_mm,
+		                                      radius_mm * radius_variance);
 		float r_px = std::max(radius_mm * 0.7f, rdist(rng_)) / 25.4f * (float)dpi;
 
-		std::normal_distribution<float> idist(intensity, intensity * 0.075f);
+		std::normal_distribution<float> idist(intensity,
+		                                      intensity * intensity_variance);
 		float ink = std::max(0.3f, std::min(1.0f, idist(rng_)));
 
 		page.stamp_dot_rgb(px, py, r_px, ink, sharpness,
-		                   red, green, blue);
+		                   red, green, blue, overprint_gamma);
 	};
 
 	if (ribbon_mask_ == 0) {
@@ -406,13 +411,17 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			          - (24.0f * dot_h_in * y_scale);
 
 			dr.stamp_pin(page, x, y, prof.render_dpi,
-			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp);
+			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp,
+			             prof.overprint_gamma, prof.radius_variance,
+			             prof.intensity_variance);
 
 			// Non-LQ500 bold: extra strike at half-pitch offset
 			if (st.bold && prof.model != PrinterModel::EpsonLQ500) {
 				dr.stamp_pin(page, x + dot_w_in * 0.5f, y,
 				             prof.render_dpi, prof.dot_radius_mm,
-				             prof.jitter_mm, ink, sharp);
+				             prof.jitter_mm, ink, sharp,
+				             prof.overprint_gamma, prof.radius_variance,
+				             prof.intensity_variance);
 			}
 		}
 	}
@@ -426,7 +435,9 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			for (int i = 0; i < dots; i++) {
 				dr.stamp_pin(page, st.x_pos + (float)i * dot_w_in, ul_y,
 				             prof.render_dpi, prof.dot_radius_mm,
-				             prof.jitter_mm, ink, sharp);
+				             prof.jitter_mm, ink, sharp,
+				             prof.overprint_gamma, prof.radius_variance,
+				             prof.intensity_variance);
 			}
 		}
 		if (st.overline) {
@@ -435,7 +446,9 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			for (int i = 0; i < dots; i++) {
 				dr.stamp_pin(page, st.x_pos + (float)i * dot_w_in, ol_y,
 				             prof.render_dpi, prof.dot_radius_mm,
-				             prof.jitter_mm, ink, sharp);
+				             prof.jitter_mm, ink, sharp,
+				             prof.overprint_gamma, prof.radius_variance,
+				             prof.intensity_variance);
 			}
 		}
 	}
@@ -481,15 +494,19 @@ static void lq500_apply_effects(const PrinterState &st,
 		src = buf.data();
 	}
 
-	// Effect #3: Emphasized — OR each column one position to the right
+	// Effect #3: Emphasized — OR a second strike one physical printhead
+	// pitch to the right. The offset below is in current glyph-buffer
+	// columns: LQ uses half-pitch 360-DPI columns, so the same physical
+	// shift is two buffer columns there.
 	if (st.bold && w > 0) {
-		int nw = w + 1;
+		int bold_offset = st.lq500_lq_mode ? 2 : 1;
+		int nw = w + bold_offset;
 		std::vector<uint8_t> tmp((size_t)nw * 3, 0);
 		std::memcpy(tmp.data(), src, (size_t)w * 3);
 		for (int c = 0; c < w; c++) {
-			tmp[(size_t)(c + 1) * 3 + 0] |= src[(size_t)c * 3 + 0];
-			tmp[(size_t)(c + 1) * 3 + 1] |= src[(size_t)c * 3 + 1];
-			tmp[(size_t)(c + 1) * 3 + 2] |= src[(size_t)c * 3 + 2];
+			tmp[(size_t)(c + bold_offset) * 3 + 0] |= src[(size_t)c * 3 + 0];
+			tmp[(size_t)(c + bold_offset) * 3 + 1] |= src[(size_t)c * 3 + 1];
+			tmp[(size_t)(c + bold_offset) * 3 + 2] |= src[(size_t)c * 3 + 2];
 		}
 		buf = std::move(tmp);
 		w = nw;
@@ -878,16 +895,30 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 				data = effect_buf.data();
 		}
 
-		// Render glyph (top slice, or full glyph if not double-height)
-		if (w > 0) {
-			render_glyph_24pin(*this, page, st, prof, data, w, sc, ndw);
-			if (st.lq500_lq_mode) {
-				PrinterState st2 = st;
+		auto render_lq500_slice = [&](const PrinterState &base,
+		                              const uint8_t *slice) {
+			render_glyph_24pin(*this, page, base, prof, slice, w, sc, ndw);
+			if (base.lq500_lq_mode) {
+				PrinterState st2 = base;
 				st2.x_pos += ndw;
 				render_glyph_24pin(*this, page, st2, prof,
-				                   data, w, sc, ndw);
+				                   slice, w, sc, ndw);
 			}
-		}
+		};
+
+		auto render_lq500_double_strike_slice =
+		    [&](const PrinterState &base, const uint8_t *slice) {
+			render_lq500_slice(base, slice);
+			if (base.double_strike) {
+				PrinterState st2 = base;
+				st2.y_pos += 1.0f / 180.0f;
+				render_lq500_slice(st2, slice);
+			}
+		};
+
+		// Render glyph (top slice, or full glyph if not double-height)
+		if (w > 0)
+			render_lq500_double_strike_slice(st, data);
 
 		// Double-height: firmware renders 3 slices via VV:89 tiling:
 		//   Iter 0: slice $01 at position 0, advance 20/180"
@@ -899,26 +930,14 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 			// Slice 1: pins 11-22 → 24 output pins at Y+20/180"
 			PrinterState st1 = st;
 			st1.y_pos += 20.0f * dot_h;
-			render_glyph_24pin(*this, page, st1, prof,
-			                   dh_slice1, w, sc, ndw);
-			if (st.lq500_lq_mode) {
-				st1.x_pos += ndw;
-				render_glyph_24pin(*this, page, st1, prof,
-				                   dh_slice1, w, sc, ndw);
-			}
+			render_lq500_double_strike_slice(st1, dh_slice1);
 		}
 		if (dh_slice2 && w > 0) {
 			float dot_h = 1.0f / 180.0f;
 			// Slice 2: pins 23-24 → pins 19-22 at Y+26/180"
 			PrinterState st2dh = st;
 			st2dh.y_pos += 26.0f * dot_h;
-			render_glyph_24pin(*this, page, st2dh, prof,
-			                   dh_slice2, w, sc, ndw);
-			if (st.lq500_lq_mode) {
-				st2dh.x_pos += ndw;
-				render_glyph_24pin(*this, page, st2dh, prof,
-				                   dh_slice2, w, sc, ndw);
-			}
+			render_lq500_double_strike_slice(st2dh, dh_slice2);
 		}
 
 		// Underline: rendered per-character after glyph write,
@@ -952,19 +971,25 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 				for (int i = 0; i < total_cols; i += 2) {
 					stamp_pin(page, st.x_pos + (float)i * ndw,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
-					          prof.jitter_mm, ink, prof.dot_sharpness);
+					          prof.jitter_mm, ink, prof.dot_sharpness,
+					          prof.overprint_gamma, prof.radius_variance,
+					          prof.intensity_variance);
 				}
 				for (int i = 0; i < total_cols; i += 2) {
 					stamp_pin(page, st.x_pos + ndw + (float)i * ndw,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
-					          prof.jitter_mm, ink, prof.dot_sharpness);
+					          prof.jitter_mm, ink, prof.dot_sharpness,
+					          prof.overprint_gamma, prof.radius_variance,
+					          prof.intensity_variance);
 				}
 			} else {
 				// Draft: every column at native pitch
 				for (int i = 0; i < total_cols; i++) {
 					stamp_pin(page, st.x_pos + (float)i * ndw,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
-					          prof.jitter_mm, ink, prof.dot_sharpness);
+					          prof.jitter_mm, ink, prof.dot_sharpness,
+					          prof.overprint_gamma, prof.radius_variance,
+					          prof.intensity_variance);
 				}
 			}
 		}
