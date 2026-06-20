@@ -3,6 +3,7 @@
 #include "dotrender.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
