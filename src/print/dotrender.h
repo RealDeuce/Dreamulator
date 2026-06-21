@@ -29,7 +29,9 @@ public:
 	               float intensity, float sharpness,
 	               float overprint_gamma = 1.0f,
 	               float radius_variance = 0.075f,
-	               float intensity_variance = 0.075f);
+	               float intensity_variance = 0.075f,
+	               float edge_softness = 0.0f,
+	               float x_scale = 1.0f, float y_scale = 1.0f);
 	void set_ink_color(float red, float green, float blue);
 	void set_ribbon_mask(uint8_t mask);
 

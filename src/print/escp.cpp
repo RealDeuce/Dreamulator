@@ -348,7 +348,11 @@ void EscpPrinter::emit_gfx_col(uint8_t data)
 		else
 			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
 			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			                 prof_.dot_intensity, prof_.dot_sharpness,
+			                 prof_.overprint_gamma, prof_.radius_variance,
+			                 prof_.intensity_variance,
+			                 prof_.dot_edge_softness,
+			                 prof_.dot_x_scale, prof_.dot_y_scale);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -389,7 +393,11 @@ void EscpPrinter::emit_gfx_col_9pin(uint8_t lo, uint8_t hi)
 		else
 			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
 			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			                 prof_.dot_intensity, prof_.dot_sharpness,
+			                 prof_.overprint_gamma, prof_.radius_variance,
+			                 prof_.intensity_variance,
+			                 prof_.dot_edge_softness,
+			                 prof_.dot_x_scale, prof_.dot_y_scale);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -422,7 +430,11 @@ void EscpPrinter::emit_gfx_col_24pin(uint8_t top, uint8_t mid, uint8_t bot,
 		else
 			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
 			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			                 prof_.dot_intensity, prof_.dot_sharpness,
+			                 prof_.overprint_gamma, prof_.radius_variance,
+			                 prof_.intensity_variance,
+			                 prof_.dot_edge_softness,
+			                 prof_.dot_x_scale, prof_.dot_y_scale);
 	}
 	st_.x_pos += gfx_dot_w_;
 }
@@ -462,7 +474,11 @@ void EscpPrinter::emit_gfx_col_bytes(const uint8_t *bytes, int byte_count,
 		else
 			dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
 			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			                 prof_.dot_intensity, prof_.dot_sharpness,
+			                 prof_.overprint_gamma, prof_.radius_variance,
+			                 prof_.intensity_variance,
+			                 prof_.dot_edge_softness,
+			                 prof_.dot_x_scale, prof_.dot_y_scale);
 	}
 	st_.x_pos += gfx_dot_w_;
 }

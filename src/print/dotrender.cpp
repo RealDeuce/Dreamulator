@@ -11,7 +11,9 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
                             float intensity, float sharpness,
                             float overprint_gamma,
                             float radius_variance,
-                            float intensity_variance)
+                            float intensity_variance,
+                            float edge_softness,
+                            float x_scale, float y_scale)
 {
 	auto stamp_component = [&](float red, float green, float blue) {
 		std::normal_distribution<float> jdist(0.0f, jitter_mm);
@@ -29,7 +31,8 @@ void DotRenderer::stamp_pin(PageBitmap &page, float x_in, float y_in,
 		float ink = std::max(0.3f, std::min(1.0f, idist(rng_)));
 
 		page.stamp_dot_rgb(px, py, r_px, ink, sharpness,
-		                   red, green, blue, overprint_gamma);
+		                   red, green, blue, overprint_gamma,
+		                   edge_softness, x_scale, y_scale);
 	};
 
 	if (ribbon_mask_ == 0) {
@@ -122,16 +125,28 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 	auto stamp_text_dot = [&](float x, float y, float radius_mm, float jitter_mm) {
 		auto stamp_pass = [&](float y_off) {
 			dr.stamp_pin(page, x, y + y_off, prof.render_dpi,
-			             radius_mm, jitter_mm, ink, sharp);
+			             radius_mm, jitter_mm, ink, sharp,
+			             prof.overprint_gamma, prof.radius_variance,
+			             prof.intensity_variance, prof.dot_edge_softness,
+			             prof.dot_x_scale, prof.dot_y_scale);
 			if (expanded)
 				dr.stamp_pin(page, x + expand_dup, y + y_off, prof.render_dpi,
-				             radius_mm, jitter_mm, ink, sharp);
+				             radius_mm, jitter_mm, ink, sharp,
+				             prof.overprint_gamma, prof.radius_variance,
+				             prof.intensity_variance, prof.dot_edge_softness,
+				             prof.dot_x_scale, prof.dot_y_scale);
 			if (st.bold) {
 				dr.stamp_pin(page, x + bold_off, y + y_off,
-				             prof.render_dpi, radius_mm, jitter_mm, ink, sharp);
+				             prof.render_dpi, radius_mm, jitter_mm, ink, sharp,
+				             prof.overprint_gamma, prof.radius_variance,
+				             prof.intensity_variance, prof.dot_edge_softness,
+				             prof.dot_x_scale, prof.dot_y_scale);
 				if (expanded)
 					dr.stamp_pin(page, x + expand_dup + bold_off, y + y_off,
-					             prof.render_dpi, radius_mm, jitter_mm, ink, sharp);
+					             prof.render_dpi, radius_mm, jitter_mm, ink, sharp,
+					             prof.overprint_gamma, prof.radius_variance,
+					             prof.intensity_variance, prof.dot_edge_softness,
+					             prof.dot_x_scale, prof.dot_y_scale);
 			}
 		};
 
@@ -246,7 +261,10 @@ static void render_glyph_9pin(DotRenderer &dr, PageBitmap &page,
 		for (int i = 0; i < dots; i++) {
 			dr.stamp_pin(page, st.x_pos + (float)i * step, ul_y,
 			             prof.render_dpi, prof.dot_radius_mm * 0.8f,
-			             prof.jitter_mm, ink, sharp);
+			             prof.jitter_mm, ink, sharp,
+			             prof.overprint_gamma, prof.radius_variance,
+			             prof.intensity_variance, prof.dot_edge_softness,
+			             prof.dot_x_scale, prof.dot_y_scale);
 		}
 	}
 }
@@ -413,7 +431,8 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 			dr.stamp_pin(page, x, y, prof.render_dpi,
 			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp,
 			             prof.overprint_gamma, prof.radius_variance,
-			             prof.intensity_variance);
+			             prof.intensity_variance, prof.dot_edge_softness,
+			             prof.dot_x_scale, prof.dot_y_scale);
 
 			// Non-LQ500 bold: extra strike at half-pitch offset
 			if (st.bold && prof.model != PrinterModel::EpsonLQ500) {
@@ -421,7 +440,8 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 				             prof.render_dpi, prof.dot_radius_mm,
 				             prof.jitter_mm, ink, sharp,
 				             prof.overprint_gamma, prof.radius_variance,
-				             prof.intensity_variance);
+				             prof.intensity_variance, prof.dot_edge_softness,
+				             prof.dot_x_scale, prof.dot_y_scale);
 			}
 		}
 	}
@@ -437,7 +457,8 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 				             prof.render_dpi, prof.dot_radius_mm,
 				             prof.jitter_mm, ink, sharp,
 				             prof.overprint_gamma, prof.radius_variance,
-				             prof.intensity_variance);
+				             prof.intensity_variance, prof.dot_edge_softness,
+				             prof.dot_x_scale, prof.dot_y_scale);
 			}
 		}
 		if (st.overline) {
@@ -448,8 +469,55 @@ static void render_glyph_24pin(DotRenderer &dr, PageBitmap &page,
 				             prof.render_dpi, prof.dot_radius_mm,
 				             prof.jitter_mm, ink, sharp,
 				             prof.overprint_gamma, prof.radius_variance,
-				             prof.intensity_variance);
+				             prof.intensity_variance, prof.dot_edge_softness,
+				             prof.dot_x_scale, prof.dot_y_scale);
 			}
+		}
+	}
+}
+
+static uint32_t glyph_24pin_column(const uint8_t *glyph, int col)
+{
+	return (uint32_t)glyph[col * 3] |
+	       ((uint32_t)glyph[col * 3 + 1] << 8) |
+	       ((uint32_t)glyph[col * 3 + 2] << 16);
+}
+
+static void render_glyph_24pin_lq_interleave(DotRenderer &dr, PageBitmap &page,
+                                              const PrinterState &st,
+                                              const PrinterProfile &prof,
+                                              const uint8_t *glyph, int glyph_w,
+                                              int start_col,
+                                              float native_dot_w)
+{
+	float dot_h_in = 1.0f / 180.0f;
+	float x_off = (float)start_col * native_dot_w;
+	float ink = prof.dot_intensity;
+	float sharp = prof.dot_sharpness;
+
+	for (int col = 0; col + 1 < glyph_w; col++) {
+		uint32_t column = glyph_24pin_column(glyph, col);
+		if (column == 0)
+			continue;
+
+		// LQ glyph records are already in 360-DPI column order.  A
+		// second strike fills the ROM-authored blank interleave column;
+		// consecutive nonblank columns are real glyph geometry.
+		if (glyph_24pin_column(glyph, col + 1) != 0)
+			continue;
+
+		for (int pin = 0; pin < 24; pin++) {
+			if (!(column & (1U << pin))) continue;
+
+			float x = st.x_pos + x_off + (float)(col + 1) * native_dot_w;
+			float y = st.y_pos + (float)pin * dot_h_in
+			          - 24.0f * dot_h_in;
+
+			dr.stamp_pin(page, x, y, prof.render_dpi,
+			             prof.dot_radius_mm, prof.jitter_mm, ink, sharp,
+			             prof.overprint_gamma, prof.radius_variance,
+			             prof.intensity_variance, prof.dot_edge_softness,
+			             prof.dot_x_scale, prof.dot_y_scale);
 		}
 	}
 }
@@ -898,22 +966,19 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 		auto render_lq500_slice = [&](const PrinterState &base,
 		                              const uint8_t *slice) {
 			render_glyph_24pin(*this, page, base, prof, slice, w, sc, ndw);
-			if (base.lq500_lq_mode) {
-				PrinterState st2 = base;
-				st2.x_pos += ndw;
-				render_glyph_24pin(*this, page, st2, prof,
-				                   slice, w, sc, ndw);
-			}
+			if (base.lq500_lq_mode)
+				render_glyph_24pin_lq_interleave(*this, page, base, prof,
+				                                 slice, w, sc, ndw);
 		};
 
 		auto render_lq500_double_strike_slice =
 		    [&](const PrinterState &base, const uint8_t *slice) {
 			render_lq500_slice(base, slice);
-			if (base.double_strike) {
-				PrinterState st2 = base;
-				st2.y_pos += 1.0f / 180.0f;
-				render_lq500_slice(st2, slice);
-			}
+			// LQ-500 setup records repeat double-strike with advance index 0
+			// (normal $6803, double-height $6816), so this is a same-position
+			// overstrike rather than a paper-feed step.
+			if (base.double_strike)
+				render_lq500_slice(base, slice);
 		};
 
 		// Render glyph (top slice, or full glyph if not double-height)
@@ -973,14 +1038,16 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
 					          prof.jitter_mm, ink, prof.dot_sharpness,
 					          prof.overprint_gamma, prof.radius_variance,
-					          prof.intensity_variance);
+					          prof.intensity_variance, prof.dot_edge_softness,
+					          prof.dot_x_scale, prof.dot_y_scale);
 				}
 				for (int i = 0; i < total_cols; i += 2) {
 					stamp_pin(page, st.x_pos + ndw + (float)i * ndw,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
 					          prof.jitter_mm, ink, prof.dot_sharpness,
 					          prof.overprint_gamma, prof.radius_variance,
-					          prof.intensity_variance);
+					          prof.intensity_variance, prof.dot_edge_softness,
+					          prof.dot_x_scale, prof.dot_y_scale);
 				}
 			} else {
 				// Draft: every column at native pitch
@@ -989,7 +1056,8 @@ void ImpactDot24::render_char(PageBitmap &page, const PrinterState &st,
 					          ul_y, prof.render_dpi, prof.dot_radius_mm,
 					          prof.jitter_mm, ink, prof.dot_sharpness,
 					          prof.overprint_gamma, prof.radius_variance,
-					          prof.intensity_variance);
+					          prof.intensity_variance, prof.dot_edge_softness,
+					          prof.dot_x_scale, prof.dot_y_scale);
 				}
 			}
 		}

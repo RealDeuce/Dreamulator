@@ -55,27 +55,33 @@ void PageBitmap::stamp_dot(float cx, float cy, float radius, float intensity,
 
 void PageBitmap::stamp_dot_rgb(float cx, float cy, float radius, float intensity,
                                float sharpness, float red, float green,
-                               float blue, float overprint_gamma)
+                               float blue, float overprint_gamma,
+                               float edge_softness, float x_scale,
+                               float y_scale)
 {
-	int x0 = (int)std::floor(cx - radius);
-	int y0 = (int)std::floor(cy - radius);
-	int x1 = (int)std::ceil(cx + radius);
-	int y1 = (int)std::ceil(cy + radius);
+	float edge = 1.0f + std::max(0.0f, edge_softness);
+	float rx = radius * std::max(0.1f, x_scale) * edge;
+	float ry = radius * std::max(0.1f, y_scale) * edge;
+	int x0 = (int)std::floor(cx - rx);
+	int y0 = (int)std::floor(cy - ry);
+	int x1 = (int)std::ceil(cx + rx);
+	int y1 = (int)std::ceil(cy + ry);
 
 	x0 = std::max(0, x0);
 	y0 = std::max(0, y0);
 	x1 = std::min(w_ - 1, x1);
 	y1 = std::min(h_ - 1, y1);
 
-	float r2 = radius * radius;
+	float inv_rx2 = 1.0f / (rx * rx);
+	float inv_ry2 = 1.0f / (ry * ry);
 	for (int y = y0; y <= y1; y++) {
 		float dy = (float)y - cy;
 		for (int x = x0; x <= x1; x++) {
 			float dx = (float)x - cx;
-			float d2 = dx * dx + dy * dy;
-			if (d2 > r2) continue;
+			float d2 = dx * dx * inv_rx2 + dy * dy * inv_ry2;
+			if (d2 > 1.0f) continue;
 
-			float t = 1.0f - d2 / r2;
+			float t = 1.0f - d2;
 			float ink = intensity * std::pow(t, sharpness);
 
 			uint8_t *p = buf_.get() + (size_t)y * (size_t)stride() +

@@ -42,6 +42,9 @@ struct PrinterProfile {
 	float        jitter_mm;
 	float        dot_intensity;
 	float        dot_sharpness;
+	float        dot_edge_softness;
+	float        dot_x_scale;
+	float        dot_y_scale;
 	float        overprint_gamma;
 	float        radius_variance;
 	float        intensity_variance;
