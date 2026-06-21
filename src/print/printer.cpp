@@ -778,7 +778,7 @@ PrinterConfig default_config_for(PrinterModel model)
 	PrinterConfig cfg;
 	if (model == PrinterModel::ImageWriter) {
 		cfg.pitch_cpi = 12;
-		cfg.font_mode = 2;  // ROM 0x39DB initializes AA70/AA71 to NLQ
+		cfg.font_mode = 2;  // ROM 0x39DB initializes AA70/AA71 to draft
 		cfg.page_length_lines = 66;
 	} else if (model == PrinterModel::EpsonLQ500) {
 		cfg.pitch_cpi = 10;

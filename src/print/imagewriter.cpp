@@ -172,29 +172,29 @@ void ImageWriterPrinter::emit_gfx_col(uint8_t data)
 	float bidi_offset = (force_ltr || st_.line_dir_ltr) ? 0.0f : (1.0f / 120.0f);
 	set_ribbon_ink(*dots_, st_.ribbon_color);
 
+	auto stamp_graphics_dot = [&](float gx, float gy) {
+		dots_->stamp_pin(*page_, gx, gy, prof_.render_dpi,
+		                 prof_.dot_radius_mm, prof_.jitter_mm,
+		                 prof_.dot_intensity, prof_.dot_sharpness,
+		                 prof_.overprint_gamma, prof_.radius_variance,
+		                 prof_.intensity_variance, prof_.dot_edge_softness,
+		                 prof_.dot_x_scale, prof_.dot_y_scale);
+	};
+
 	for (int pin = 0; pin < 8; pin++) {
 		if (!(data & (1U << pin)))
 			continue;
 
 		float x = st_.x_pos + bidi_offset;
 		float y = st_.y_pos + static_cast<float>(pin) * pin_h - 9.0f * pin_h;
-		dots_->stamp_pin(*page_, x, y, prof_.render_dpi,
-		                 prof_.dot_radius_mm, prof_.jitter_mm,
-		                 prof_.dot_intensity, prof_.dot_sharpness);
+		stamp_graphics_dot(x, y);
 		if (expanded) {
-			dots_->stamp_pin(*page_, x + dot_w, y, prof_.render_dpi,
-			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			stamp_graphics_dot(x + dot_w, y);
 		}
 		if (st_.bold) {
-			dots_->stamp_pin(*page_, x + bold_off, y, prof_.render_dpi,
-			                 prof_.dot_radius_mm, prof_.jitter_mm,
-			                 prof_.dot_intensity, prof_.dot_sharpness);
+			stamp_graphics_dot(x + bold_off, y);
 			if (expanded) {
-				dots_->stamp_pin(*page_, x + dot_w + bold_off, y,
-				                 prof_.render_dpi, prof_.dot_radius_mm,
-				                 prof_.jitter_mm, prof_.dot_intensity,
-				                 prof_.dot_sharpness);
+				stamp_graphics_dot(x + dot_w + bold_off, y);
 			}
 		}
 	}
