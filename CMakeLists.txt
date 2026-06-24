@@ -255,6 +255,21 @@ else()
     target_compile_options(dreamprint PRIVATE $<$<CONFIG:Debug>:-Werror>)
 endif()
 
+# --- dreamlink: DreamLink serial host ---
+
+if(NOT WIN32)
+    add_executable(dreamlink src/dreamlink.cpp)
+
+    target_compile_options(dreamlink PRIVATE -Wall -Wextra)
+    try_add_compile_option(dreamlink -Wformat=2)
+    try_add_compile_option(dreamlink -Wconversion)
+    try_add_compile_option(dreamlink -Wsign-conversion)
+    try_add_compile_option(dreamlink -Wimplicit-fallthrough)
+    try_add_compile_option(dreamlink -Werror=format-security)
+    target_compile_options(dreamlink PRIVATE $<$<CONFIG:Debug>:-Werror>)
+    install(TARGETS dreamlink RUNTIME DESTINATION bin)
+endif()
+
 install(TARGETS dreamulator dreamprint RUNTIME DESTINATION bin)
 install(DIRECTORY roms/ DESTINATION share/dreamulator/roms
         FILES_MATCHING PATTERN "*.ic303" PATTERN "*.bin")

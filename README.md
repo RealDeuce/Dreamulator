@@ -204,6 +204,30 @@ The UART supports three backends for serial communication:
 
 The DreamLink file transfer protocol operates at 9600 baud, 8N1.
 
+## dreamlink
+
+`dreamlink` is a filesystem-backed DreamLink host for real DreamWriter
+hardware.  Connect the DreamWriter's serial port to a local tty, then serve a
+host directory:
+
+```sh
+dreamlink --tty /dev/ttyUSB0 --root ./dreamlink-files
+```
+
+The server answers the DreamLink probe, lists regular files in `--root`, sends
+file bytes for RECALL, and stores incoming STORE streams as files in that
+directory.  Subdirectories are not listed.  DreamWriter initialize/format removes
+regular files from `--root` but leaves subdirectories and symlinks alone.
+
+The tty is opened with carrier detect ignored, since DreamWriter null-modem
+cables can tie DCD to DTR while the ROM follows RTS with DTR.  Use `--verbose`
+to trace raw protocol bytes while validating new hardware captures.
+
+DreamLink filename matching is case-sensitive on the DreamWriter, so the server
+preserves host filename case in listings and new files.  Wildcards are not
+expanded by the host; `?` and other pattern characters received in file commands
+are treated as literal filename characters.
+
 ## License
 
 BSD-3-Clause.  See [LICENSE](LICENSE) for details.
