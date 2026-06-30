@@ -27,15 +27,15 @@ machine_t &machine_t::operator=(machine_t &&) noexcept = default;
 /* ---- model table ---- */
 
 const model_t models[] = {
-	//                                    RAM       LCD  card   flop   b3ram  nmi
-	{ "wales210", "Walther ES-210",       128*1024, 64,  true,  false, false, false },
-	{ "dw325",    "DreamWriter 325",      128*1024, 64,  true,  false, false, false },
-	{ "dator3k",  "Dator 3000",           128*1024, 64,  true,  false, false, false },
-	{ "es210_es", "Nakajima ES-210 (ES)", 128*1024, 64,  true,  false, false, false },
-	{ "dwT100",   "DreamWriter T100",     128*1024, 64,  false, false, true,  false },
-	{ "dwT400",   "DreamWriter T400",     256*1024, 64,  true,  false, true,  true  },
-	{ "dw450",    "DreamWriter 450",      256*1024, 64,  true,  false, true,  true  },
-	{ "dwT200",   "DreamWriter T200",     256*1024, 128, true,  true,  true,  true  },
+	//                                    RAM       LCD  card   flop   nmi
+	{ "wales210", "Walther ES-210",       128*1024, 64,  true,  false, false },
+	{ "dw325",    "DreamWriter 325",      128*1024, 64,  true,  false, false },
+	{ "dator3k",  "Dator 3000",           128*1024, 64,  true,  false, false },
+	{ "es210_es", "Nakajima ES-210 (ES)", 128*1024, 64,  true,  false, false },
+	{ "dwT100",   "DreamWriter T100",     128*1024, 64,  false, false, false },
+	{ "dwT400",   "DreamWriter T400",     256*1024, 64,  true,  false, true  },
+	{ "dw450",    "DreamWriter 450",      256*1024, 64,  true,  false, true  },
+	{ "dwT200",   "DreamWriter T200",     256*1024, 128, true,  true,  true  },
 };
 const int model_count = sizeof(models) / sizeof(models[0]);
 
@@ -57,6 +57,7 @@ const rom_entry_t rom_db[] = {
 	{ "dator3k",  nullptr,    "dator3000.ic303",       0xb67fffeb, 0x80000,  0 },
 	{ "es210_es", nullptr,    "nakajima_es.ic303",     0x214d73ce, 0x80000,  0 },
 	{ "dwT100",   "v2.3",  "t100_2.3.ic303",       0x8a16f12f, 0x80000,  0 },
+	{ "dwT100",   "v1.0",  "t100_1.0.ic303",       0xb53f810a, 0x80000,  0 },
 	{ "dwT200",   nullptr,    "drwrt200.bin",          0x3c39483c, 0x100000, 0 },
 	{ "dwT400",   "v3.1",  "t4_ir_3.1_T4-067979",  0x5c062e52, 0x100000, 0 },
 	{ "dwT400",   "v3.1",  "t4_ir_3.1_e588.ic303", 0x1724ceb2, 0x100000, 0 },
@@ -116,7 +117,6 @@ int machine_init(machine_t *m, const model_t *model,
 	m->model = model;
 	m->ram_size = model->ram_size;
 	m->lcd_height = model->lcd_height;
-	m->bank_bit3_selects_ram = model->bank_bit3_selects_ram;
 	m->cent_backend = cent_backend;
 
 	if (cent_backend != CentBackend::File && cent_path) {
@@ -222,6 +222,8 @@ int machine_load_rom(machine_t *m, const char *path, const rom_entry_t *entry)
 	}
 
 	memcpy(m->rom + offset, filebuf, filesz);
+	m->rom_base_page = offset / BANK_SIZE;
+	m->rom_pages = std::max<uint32_t>(1, (uint32_t)((filesz + BANK_SIZE - 1) / BANK_SIZE));
 
 	munmap(filebuf, filesz);
 	mprotect(m->rom, ROM_SIZE, PROT_READ);
@@ -246,36 +248,35 @@ static void update_bank(machine_t *m, int bank)
 {
 	size_t b = (size_t)bank;
 	uint8_t sel = m->bank_select[b];
-	int ram_pages = m->ram_size / BANK_SIZE;
+	int inv_page = (sel ^ 0x07) & 0x07;
+	int source = (sel >> 3) & 0x03;
 
-	if (!(sel & 0x10)) {
-		if (sel & 0x08) {
-			int page = m->bank_bit3_selects_ram
-				? bank % ram_pages
-				: 1 % ram_pages;
-			m->bank_rd[b] = m->ram + page * BANK_SIZE;
-			m->bank_wr[b] = m->ram + page * BANK_SIZE;
-		} else {
-			int entry = ((sel & 0x0F) ^ 0x0F) % (ROM_SIZE / BANK_SIZE);
-			m->bank_rd[b] = m->rom + entry * BANK_SIZE;
-			m->bank_wr[b] = nullptr;
+	m->bank_rd[b] = nullptr;
+	m->bank_wr[b] = nullptr;
+
+	switch (source) {
+	case 0: {
+		uint32_t entry = m->rom_base_page + (uint32_t)inv_page % m->rom_pages;
+		entry %= ROM_SIZE / BANK_SIZE;
+		m->bank_rd[b] = m->rom + entry * BANK_SIZE;
+		break;
+	}
+	case 1:
+	case 2: {
+		uint32_t installed_pages = std::max<uint32_t>(1, m->ram_size / BANK_SIZE);
+		uint32_t page = (uint32_t)(2 - source) % installed_pages;
+		m->bank_rd[b] = m->ram + page * BANK_SIZE;
+		m->bank_wr[b] = m->ram + page * BANK_SIZE;
+		break;
+	}
+	case 3: {
+		uint32_t pc_off = (uint32_t)inv_page * BANK_SIZE;
+		if (m->pccard && pc_off + BANK_SIZE <= m->pccard_size) {
+			m->bank_rd[b] = m->pccard + pc_off;
+			m->bank_wr[b] = m->pccard + pc_off;
 		}
-	} else {
-		if (!(sel & 0x08)) {
-			int page = ((sel & 0x0F) ^ 0x0F) % ram_pages;
-			m->bank_rd[b] = m->ram + page * BANK_SIZE;
-			m->bank_wr[b] = m->ram + page * BANK_SIZE;
-		} else {
-			int pc_bank = 0x0F - (sel & 0x0F);
-			uint32_t pc_off = (uint32_t)pc_bank * BANK_SIZE;
-			if (m->pccard && pc_off + BANK_SIZE <= m->pccard_size) {
-				m->bank_rd[b] = m->pccard + pc_off;
-				m->bank_wr[b] = m->pccard + pc_off;
-			} else {
-				m->bank_rd[b] = nullptr;
-				m->bank_wr[b] = nullptr;
-			}
-		}
+		break;
+	}
 	}
 }
 

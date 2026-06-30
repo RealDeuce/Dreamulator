@@ -32,7 +32,6 @@ struct model_t {
 	int      lcd_height;
 	bool     has_pccard;
 	bool     has_floppy;
-	bool     bank_bit3_selects_ram;
 	bool     power_nmi;
 };
 
@@ -77,6 +76,8 @@ struct machine_t {
 
 	uint8_t  *rom = nullptr;
 	int      rom_fd = -1;
+	uint32_t rom_base_page = 0;
+	uint32_t rom_pages = ROM_SIZE / BANK_SIZE;
 	uint8_t  *ram = nullptr;
 	uint32_t ram_size = 0;
 	int      nvram_fd = -1;
@@ -130,7 +131,6 @@ struct machine_t {
 	int      f9_timer_cycles = 0;
 	int      rtc_timer_cycles = 0;
 
-	bool     bank_bit3_selects_ram = false;
 	bool     main_battery_low = false;
 	bool     coin_battery_low = false;
 	bool     pccard_battery_low = false;
