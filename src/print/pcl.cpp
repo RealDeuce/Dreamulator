@@ -310,6 +310,7 @@ private:
 	bool param_relative_ = false;
 	bool current_param_relative_ = false;
 	int payload_remaining_ = 0;
+	bool payload_control_pending_ = false;
 	std::vector<uint8_t> payload_buf_;
 
 	int line_term_ = 0;
@@ -380,6 +381,7 @@ void PclPrinter::reset_ljii_state()
 	param_relative_ = false;
 	current_param_relative_ = false;
 	payload_remaining_ = 0;
+	payload_control_pending_ = false;
 	payload_buf_.clear();
 	line_term_ = 0;
 	orientation_ = 0;
@@ -1054,6 +1056,7 @@ void PclPrinter::begin_payload(State state, int count)
 	payload_state_ = state;
 	state_ = state;
 	payload_remaining_ = count;
+	payload_control_pending_ = false;
 	payload_buf_.clear();
 	payload_buf_.reserve(static_cast<size_t>(count));
 }
@@ -1063,6 +1066,16 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 	if (payload_state_ == State::TransparentData) {
 		emit_transparent_byte(b);
 	} else {
+		if ((payload_state_ == State::RasterData ||
+		     payload_state_ == State::DownloadData) && payload_control_pending_) {
+			payload_control_pending_ = false;
+			if (b == 0x58)
+				b = 0x00;
+		} else if ((payload_state_ == State::RasterData ||
+		            payload_state_ == State::DownloadData) && b == 0x1a) {
+			payload_control_pending_ = true;
+			return;
+		}
 		payload_buf_.push_back(b);
 	}
 
@@ -1078,6 +1091,7 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 
 	payload_buf_.clear();
 	payload_state_ = State::Normal;
+	payload_control_pending_ = false;
 	state_ = State::Normal;
 }
 

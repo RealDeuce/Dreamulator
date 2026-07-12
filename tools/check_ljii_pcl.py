@@ -127,6 +127,19 @@ def main():
         if ppm_nonwhite(soft_pdf, tmp / "soft") < 5:
             raise AssertionError("downloaded glyph render looks blank")
 
+        raster_control = write(tmp / "raster-control.pcl",
+                               ESC + b"*t300R" +
+                               ESC + b"*r0A" +
+                               ESC + b"*b4W" +
+                               bytes([0xf0, 0x1a, 0x58, 0xaa, 0x55]) +
+                               b"Z" + FF)
+        raster_control_pdf = tmp / "raster-control.pdf"
+        render(dreamprint, raster_control, raster_control_pdf)
+        if pdftotext(raster_control_pdf).strip() != "Z":
+            raise AssertionError("raster payload control shifted stream")
+        if ppm_nonwhite(raster_control_pdf, tmp / "raster-control") < 5:
+            raise AssertionError("raster payload control render looks blank")
+
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):
             overflow += f"L{i:02d}\n".encode("ascii")
