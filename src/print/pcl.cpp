@@ -796,7 +796,7 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		if (group_ == '*' && subgroup_ == 'b' && b == 'w') {
 			pending_raster_count_ = std::abs(lower_value);
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
-			pending_vfc_count_ = std::max(0, lower_value);
+			pending_vfc_count_ = std::abs(lower_value);
 		} else {
 			apply_param(group_, subgroup_, value,
 			            static_cast<char>(std::toupper(b)));
@@ -886,7 +886,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival == 0)
 				rebuild_default_vfc_table();
 			else
-				begin_payload(State::VfcData, std::max(0, ival));
+				begin_payload(State::VfcData, std::abs(ival));
 			break;
 		case 'X':
 			if (ival < 1)

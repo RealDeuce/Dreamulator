@@ -485,6 +485,21 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_nonzero_pdf).split()):
             raise AssertionError("nonzero page length lost text")
 
+        vfc_negative = write(tmp / "vfc-negative.pcl",
+                             ESC + b"&l-4W" + b"\x00\x00\x00\x02" +
+                             b"!" + FF)
+        vfc_lower_negative = write(tmp / "vfc-lower-negative.pcl",
+                                   ESC + b"&l-4w4W" + b"\x00\x00\x00\x02" +
+                                   b"!" + FF)
+        vfc_negative_pdf = tmp / "vfc-negative.pdf"
+        vfc_lower_negative_pdf = tmp / "vfc-lower-negative.pdf"
+        render(dreamprint, vfc_negative, vfc_negative_pdf)
+        render(dreamprint, vfc_lower_negative, vfc_lower_negative_pdf)
+        if pdftotext(vfc_negative_pdf).strip() != "!":
+            raise AssertionError("negative VFC count leaked payload")
+        if pdftotext(vfc_lower_negative_pdf).strip() != "!":
+            raise AssertionError("lowercase negative VFC count leaked payload")
+
         macro_execute = write(tmp / "macro-execute.pcl",
                               ESC + b"&f321Y" +
                               ESC + b"&f0X" + b"!\r" +
