@@ -362,6 +362,29 @@ def main():
            ppm_sha256(italic_pdf, tmp / "italic", dpi=150):
             raise AssertionError("italic font request did not affect pixels")
 
+        pitch_positive = write(tmp / "pitch-positive.pcl",
+                               ESC + b"(s10H" + b"Pitch sample" + FF)
+        pitch_negative = write(tmp / "pitch-negative.pcl",
+                               ESC + b"(s-10H" + b"Pitch sample" + FF)
+        style_positive = write(tmp / "style-positive.pcl",
+                               ESC + b"(s1S" + b"Italic sample" + FF)
+        style_negative = write(tmp / "style-negative.pcl",
+                               ESC + b"(s-1S" + b"Italic sample" + FF)
+        pitch_positive_pdf = tmp / "pitch-positive.pdf"
+        pitch_negative_pdf = tmp / "pitch-negative.pdf"
+        style_positive_pdf = tmp / "style-positive.pdf"
+        style_negative_pdf = tmp / "style-negative.pdf"
+        render(dreamprint, pitch_positive, pitch_positive_pdf)
+        render(dreamprint, pitch_negative, pitch_negative_pdf)
+        render(dreamprint, style_positive, style_positive_pdf)
+        render(dreamprint, style_negative, style_negative_pdf)
+        if ppm_sha256(pitch_positive_pdf, tmp / "pitch-positive", dpi=150) != \
+           ppm_sha256(pitch_negative_pdf, tmp / "pitch-negative", dpi=150):
+            raise AssertionError("negative pitch request did not match positive pitch")
+        if ppm_sha256(style_positive_pdf, tmp / "style-positive", dpi=150) != \
+           ppm_sha256(style_negative_pdf, tmp / "style-negative", dpi=150):
+            raise AssertionError("negative style request did not match positive style")
+
         underline_span = write(tmp / "underline-span.pcl",
                                ESC + b"&d3D" + b"A\tB" +
                                ESC + b"&d@" + FF)

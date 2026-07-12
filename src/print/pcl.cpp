@@ -1041,24 +1041,26 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		LjiiFontRequest &req = font_request(slot);
 		switch (term) {
 		case 'B':
-			req.stroke = ival;
+			req.stroke = std::max(-7, std::min(7, ival));
 			break;
 		case 'H':
-			if (value > 0.0)
-				req.pitch = (int)std::lround(value * 100.0);
+			value = std::abs(value);
+			req.pitch = (int)std::lround(std::min(655.0, value) * 100.0);
 			break;
 		case 'P':
-			req.spacing = ival;
+			ival = std::abs(ival);
+			if (ival < 2)
+				req.spacing = ival;
 			break;
 		case 'S':
-			req.style = ival;
+			req.style = std::min(255, std::abs(ival));
 			break;
 		case 'T':
-			req.typeface = ival;
+			req.typeface = std::min(255, std::abs(ival));
 			break;
 		case 'V':
-			if (value > 0.0)
-				req.height = (int)std::lround(value * 100.0);
+			value = std::abs(value);
+			req.height = (int)std::lround(std::min(655.0, value) * 100.0);
 			break;
 		case 'W':
 			download_font_slot_ = slot;
