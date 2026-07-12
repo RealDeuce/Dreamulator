@@ -620,6 +620,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				st_.pitch_cpi = 1.0f / hmi_in_;
 			}
 			break;
+		case 'S':
+			if (ival == 0)
+				st_.pitch_cpi = 10.0f;
+			else if (ival == 2)
+				st_.pitch_cpi = 16.66f;
+			else if (ival == 4)
+				st_.pitch_cpi = 12.0f;
+			hmi_in_ = 1.0f / std::max(1.0f, st_.pitch_cpi);
+			break;
 		default:
 			break;
 		}
@@ -1062,7 +1071,8 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	uint8_t glyph_byte = text_glyph_byte(b);
 	if (glyph_byte == 0)
 		return true;
-	uint32_t context = default_ljii_context_for_pitch(st_.pitch_cpi, st_.bold);
+	uint32_t context = default_ljii_context_for_pitch(st_.pitch_cpi, st_.bold,
+	                                                 st_.italic);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
 	if (!glyph.found || !glyph.data)
 		return false;
