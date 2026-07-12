@@ -294,6 +294,7 @@ private:
 	LjiiFontRequest &active_font_request();
 	const LjiiFontRequest &active_font_request() const;
 	void sync_active_font_state();
+	void ljii_line_feed();
 	void set_page_size(int code);
 	void set_orientation(int orientation);
 	void publish_current_page();
@@ -518,7 +519,7 @@ void PclPrinter::process_control(uint8_t b)
 	case 0x0A:
 		if (line_term_ == 2 || line_term_ == 3)
 			carriage_return();
-		line_feed();
+		ljii_line_feed();
 		break;
 	case 0x0C:
 		if (line_term_ == 2 || line_term_ == 3)
@@ -528,7 +529,7 @@ void PclPrinter::process_control(uint8_t b)
 	case 0x0D:
 		carriage_return();
 		if (line_term_ == 1 || line_term_ == 3)
-			line_feed();
+			ljii_line_feed();
 		break;
 	case 0x0E:
 		active_font_slot_ = 1;
@@ -1475,7 +1476,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		if (!wrap_enabled_)
 			return true;
 		carriage_return();
-		line_feed();
+		ljii_line_feed();
 	}
 
 	new_page_if_needed();
@@ -1524,7 +1525,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			if (!wrap_enabled_)
 				return true;
 			carriage_return();
-			line_feed();
+			ljii_line_feed();
 		}
 		text_buf_.push_back({
 			st_.x_pos, st_.y_pos, 0x20, char_w_in,
@@ -1574,7 +1575,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		if (!wrap_enabled_)
 			return true;
 		carriage_return();
-		line_feed();
+		ljii_line_feed();
 	}
 
 	new_page_if_needed();
@@ -1663,6 +1664,24 @@ void PclPrinter::sync_active_font_state()
 	st_.proportional = (req.spacing != 0);
 	st_.italic = (req.style == 1);
 	st_.bold = (req.stroke >= 3);
+}
+
+void PclPrinter::ljii_line_feed()
+{
+	flush_pending_line();
+	new_page_if_needed();
+	page_dirty_ = true;
+
+	st_.y_pos += st_.line_spacing_in;
+	float bottom = st_.perf_skip_lines > 0
+		? st_.page_height_in -
+		  static_cast<float>(st_.perf_skip_lines) * st_.line_spacing_in
+		: st_.page_height_in - 0.5f;
+	if (st_.y_pos >= bottom)
+		publish_current_page();
+
+	advance_line_direction();
+	finish_printed_line();
 }
 
 void PclPrinter::set_page_size(int code)
