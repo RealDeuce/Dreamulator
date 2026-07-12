@@ -8,6 +8,31 @@ import sys
 from pathlib import Path
 
 
+def corrected_payload(doc_path: Path, doc: dict, glyph: dict) -> tuple[bytes, int]:
+    width = int(glyph["width"])
+    rows = int(glyph["rows"])
+    mode = int(glyph.get("mode", 0))
+    span = (width + 7) // 8 if width else 0
+    render_span = span
+    if render_span & 1 and mode != 2:
+        render_span += 1
+
+    rom_source = doc.get("source")
+    bitmap_offset = glyph.get("bitmap_offset")
+    if isinstance(rom_source, str) and bitmap_offset is not None:
+        rom_path = doc_path.parents[1] / rom_source.removeprefix("generated/")
+        if not rom_path.exists():
+            rom_path = doc_path.parents[1] / rom_source
+        if rom_path.exists():
+            rom = rom_path.read_bytes()
+            offset = int(bitmap_offset)
+            length = rows * max(render_span, 1)
+            if offset >= 0 and offset + length <= len(rom):
+                return rom[offset : offset + length], render_span
+
+    return bytes.fromhex(glyph["payload_hex"]), int(glyph["render_span"])
+
+
 def c_array(name: str, data: bytes) -> str:
     lines = [f"static constexpr uint8_t {name}[] = {{"]
     for i in range(0, len(data), 16):
@@ -38,7 +63,7 @@ def main() -> int:
         record_index = len(records)
         first_glyph = len(glyphs)
         for glyph in record["glyphs"]:
-            payload = bytes.fromhex(glyph["payload_hex"])
+            payload, render_span = corrected_payload(source, doc, glyph)
             offset = len(data)
             data.extend(payload)
             glyphs.append(
@@ -49,7 +74,7 @@ def main() -> int:
                     int(glyph["x_offset"]),
                     int(glyph["y_offset"]),
                     int(glyph["rows"]),
-                    int(glyph["render_span"]),
+                    render_span,
                     offset,
                     len(payload),
                 )
