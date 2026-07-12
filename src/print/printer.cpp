@@ -69,8 +69,10 @@ void PrinterSim::new_page_if_needed()
 			PageBitmap::at_dpi(st_.page_width_in, st_.page_height_in,
 			                   prof_.render_dpi));
 		page_dirty_ = false;
-		st_.x_pos = st_.left_margin_in;
-		st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+		if (prof_.model != PrinterModel::HpJet) {
+			st_.x_pos = st_.left_margin_in;
+			st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+		}
 	}
 }
 

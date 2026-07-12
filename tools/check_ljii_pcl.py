@@ -231,6 +231,24 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        dot_position = write(tmp / "dot-position.pcl",
+                             ESC + b"*p300X" + b"A" + FF)
+        column_position = write(tmp / "column-position.pcl",
+                                ESC + b"&a10C" + b"A" + FF)
+        default_position = write(tmp / "default-position.pcl", b"A" + FF)
+        dot_position_pdf = tmp / "dot-position.pdf"
+        column_position_pdf = tmp / "column-position.pdf"
+        default_position_pdf = tmp / "default-position.pdf"
+        render(dreamprint, dot_position, dot_position_pdf)
+        render(dreamprint, column_position, column_position_pdf)
+        render(dreamprint, default_position, default_position_pdf)
+        if ppm_sha256(dot_position_pdf, tmp / "dot-position", dpi=150) != \
+           ppm_sha256(column_position_pdf, tmp / "column-position", dpi=150):
+            raise AssertionError("dot and column horizontal positions diverged")
+        if ppm_sha256(dot_position_pdf, tmp / "dot-position", dpi=150) == \
+           ppm_sha256(default_position_pdf, tmp / "default-position", dpi=150):
+            raise AssertionError("absolute horizontal position did not move pixels")
+
         hmi_positive = write(tmp / "hmi-positive.pcl",
                              ESC + b"&k6H" + b"!!" + FF)
         hmi_negative = write(tmp / "hmi-negative.pcl",
@@ -784,6 +802,18 @@ def main():
         if ppm_sha256(vmi_positive_pdf, tmp / "vmi-positive", dpi=150) != \
            ppm_sha256(vmi_negative_pdf, tmp / "vmi-negative", dpi=150):
             raise AssertionError("negative VMI value did not match positive value")
+
+        vmi_pending = write(tmp / "vmi-pending.pcl",
+                            ESC + b"&l24C" + b"A" + FF)
+        vmi_explicit = write(tmp / "vmi-explicit.pcl",
+                             ESC + b"*p108Y" + b"A" + FF)
+        vmi_pending_pdf = tmp / "vmi-pending.pdf"
+        vmi_explicit_pdf = tmp / "vmi-explicit.pdf"
+        render(dreamprint, vmi_pending, vmi_pending_pdf)
+        render(dreamprint, vmi_explicit, vmi_explicit_pdf)
+        if ppm_sha256(vmi_pending_pdf, tmp / "vmi-pending", dpi=150) != \
+           ppm_sha256(vmi_explicit_pdf, tmp / "vmi-explicit", dpi=150):
+            raise AssertionError("pending VMI cursor did not use 18/25 offset")
 
         top_margin_positive = write(tmp / "top-margin-positive.pcl",
                                     ESC + b"&l3E" + b"!" + FF)
