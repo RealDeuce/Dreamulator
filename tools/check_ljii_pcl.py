@@ -40,8 +40,8 @@ def pdf_pages(pdf):
     raise AssertionError("pdfinfo did not report page count")
 
 
-def ppm_nonwhite(pdf, stem):
-    run(["pdftoppm", "-r", "72", "-singlefile", str(pdf), str(stem)])
+def ppm_nonwhite(pdf, stem, dpi=72):
+    run(["pdftoppm", "-r", str(dpi), "-singlefile", str(pdf), str(stem)])
     data = Path(f"{stem}.ppm").read_bytes()
     if not data.startswith(b"P6"):
         raise AssertionError("pdftoppm did not emit binary PPM")
@@ -139,6 +139,28 @@ def main():
             raise AssertionError("raster payload control shifted stream")
         if ppm_nonwhite(raster_control_pdf, tmp / "raster-control") < 5:
             raise AssertionError("raster payload control render looks blank")
+
+        raster_full = write(tmp / "raster-full.pcl",
+                            ESC + b"*t300R" +
+                            ESC + b"*r0A" +
+                            ESC + b"*b4W" +
+                            bytes([0xf0, 0x0f, 0xaa, 0x55]) + FF)
+        raster_cap = write(tmp / "raster-cap.pcl",
+                           ESC + b"*p2384X" +
+                           ESC + b"*t300R" +
+                           ESC + b"*r1A" +
+                           ESC + b"*b4W" +
+                           bytes([0xf0, 0x0f, 0xaa, 0x55]) + FF)
+        raster_full_pdf = tmp / "raster-full.pdf"
+        raster_cap_pdf = tmp / "raster-cap.pdf"
+        render(dreamprint, raster_full, raster_full_pdf)
+        render(dreamprint, raster_cap, raster_cap_pdf)
+        full_pixels = ppm_nonwhite(raster_full_pdf, tmp / "raster-full",
+                                   dpi=150)
+        cap_pixels = ppm_nonwhite(raster_cap_pdf, tmp / "raster-cap",
+                                  dpi=150)
+        if not (0 < cap_pixels < full_pixels):
+            raise AssertionError("raster transfer cap did not reduce row")
 
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):

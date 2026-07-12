@@ -1131,31 +1131,56 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 {
 	if (row.empty() || !raster_active_)
 		return;
+
+	int start_x_dot = (int)std::floor(raster_x_in_ * kDotsPerIn);
+	int start_y_dot = (int)std::floor(raster_y_in_ * kDotsPerIn) + raster_row_;
+	int page_w_dot = (int)std::floor(st_.right_margin_in * kDotsPerIn);
+	int page_h_dot = (int)std::floor(st_.page_height_in * kDotsPerIn);
+
+	if (raster_row_ < 0) {
+		raster_row_ += raster_scale_;
+		return;
+	}
+	if (start_y_dot > page_h_dot)
+		return;
+
+	int dots_per_byte = 8 * std::max(1, raster_scale_);
+	int remaining_dots = page_w_dot - start_x_dot;
+	int accepted = remaining_dots > 0
+		? (remaining_dots + dots_per_byte - 1) / dots_per_byte
+		: 0;
+	accepted = std::max(0, std::min(accepted, (int)row.size()));
+	if (accepted <= 0) {
+		raster_row_ += raster_scale_;
+		return;
+	}
+
+	std::vector<uint8_t> accepted_row(row.begin(), row.begin() + accepted);
 	new_page_if_needed();
 	page_dirty_ = true;
 
 	if (raster_mode_ == 0) {
 		int x_dot = 0;
-		for (uint8_t byte : row) {
+		for (uint8_t byte : accepted_row) {
 			draw_raster_bits(byte, 8, x_dot, 0, 1);
 			x_dot += 8;
 		}
 	} else if (raster_mode_ == 1) {
 		int x_dot = 0;
-		for (uint8_t byte : row) {
+		for (uint8_t byte : accepted_row) {
 			draw_raster_bits(expand_raster_2x(byte), 16, x_dot, 0, 2);
 			x_dot += 16;
 		}
 	} else if (raster_mode_ == 2) {
-		for (size_t i = 0; i < row.size(); i += 2)
-			draw_raster_bits(expand_raster_3x(row[i]), 32,
+		for (size_t i = 0; i < accepted_row.size(); i += 2)
+			draw_raster_bits(expand_raster_3x(accepted_row[i]), 32,
 			                 (int)(i / 2) * 48, 0, 3);
-		for (size_t i = 1; i < row.size(); i += 2)
-			draw_raster_bits(expand_raster_3x(row[i]), 32,
+		for (size_t i = 1; i < accepted_row.size(); i += 2)
+			draw_raster_bits(expand_raster_3x(accepted_row[i]), 32,
 			                 (int)(i / 2) * 48 + 16, 0, 3);
 	} else {
 		int x_dot = 0;
-		for (uint8_t byte : row) {
+		for (uint8_t byte : accepted_row) {
 			draw_raster_bits(expand_raster_4x(byte), 32, x_dot, 0, 4);
 			x_dot += 32;
 		}
