@@ -6,7 +6,7 @@
 struct LjiiRecordEntry {
 	uint32_t context; uint32_t first; uint16_t count;
 	uint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;
-	uint8_t spacing; int8_t style; int8_t stroke;
+	uint8_t spacing; int8_t style; int8_t stroke; uint8_t typeface;
 	uint8_t tie_a; int8_t tie_b; uint8_t tie_c;
 };
 struct LjiiGlyphEntry {
@@ -29574,30 +29574,30 @@ static constexpr uint8_t ljii_glyph_data[] = {
 };
 
 static constexpr LjiiRecordEntry ljii_records[] = {
-	{ 0x4008004cu, 0u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x44080418u, 189u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x44080868u, 442u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x40080cb8u, 695u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x40089fb0u, 885u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x4408a37cu, 1074u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x4408a7ccu, 1327u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x4008ac1cu, 1580u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x400942e4u, 1770u, 189u, 0u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x440946b4u, 1959u, 253u, 0u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x44094b08u, 2212u, 253u, 0u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x40094f5cu, 2465u, 190u, 0u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x40099d18u, 2655u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x4409a0e4u, 2844u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x4409a534u, 3097u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x4009a984u, 3350u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
-	{ 0x400a3484u, 3540u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x440a3850u, 3729u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x440a3ca0u, 3982u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x400a40f0u, 4235u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
-	{ 0x400ad4aau, 4425u, 189u, 1u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x440ad87au, 4614u, 253u, 1u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x440adcceu, 4867u, 253u, 1u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
-	{ 0x400ae122u, 5120u, 190u, 1u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x4008004cu, 0u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x44080418u, 189u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x44080868u, 442u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x40080cb8u, 695u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x40089fb0u, 885u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x4408a37cu, 1074u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x4408a7ccu, 1327u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x4008ac1cu, 1580u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x400942e4u, 1770u, 189u, 0u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x440946b4u, 1959u, 253u, 0u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x44094b08u, 2212u, 253u, 0u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x40094f5cu, 2465u, 190u, 0u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x40099d18u, 2655u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x4409a0e4u, 2844u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x4409a534u, 3097u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x4009a984u, 3350u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 3u, 0u, 0, 3u },
+	{ 0x400a3484u, 3540u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x440a3850u, 3729u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x440a3ca0u, 3982u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x400a40f0u, 4235u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 3u, 0u, 3, 3u },
+	{ 0x400ad4aau, 4425u, 189u, 1u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x440ad87au, 4614u, 253u, 1u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x440adcceu, 4867u, 253u, 1u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
+	{ 0x400ae122u, 5120u, 190u, 1u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0u, 0, 0u },
 };
 
 static constexpr LjiiGlyphEntry ljii_glyphs[] = {
@@ -35002,12 +35002,20 @@ uint32_t select_ljii_context(const LjiiFontRequest &request)
 	if (spacing) mask = spacing;
 	mask = nearest_pitch_mask(mask, request.pitch);
 	mask = nearest_height_mask(mask, request.height);
+	uint32_t style = filter_ljii_records(mask, [&request](const auto &r) {
+		return r.style == request.style;
+	});
+	if (style) mask = style;
 	uint32_t stroke = 0;
 	if (request.stroke >= 3)
 		stroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke >= 3; });
 	else
 		stroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });
 	if (stroke) mask = stroke;
+	uint32_t typeface = filter_ljii_records(mask, [&request](const auto &r) {
+		return r.typeface == request.typeface;
+	});
+	if (typeface) mask = typeface;
 	const LjiiRecordEntry *best = nullptr;
 	for (const auto &record : ljii_records) {
 		if (!(mask & (1u << (&record - ljii_records)))) continue;

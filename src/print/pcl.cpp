@@ -399,7 +399,9 @@ private:
 	void start_underline_span();
 	void flush_underline_span();
 	void restart_underline_span();
-	void draw_underline_range(float x0_in, float x1_in, float y_in);
+	void draw_underline_range(float x0_in, float x1_in, float y_in,
+	                          int selector);
+	float underline_y_in(float y_in, int selector) const;
 	void ljii_carriage_return();
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
@@ -454,6 +456,8 @@ private:
 	bool underline_span_active_ = false;
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
+	int underline_span_selector_ = 0;
+	int underline_selector_ = 0;
 	bool pending_cursor_y_ = true;
 
 	int raster_resolution_ = 300;
@@ -530,6 +534,8 @@ void PclPrinter::reset_ljii_state()
 	underline_span_active_ = false;
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
+	underline_span_selector_ = 0;
+	underline_selector_ = 0;
 	pending_cursor_y_ = true;
 	raster_resolution_ = 300;
 	raster_mode_ = 0;
@@ -1015,17 +1021,21 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		switch (term) {
 		case 'D':
 			ival = std::abs(ival);
-			if (ival == 3) {
+			if (ival <= 3) {
+				flush_underline_span();
 				st_.underline = true;
+				underline_selector_ = (ival == 3) ? 1 : 0;
 				start_underline_span();
 			} else {
 				flush_underline_span();
 				st_.underline = false;
+				underline_selector_ = 0;
 			}
 			break;
 		case '@':
 			flush_underline_span();
 			st_.underline = false;
+			underline_selector_ = 0;
 			break;
 		default:
 			break;
@@ -1980,7 +1990,9 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			new_page_if_needed();
 			page_dirty_ = true;
 			int dpi = prof_.render_dpi;
-			int y = (int)std::lround((st_.y_pos + 1.0f / 72.0f) * (float)dpi);
+				int y = (int)std::lround(underline_y_in(st_.y_pos,
+				                                        underline_selector_) *
+				                         (float)dpi);
 			int x0 = (int)std::lround(st_.x_pos * (float)dpi);
 			int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
 			for (int x = x0; x < x1; x++) {
@@ -2043,7 +2055,9 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		}
 	}
 	if (st_.underline) {
-		int y = (int)std::lround((st_.y_pos + 1.0f / 72.0f) * (float)dpi);
+			int y = (int)std::lround(underline_y_in(st_.y_pos,
+			                                        underline_selector_) *
+			                         (float)dpi);
 		int x0 = (int)std::lround(st_.x_pos * (float)dpi);
 		int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
 		for (int x = x0; x < x1; x++) {
@@ -2087,13 +2101,15 @@ void PclPrinter::start_underline_span()
 	underline_span_active_ = true;
 	underline_span_x0_in_ = st_.x_pos;
 	underline_span_y_in_ = st_.y_pos;
+	underline_span_selector_ = underline_selector_;
 }
 
 void PclPrinter::flush_underline_span()
 {
 	if (!underline_span_active_)
 		return;
-	draw_underline_range(underline_span_x0_in_, st_.x_pos, underline_span_y_in_);
+	draw_underline_range(underline_span_x0_in_, st_.x_pos,
+	                     underline_span_y_in_, underline_span_selector_);
 	underline_span_active_ = false;
 }
 
@@ -2103,7 +2119,13 @@ void PclPrinter::restart_underline_span()
 	start_underline_span();
 }
 
-void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in)
+float PclPrinter::underline_y_in(float y_in, int selector) const
+{
+	return y_in + (selector ? -18.0f : 5.0f) / kDotsPerIn;
+}
+
+void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in,
+                                      int selector)
 {
 	if (x1_in < x0_in)
 		std::swap(x0_in, x1_in);
@@ -2115,7 +2137,7 @@ void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in)
 	new_page_if_needed();
 	page_dirty_ = true;
 	int dpi = prof_.render_dpi;
-	int y = (int)std::lround((y_in + 1.0f / 72.0f) * (float)dpi);
+	int y = (int)std::lround(underline_y_in(y_in, selector) * (float)dpi);
 	int x0 = (int)std::lround(x0_in * (float)dpi);
 	int x1 = (int)std::lround(x1_in * (float)dpi);
 	for (int x = x0; x < x1; x++) {

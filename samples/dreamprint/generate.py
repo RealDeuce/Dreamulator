@@ -561,18 +561,29 @@ def pcl_param(prefix: bytes, body: bytes) -> bytes:
 
 def ljii_font(pitch: str, italic: bool, bold: bool) -> bytes:
     if pitch == "line-printer":
-        pitch_body = b"16.66h"
+        pitch_body = b"16.66h8.5v"
+        typeface = b"0T"
     elif pitch == "12cpi":
-        pitch_body = b"12h"
+        pitch_body = b"12h12v"
+        typeface = b"3T"
     else:
-        pitch_body = b"10h"
+        pitch_body = b"10h12v"
+        typeface = b"3T"
     style = b"1s" if italic else b"0s"
     weight = b"3b" if bold else b"0b"
-    return pcl_param(b"(s", b"0p" + pitch_body + style + weight + b"3T")
+    return pcl_param(b"(s", b"0p" + pitch_body + style + weight + typeface)
+
+
+def ljii_underline(mode: str) -> bytes:
+    if mode == "fixed":
+        return pcl_param(b"&d", b"0D")
+    if mode == "floating":
+        return pcl_param(b"&d", b"3D")
+    return pcl_param(b"&d", b"@")
 
 
 def ljii_plain() -> bytes:
-    return ljii_font("10cpi", False, False) + pcl_param(b"&d", b"@")
+    return ljii_font("10cpi", False, False) + ljii_underline("off")
 
 
 def build_ljii_text_attributes() -> bytes:
@@ -580,22 +591,26 @@ def build_ljii_text_attributes() -> bytes:
     out += ESC + b"E"
     out += b"LaserJet II text capability sample\r\n\r\n"
 
-    out += b"Resident font request matrix\r\n"
+    out += b"Resident font and text attribute matrix\r\n"
     pitch_rows = [
         ("10 cpi", "10cpi"),
         ("12 cpi", "12cpi"),
         ("16.66 cpi line-printer", "line-printer"),
     ]
     for title, pitch_mode in pitch_rows:
-        for italic in (False, True):
-            for bold in (False, True):
-                out += ljii_plain()
-                out += ljii_font(pitch_mode, italic, bold)
-                attrs = [title]
-                attrs.append("italic-request" if italic else "upright-request")
-                attrs.append("stroke-3B" if bold else "stroke-0B")
-                out += (" / ".join(attrs) + ": ").encode("ascii")
-                out += sample_text() + b"\r\n"
+        for underline in ("off", "fixed", "floating"):
+            for italic in (False, True):
+                for bold in (False, True):
+                    out += ljii_plain()
+                    out += ljii_font(pitch_mode, italic, bold)
+                    out += ljii_underline(underline)
+                    attrs = [title]
+                    attrs.append("italic-request" if italic else "upright-request")
+                    attrs.append("stroke-3B" if bold else "stroke-0B")
+                    if underline != "off":
+                        attrs.append(underline + "-underline")
+                    out += (" / ".join(attrs) + ": ").encode("ascii")
+                    out += sample_text() + b"\r\n"
         out += b"\r\n"
 
     out += ljii_plain()
@@ -605,8 +620,11 @@ def build_ljii_text_attributes() -> bytes:
 
     out += ljii_plain()
     out += b"Underline includes spaces\r\n"
-    out += pcl_param(b"&d", b"0D")
-    out += b"underlined words with visible space gaps\r\n"
+    out += ljii_underline("fixed")
+    out += b"fixed underline covers visible space gaps\r\n"
+    out += ljii_plain()
+    out += ljii_underline("floating")
+    out += b"floating underline covers visible space gaps\r\n"
     out += ljii_plain()
     out += b"\r\n"
 

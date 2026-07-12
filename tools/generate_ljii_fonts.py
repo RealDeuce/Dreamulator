@@ -43,9 +43,9 @@ def rom_path_for_doc(doc_path: Path, doc: dict) -> Path | None:
     return rom_path if rom_path.exists() else None
 
 
-def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int, int, int, int, int, int, int]:
+def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int, int, int, int, int, int, int, int]:
     if rom is None:
-        return (0, 0x0115, 1000, 1200, 0, 0, 0, 0, 0, 0)
+        return (0, 0x0115, 1000, 1200, 0, 0, 0, 3, 0, 0, 0)
     base = int(record["record_start"])
     return (
         rom[base + 0x20],
@@ -55,6 +55,7 @@ def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int
         rom[base + 0x21],
         s8(rom[base + 0x0D]),
         s8(rom[base + 0x30]),
+        rom[base + 0x31],
         rom[base + 0x2F],
         s8(rom[base + 0x30]),
         rom[base + 0x31],
@@ -149,7 +150,7 @@ def main() -> int:
     out.append("struct LjiiRecordEntry {")
     out.append("\tuint32_t context; uint32_t first; uint16_t count;")
     out.append("\tuint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;")
-    out.append("\tuint8_t spacing; int8_t style; int8_t stroke;")
+    out.append("\tuint8_t spacing; int8_t style; int8_t stroke; uint8_t typeface;")
     out.append("\tuint8_t tie_a; int8_t tie_b; uint8_t tie_c;")
     out.append("};")
     out.append("struct LjiiGlyphEntry {")
@@ -161,11 +162,11 @@ def main() -> int:
     out.append("")
     out.append("static constexpr LjiiRecordEntry ljii_records[] = {")
     for (context, first, count, class_id, symbol, pitch, height, spacing,
-         style, stroke, tie_a, tie_b, tie_c) in records:
+         style, stroke, typeface, tie_a, tie_b, tie_c) in records:
         out.append(
             f"\t{{ 0x{context:08x}u, {first}u, {count}u, {class_id}u, "
             f"0x{symbol:04x}u, {pitch}u, {height}u, {spacing}u, "
-            f"{style}, {stroke}, {tie_a}u, {tie_b}, {tie_c}u }},"
+            f"{style}, {stroke}, {typeface}u, {tie_a}u, {tie_b}, {tie_c}u }},"
         )
     out.append("};")
     out.append("")
@@ -266,12 +267,20 @@ def main() -> int:
     out.append("\tif (spacing) mask = spacing;")
     out.append("\tmask = nearest_pitch_mask(mask, request.pitch);")
     out.append("\tmask = nearest_height_mask(mask, request.height);")
+    out.append("\tuint32_t style = filter_ljii_records(mask, [&request](const auto &r) {")
+    out.append("\t\treturn r.style == request.style;")
+    out.append("\t});")
+    out.append("\tif (style) mask = style;")
     out.append("\tuint32_t stroke = 0;")
     out.append("\tif (request.stroke >= 3)")
     out.append("\t\tstroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke >= 3; });")
     out.append("\telse")
     out.append("\t\tstroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });")
     out.append("\tif (stroke) mask = stroke;")
+    out.append("\tuint32_t typeface = filter_ljii_records(mask, [&request](const auto &r) {")
+    out.append("\t\treturn r.typeface == request.typeface;")
+    out.append("\t});")
+    out.append("\tif (typeface) mask = typeface;")
     out.append("\tconst LjiiRecordEntry *best = nullptr;")
     out.append("\tfor (const auto &record : ljii_records) {")
     out.append("\t\tif (!(mask & (1u << (&record - ljii_records)))) continue;")

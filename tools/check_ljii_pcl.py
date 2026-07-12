@@ -117,6 +117,22 @@ def ppm_pixel(pdf, stem, x, y, dpi=72):
     return pixels[off:off + 3]
 
 
+def ppm_rect_nonwhite(pdf, stem, x0, y0, x1, y1, dpi=72):
+    width, height, pixels = ppm_image(pdf, stem, dpi)
+    x0 = max(0, min(width, x0))
+    x1 = max(0, min(width, x1))
+    y0 = max(0, min(height, y0))
+    y1 = max(0, min(height, y1))
+    count = 0
+    for y in range(y0, y1):
+        row = y * width * 3
+        for x in range(x0, x1):
+            off = row + x * 3
+            if pixels[off:off + 3] != b"\xff\xff\xff":
+                count += 1
+    return count
+
+
 def write(path, data):
     path.write_bytes(data)
     return path
@@ -509,6 +525,17 @@ def main():
                       tmp / "explicit-secondary-line", dpi=150):
             raise AssertionError("built-in secondary font ID 8 did not select line-printer context")
 
+        typeface_low_priority = write(
+            tmp / "typeface-low-priority.pcl",
+            ESC + b"(s0p10h12v0s0b0T" + b"Stroke sample" + FF,
+        )
+        typeface_low_priority_pdf = tmp / "typeface-low-priority.pdf"
+        render(dreamprint, typeface_low_priority, typeface_low_priority_pdf)
+        if ppm_sha256(typeface_low_priority_pdf,
+                      tmp / "typeface-low-priority", dpi=150) != \
+           ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
+            raise AssertionError("typeface request overrode higher-priority resident font filters")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",
@@ -532,16 +559,31 @@ def main():
            ppm_sha256(style_negative_pdf, tmp / "style-negative", dpi=150):
             raise AssertionError("negative style request did not match positive style")
 
+        underline_fixed = write(tmp / "underline-fixed.pcl",
+                                ESC + b"&d0D" + b"A\tB" +
+                                ESC + b"&d@" + FF)
         underline_span = write(tmp / "underline-span.pcl",
                                ESC + b"&d3D" + b"A\tB" +
                                ESC + b"&d@" + FF)
+        underline_fixed_pdf = tmp / "underline-fixed.pdf"
         underline_span_pdf = tmp / "underline-span.pdf"
+        render(dreamprint, underline_fixed, underline_fixed_pdf)
         render(dreamprint, underline_span, underline_span_pdf)
+        if "AB" not in "".join(pdftotext(underline_fixed_pdf).split()):
+            raise AssertionError("fixed underline span text did not extract")
         if "AB" not in "".join(pdftotext(underline_span_pdf).split()):
-            raise AssertionError("underline span text did not extract")
-        if ppm_pixel(underline_span_pdf, tmp / "underline-span",
-                     150, 114, dpi=300) == b"\xff\xff\xff":
-            raise AssertionError("underline span did not cover tab gap")
+            raise AssertionError("floating underline span text did not extract")
+        if ppm_rect_nonwhite(underline_fixed_pdf, tmp / "underline-fixed",
+                             130, 113, 180, 118, dpi=300) == 0:
+            raise AssertionError("fixed underline span did not cover tab gap")
+        if ppm_rect_nonwhite(underline_span_pdf, tmp / "underline-span",
+                             130, 90, 180, 95, dpi=300) == 0:
+            raise AssertionError("floating underline span did not cover tab gap")
+        if ppm_sha256(underline_fixed_pdf, tmp / "underline-fixed",
+                      dpi=150) == \
+           ppm_sha256(underline_span_pdf, tmp / "underline-span",
+                      dpi=150):
+            raise AssertionError("fixed and floating underline selectors rendered identically")
 
         underline_negative = write(tmp / "underline-negative.pcl",
                                    ESC + b"&d-3D" + b"A\tB" +
