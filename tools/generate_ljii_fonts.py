@@ -8,6 +8,59 @@ import sys
 from pathlib import Path
 
 
+def u16(data: bytes, offset: int) -> int:
+    return (data[offset] << 8) | data[offset + 1]
+
+
+def s8(value: int) -> int:
+    value &= 0xFF
+    return value - 0x100 if value & 0x80 else value
+
+
+def packed_font_metric(word_value: int, byte_value: int) -> int:
+    return (((word_value & 0xFFFF) << 8) | (byte_value & 0xFF)) & 0xFFFFFFFF
+
+
+def builtin_pitch(word_0x24: int, byte_0x26: int) -> int:
+    packed = packed_font_metric(word_0x24, byte_0x26)
+    if packed < 2:
+        return 0xFFFF
+    return min(0xFFFF, 0x01D4C000 // packed)
+
+
+def builtin_height(word_0x28: int, byte_0x2a: int) -> int:
+    packed = packed_font_metric(word_0x28, byte_0x2a)
+    return (packed * 0x00E1) // 0x2580
+
+
+def rom_path_for_doc(doc_path: Path, doc: dict) -> Path | None:
+    rom_source = doc.get("source")
+    if not isinstance(rom_source, str):
+        return None
+    rom_path = doc_path.parents[1] / rom_source.removeprefix("generated/")
+    if not rom_path.exists():
+        rom_path = doc_path.parents[1] / rom_source
+    return rom_path if rom_path.exists() else None
+
+
+def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int, int, int, int, int, int, int]:
+    if rom is None:
+        return (0, 0x0115, 1000, 1200, 0, 0, 0, 0, 0, 0)
+    base = int(record["record_start"])
+    return (
+        rom[base + 0x20],
+        u16(rom, base + 0x22),
+        builtin_pitch(u16(rom, base + 0x24), rom[base + 0x26]),
+        builtin_height(u16(rom, base + 0x28), rom[base + 0x2A]),
+        rom[base + 0x21],
+        s8(rom[base + 0x0D]),
+        s8(rom[base + 0x30]),
+        rom[base + 0x2F],
+        s8(rom[base + 0x30]),
+        rom[base + 0x31],
+    )
+
+
 def corrected_payload(doc_path: Path, doc: dict, glyph: dict) -> tuple[bytes, int]:
     width = int(glyph["width"])
     rows = int(glyph["rows"])
@@ -17,13 +70,10 @@ def corrected_payload(doc_path: Path, doc: dict, glyph: dict) -> tuple[bytes, in
     if render_span & 1 and mode != 2:
         render_span += 1
 
-    rom_source = doc.get("source")
     bitmap_offset = glyph.get("bitmap_offset")
-    if isinstance(rom_source, str) and bitmap_offset is not None:
-        rom_path = doc_path.parents[1] / rom_source.removeprefix("generated/")
-        if not rom_path.exists():
-            rom_path = doc_path.parents[1] / rom_source
-        if rom_path.exists():
+    if bitmap_offset is not None:
+        rom_path = rom_path_for_doc(doc_path, doc)
+        if rom_path is not None and rom_path.exists():
             rom = rom_path.read_bytes()
             offset = int(bitmap_offset)
             length = rows * max(render_span, 1)
@@ -55,6 +105,8 @@ def main() -> int:
     source = Path(sys.argv[1])
     output = Path(sys.argv[2])
     doc = json.loads(source.read_text(encoding="utf-8"))
+    rom_path = rom_path_for_doc(source, doc)
+    rom = rom_path.read_bytes() if rom_path is not None else None
 
     data = bytearray()
     records = []
@@ -84,6 +136,7 @@ def main() -> int:
                 int(record["context_longword"]),
                 first_glyph,
                 len(glyphs) - first_glyph,
+                *record_metadata(rom, record),
             )
         )
 
@@ -93,7 +146,12 @@ def main() -> int:
     out.append('#include "fontljii.h"')
     out.append("#include <algorithm>")
     out.append("")
-    out.append("struct LjiiRecordEntry { uint32_t context; uint32_t first; uint16_t count; };")
+    out.append("struct LjiiRecordEntry {")
+    out.append("\tuint32_t context; uint32_t first; uint16_t count;")
+    out.append("\tuint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;")
+    out.append("\tuint8_t spacing; int8_t style; int8_t stroke;")
+    out.append("\tuint8_t tie_a; int8_t tie_b; uint8_t tie_c;")
+    out.append("};")
     out.append("struct LjiiGlyphEntry {")
     out.append("\tuint8_t record; uint8_t host; uint8_t width; int8_t x_offset;")
     out.append("\tint8_t y_offset; uint8_t rows; uint8_t span; uint32_t offset; uint16_t len;")
@@ -102,8 +160,13 @@ def main() -> int:
     out.append(c_array("ljii_glyph_data", bytes(data)))
     out.append("")
     out.append("static constexpr LjiiRecordEntry ljii_records[] = {")
-    for context, first, count in records:
-        out.append(f"\t{{ 0x{context:08x}u, {first}u, {count}u }},")
+    for (context, first, count, class_id, symbol, pitch, height, spacing,
+         style, stroke, tie_a, tie_b, tie_c) in records:
+        out.append(
+            f"\t{{ 0x{context:08x}u, {first}u, {count}u, {class_id}u, "
+            f"0x{symbol:04x}u, {pitch}u, {height}u, {spacing}u, "
+            f"{style}, {stroke}, {tie_a}u, {tie_b}, {tie_c}u }},"
+        )
     out.append("};")
     out.append("")
     out.append("static constexpr LjiiGlyphEntry ljii_glyphs[] = {")
@@ -126,6 +189,95 @@ def main() -> int:
     out.append("\tif (symbol_set == 0x0175) return 0x4408a7ccu;")
     out.append("\tif (symbol_set == 0x000e) return 0x4008ac1cu;")
     out.append("\treturn 0x40089fb0u;")
+    out.append("}")
+    out.append("")
+    out.append("static int ljii_abs(int value)")
+    out.append("{")
+    out.append("\treturn value < 0 ? -value : value;")
+    out.append("}")
+    out.append("")
+    out.append("static bool ljii_better_record(const LjiiRecordEntry &candidate,")
+    out.append("                               const LjiiRecordEntry &best)")
+    out.append("{")
+    out.append("\tif (candidate.height != best.height)")
+    out.append("\t\treturn candidate.height > best.height;")
+    out.append("\tif (candidate.tie_a != best.tie_a)")
+    out.append("\t\treturn candidate.tie_a > best.tie_a;")
+    out.append("\tif (candidate.tie_b != best.tie_b)")
+    out.append("\t\treturn candidate.tie_b > best.tie_b;")
+    out.append("\treturn candidate.tie_c > best.tie_c;")
+    out.append("}")
+    out.append("")
+    out.append("template <typename Predicate>")
+    out.append("static uint32_t filter_ljii_records(uint32_t mask, Predicate predicate)")
+    out.append("{")
+    out.append("\tuint32_t out_mask = 0;")
+    out.append("\tfor (uint32_t i = 0; i < sizeof(ljii_records) / sizeof(ljii_records[0]); i++)")
+    out.append("\t\tif ((mask & (1u << i)) && predicate(ljii_records[i]))")
+    out.append("\t\t\tout_mask |= 1u << i;")
+    out.append("\treturn out_mask;")
+    out.append("}")
+    out.append("")
+    out.append("static uint32_t nearest_pitch_mask(uint32_t mask, int requested)")
+    out.append("{")
+    out.append("\tuint32_t exact = filter_ljii_records(mask, [requested](const auto &r) {")
+    out.append("\t\treturn ljii_abs((int)r.pitch - requested) <= 5;")
+    out.append("\t});")
+    out.append("\tif (exact) return exact;")
+    out.append("\tint best_above = 0x7fffffff;")
+    out.append("\tint best_below = -1;")
+    out.append("\tfor (const auto &r : ljii_records) if (mask & (1u << (&r - ljii_records))) {")
+    out.append("\t\tif ((int)r.pitch >= requested) best_above = std::min(best_above, (int)r.pitch);")
+    out.append("\t\telse best_below = std::max(best_below, (int)r.pitch);")
+    out.append("\t}")
+    out.append("\tint chosen = best_above != 0x7fffffff ? best_above : best_below;")
+    out.append("\treturn filter_ljii_records(mask, [chosen](const auto &r) { return (int)r.pitch == chosen; });")
+    out.append("}")
+    out.append("")
+    out.append("static uint32_t nearest_height_mask(uint32_t mask, int requested)")
+    out.append("{")
+    out.append("\tuint32_t exact = filter_ljii_records(mask, [requested](const auto &r) {")
+    out.append("\t\treturn ljii_abs((int)r.height - requested) <= 25;")
+    out.append("\t});")
+    out.append("\tif (exact) return exact;")
+    out.append("\tint best_diff = 0x7fffffff;")
+    out.append("\tfor (const auto &r : ljii_records) if (mask & (1u << (&r - ljii_records)))")
+    out.append("\t\tbest_diff = std::min(best_diff, ljii_abs((int)r.height - requested));")
+    out.append("\treturn filter_ljii_records(mask, [requested, best_diff](const auto &r) {")
+    out.append("\t\treturn ljii_abs((int)r.height - requested) == best_diff;")
+    out.append("\t});")
+    out.append("}")
+    out.append("")
+    out.append("uint32_t select_ljii_context(const LjiiFontRequest &request)")
+    out.append("{")
+    out.append("\tuint8_t class_id = request.secondary ? 1 : 0;")
+    out.append("\tuint32_t mask = filter_ljii_records(0x00ffffffu, [class_id](const auto &r) {")
+    out.append("\t\treturn r.class_id == class_id;")
+    out.append("\t});")
+    out.append("\tuint32_t symbol = filter_ljii_records(mask, [&request](const auto &r) {")
+    out.append("\t\treturn r.symbol == request.symbol_set;")
+    out.append("\t});")
+    out.append("\tif (!symbol)")
+    out.append("\t\tsymbol = filter_ljii_records(mask, [](const auto &r) { return r.symbol == 0x0115; });")
+    out.append("\tif (symbol) mask = symbol;")
+    out.append("\tuint32_t spacing = filter_ljii_records(mask, [&request](const auto &r) {")
+    out.append("\t\treturn r.spacing == request.spacing;")
+    out.append("\t});")
+    out.append("\tif (spacing) mask = spacing;")
+    out.append("\tmask = nearest_pitch_mask(mask, request.pitch);")
+    out.append("\tmask = nearest_height_mask(mask, request.height);")
+    out.append("\tuint32_t stroke = 0;")
+    out.append("\tif (request.stroke >= 3)")
+    out.append("\t\tstroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke == 0; });")
+    out.append("\telse")
+    out.append("\t\tstroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });")
+    out.append("\tif (stroke) mask = stroke;")
+    out.append("\tconst LjiiRecordEntry *best = nullptr;")
+    out.append("\tfor (const auto &record : ljii_records) {")
+    out.append("\t\tif (!(mask & (1u << (&record - ljii_records)))) continue;")
+    out.append("\t\tif (!best || ljii_better_record(record, *best)) best = &record;")
+    out.append("\t}")
+    out.append("\treturn best ? best->context : default_ljii_context_for_pitch((float)request.pitch / 100.0f, request.symbol_set);")
     out.append("}")
     out.append("")
     out.append("LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte)")

@@ -3,7 +3,12 @@
 #include "fontljii.h"
 #include <algorithm>
 
-struct LjiiRecordEntry { uint32_t context; uint32_t first; uint16_t count; };
+struct LjiiRecordEntry {
+	uint32_t context; uint32_t first; uint16_t count;
+	uint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;
+	uint8_t spacing; int8_t style; int8_t stroke;
+	uint8_t tie_a; int8_t tie_b; uint8_t tie_c;
+};
 struct LjiiGlyphEntry {
 	uint8_t record; uint8_t host; uint8_t width; int8_t x_offset;
 	int8_t y_offset; uint8_t rows; uint8_t span; uint32_t offset; uint16_t len;
@@ -29569,30 +29574,30 @@ static constexpr uint8_t ljii_glyph_data[] = {
 };
 
 static constexpr LjiiRecordEntry ljii_records[] = {
-	{ 0x4008004cu, 0u, 189u },
-	{ 0x44080418u, 189u, 253u },
-	{ 0x44080868u, 442u, 253u },
-	{ 0x40080cb8u, 695u, 190u },
-	{ 0x40089fb0u, 885u, 189u },
-	{ 0x4408a37cu, 1074u, 253u },
-	{ 0x4408a7ccu, 1327u, 253u },
-	{ 0x4008ac1cu, 1580u, 190u },
-	{ 0x400942e4u, 1770u, 189u },
-	{ 0x440946b4u, 1959u, 253u },
-	{ 0x44094b08u, 2212u, 253u },
-	{ 0x40094f5cu, 2465u, 190u },
-	{ 0x40099d18u, 2655u, 189u },
-	{ 0x4409a0e4u, 2844u, 253u },
-	{ 0x4409a534u, 3097u, 253u },
-	{ 0x4009a984u, 3350u, 190u },
-	{ 0x400a3484u, 3540u, 189u },
-	{ 0x440a3850u, 3729u, 253u },
-	{ 0x440a3ca0u, 3982u, 253u },
-	{ 0x400a40f0u, 4235u, 190u },
-	{ 0x400ad4aau, 4425u, 189u },
-	{ 0x440ad87au, 4614u, 253u },
-	{ 0x440adcceu, 4867u, 253u },
-	{ 0x400ae122u, 5120u, 190u },
+	{ 0x4008004cu, 0u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x44080418u, 189u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x44080868u, 442u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x40080cb8u, 695u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x40089fb0u, 885u, 189u, 0u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x4408a37cu, 1074u, 253u, 0u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x4408a7ccu, 1327u, 253u, 0u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x4008ac1cu, 1580u, 190u, 0u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x400942e4u, 1770u, 189u, 0u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x440946b4u, 1959u, 253u, 0u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x44094b08u, 2212u, 253u, 0u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x40094f5cu, 2465u, 190u, 0u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x40099d18u, 2655u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x4409a0e4u, 2844u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x4409a534u, 3097u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x4009a984u, 3350u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 0, 0u, 0, 3u },
+	{ 0x400a3484u, 3540u, 189u, 1u, 0x0115u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x440a3850u, 3729u, 253u, 1u, 0x0155u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x440a3ca0u, 3982u, 253u, 1u, 0x0175u, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x400a40f0u, 4235u, 190u, 1u, 0x000eu, 1000u, 1200u, 0u, 0, 3, 0u, 3, 3u },
+	{ 0x400ad4aau, 4425u, 189u, 1u, 0x0115u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x440ad87au, 4614u, 253u, 1u, 0x0155u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x440adcceu, 4867u, 253u, 1u, 0x0175u, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
+	{ 0x400ae122u, 5120u, 190u, 1u, 0x000eu, 1666u, 850u, 0u, 0, 0, 0u, 0, 0u },
 };
 
 static constexpr LjiiGlyphEntry ljii_glyphs[] = {
@@ -34920,6 +34925,95 @@ uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set)
 	if (symbol_set == 0x0175) return 0x4408a7ccu;
 	if (symbol_set == 0x000e) return 0x4008ac1cu;
 	return 0x40089fb0u;
+}
+
+static int ljii_abs(int value)
+{
+	return value < 0 ? -value : value;
+}
+
+static bool ljii_better_record(const LjiiRecordEntry &candidate,
+                               const LjiiRecordEntry &best)
+{
+	if (candidate.height != best.height)
+		return candidate.height > best.height;
+	if (candidate.tie_a != best.tie_a)
+		return candidate.tie_a > best.tie_a;
+	if (candidate.tie_b != best.tie_b)
+		return candidate.tie_b > best.tie_b;
+	return candidate.tie_c > best.tie_c;
+}
+
+template <typename Predicate>
+static uint32_t filter_ljii_records(uint32_t mask, Predicate predicate)
+{
+	uint32_t out_mask = 0;
+	for (uint32_t i = 0; i < sizeof(ljii_records) / sizeof(ljii_records[0]); i++)
+		if ((mask & (1u << i)) && predicate(ljii_records[i]))
+			out_mask |= 1u << i;
+	return out_mask;
+}
+
+static uint32_t nearest_pitch_mask(uint32_t mask, int requested)
+{
+	uint32_t exact = filter_ljii_records(mask, [requested](const auto &r) {
+		return ljii_abs((int)r.pitch - requested) <= 5;
+	});
+	if (exact) return exact;
+	int best_above = 0x7fffffff;
+	int best_below = -1;
+	for (const auto &r : ljii_records) if (mask & (1u << (&r - ljii_records))) {
+		if ((int)r.pitch >= requested) best_above = std::min(best_above, (int)r.pitch);
+		else best_below = std::max(best_below, (int)r.pitch);
+	}
+	int chosen = best_above != 0x7fffffff ? best_above : best_below;
+	return filter_ljii_records(mask, [chosen](const auto &r) { return (int)r.pitch == chosen; });
+}
+
+static uint32_t nearest_height_mask(uint32_t mask, int requested)
+{
+	uint32_t exact = filter_ljii_records(mask, [requested](const auto &r) {
+		return ljii_abs((int)r.height - requested) <= 25;
+	});
+	if (exact) return exact;
+	int best_diff = 0x7fffffff;
+	for (const auto &r : ljii_records) if (mask & (1u << (&r - ljii_records)))
+		best_diff = std::min(best_diff, ljii_abs((int)r.height - requested));
+	return filter_ljii_records(mask, [requested, best_diff](const auto &r) {
+		return ljii_abs((int)r.height - requested) == best_diff;
+	});
+}
+
+uint32_t select_ljii_context(const LjiiFontRequest &request)
+{
+	uint8_t class_id = request.secondary ? 1 : 0;
+	uint32_t mask = filter_ljii_records(0x00ffffffu, [class_id](const auto &r) {
+		return r.class_id == class_id;
+	});
+	uint32_t symbol = filter_ljii_records(mask, [&request](const auto &r) {
+		return r.symbol == request.symbol_set;
+	});
+	if (!symbol)
+		symbol = filter_ljii_records(mask, [](const auto &r) { return r.symbol == 0x0115; });
+	if (symbol) mask = symbol;
+	uint32_t spacing = filter_ljii_records(mask, [&request](const auto &r) {
+		return r.spacing == request.spacing;
+	});
+	if (spacing) mask = spacing;
+	mask = nearest_pitch_mask(mask, request.pitch);
+	mask = nearest_height_mask(mask, request.height);
+	uint32_t stroke = 0;
+	if (request.stroke >= 3)
+		stroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke == 0; });
+	else
+		stroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });
+	if (stroke) mask = stroke;
+	const LjiiRecordEntry *best = nullptr;
+	for (const auto &record : ljii_records) {
+		if (!(mask & (1u << (&record - ljii_records)))) continue;
+		if (!best || ljii_better_record(record, *best)) best = &record;
+	}
+	return best ? best->context : default_ljii_context_for_pitch((float)request.pitch / 100.0f, request.symbol_set);
 }
 
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte)

@@ -18,25 +18,49 @@ namespace {
 static constexpr float kDotsPerIn = 300.0f;
 static constexpr int kSymbolRoman8 = 0x0115;
 
-struct PageSize {
-	float w;
-	float h;
+struct PageGeometry {
+	int physical_w = 2550;
+	int physical_h = 3300;
+	int logical_w = 2400;
+	int logical_h = 3300;
+	int left = 50;
+	int right = 100;
+	int top = 60;
+	int bottom = 60;
 };
 
-PageSize pcl_page_size(int code)
+PageGeometry pcl_page_geometry(int code, int orientation)
 {
+	PageGeometry portrait;
 	switch (code) {
-	case 1:  return { 8.5f, 11.0f };      // executive is model/region dependent; keep printable.
-	case 2:  return { 8.5f, 11.0f };      // letter
-	case 3:  return { 8.5f, 14.0f };      // legal
-	case 6:  return { 7.25f, 10.5f };     // statement
-	case 26: return { 8.27f, 11.69f };    // A4
-	case 80: return { 3.875f, 7.5f };     // Monarch envelope
-	case 81: return { 4.125f, 9.5f };     // COM10 envelope
-	case 90: return { 4.33f, 8.66f };     // DL envelope
-	case 91: return { 6.38f, 9.02f };     // C5 envelope
-	default: return { 8.5f, 11.0f };
+	case 1:  portrait = { 2175, 3150, 2025, 3150, 50, 100, 60, 60 }; break;
+	case 2:  portrait = { 2550, 3300, 2400, 3300, 50, 100, 60, 60 }; break;
+	case 3:  portrait = { 2550, 4200, 2400, 4200, 50, 100, 60, 60 }; break;
+	case 26: portrait = { 2480, 3507, 2338, 3507, 50,  92, 60, 58 }; break;
+	case 80: portrait = { 1162, 2250, 1012, 2250, 50, 100, 60, 60 }; break;
+	case 81: portrait = { 1237, 2850, 1087, 2850, 50, 100, 60, 60 }; break;
+	case 90: portrait = { 1299, 2598, 1157, 2598, 50,  92, 60, 58 }; break;
+	case 91: portrait = { 1913, 2704, 1771, 2704, 50,  92, 60, 58 }; break;
+	default: portrait = { 2550, 3300, 2400, 3300, 50, 100, 60, 60 }; break;
 	}
+	if ((orientation & 1) == 0)
+		return portrait;
+
+	PageGeometry landscape;
+	landscape.physical_w = portrait.physical_h;
+	landscape.physical_h = portrait.physical_w;
+	landscape.logical_w = portrait.logical_h - portrait.top - portrait.bottom;
+	landscape.logical_h = portrait.physical_w;
+	landscape.left = portrait.top;
+	landscape.right = portrait.bottom;
+	landscape.top = portrait.left;
+	landscape.bottom = portrait.right;
+	return landscape;
+}
+
+float dots_to_in(int dots)
+{
+	return (float)dots / kDotsPerIn;
 }
 
 uint16_t roman8_to_unicode(uint8_t ch)
@@ -118,17 +142,32 @@ static constexpr SymbolPatch kSymbolPatches[] = {
 	{0x0009,0x7c,0xca},{0x0009,0x7d,0xc9},{0x0009,0x7e,0xd9},
 	{0x000b,0x5c,0xbc},{0x000b,0x5e,0xaa},{0x000b,0x60,0xa9},{0x000b,0x7e,0xb0},
 	{0x004b,0x24,0xbc},{0x004b,0x5e,0xaa},{0x004b,0x60,0xa9},{0x004b,0x7e,0xb0},
-	{0x0073,0x40,0xcd},{0x0073,0x5b,0xd8},{0x0073,0x5c,0xda},{0x0073,0x5d,0xdb},
-	{0x0073,0x5e,0xaa},{0x0073,0x60,0xc8},{0x0073,0x7b,0xcc},{0x0073,0x7c,0xce},
-	{0x0073,0x7d,0xcf},{0x0073,0x7e,0xb0},
-	{0x0013,0x23,0xbb},{0x0013,0x40,0xcd},{0x0013,0x5b,0xd8},{0x0013,0x5c,0xda},
-	{0x0013,0x5d,0xdb},{0x0013,0x5e,0xaa},{0x0013,0x60,0xc8},{0x0013,0x7b,0xcc},
-	{0x0013,0x7c,0xce},{0x0013,0x7d,0xcf},{0x0013,0x7e,0xb0},
-	{0x0033,0x40,0xbd},{0x0033,0x5b,0xa1},{0x0033,0x5c,0xbb},{0x0033,0x5d,0xbf},
-	{0x0033,0x5e,0xaa},{0x0033,0x60,0xa9},{0x0033,0x7e,0xb0},
-	{0x0053,0x23,0xbb},{0x0053,0x40,0xbd},{0x0053,0x5b,0xa1},{0x0053,0x5c,0xbb},
-	{0x0053,0x5d,0xbf},{0x0053,0x5e,0xaa},{0x0053,0x60,0xa9},{0x0053,0x7b,0xc8},
-	{0x0053,0x7c,0xc7},{0x0053,0x7d,0xc9},{0x0053,0x7e,0xb0},
+	{0x0073,0x24,0xba},{0x0073,0x5b,0xd8},{0x0073,0x5c,0xda},{0x0073,0x5d,0xd0},
+	{0x0073,0x5e,0xaa},{0x0073,0x60,0xa9},{0x0073,0x7b,0xcc},{0x0073,0x7c,0xce},
+	{0x0073,0x7d,0xd4},{0x0073,0x7e,0xb0},
+	{0x0013,0x24,0xba},{0x0013,0x40,0xdc},{0x0013,0x5b,0xd8},{0x0013,0x5c,0xda},
+	{0x0013,0x5d,0xd0},{0x0013,0x5e,0xdb},{0x0013,0x60,0xc5},{0x0013,0x7b,0xcc},
+	{0x0013,0x7c,0xce},{0x0013,0x7d,0xd4},{0x0013,0x7e,0xcf},
+	{0x0033,0x5b,0xb8},{0x0033,0x5c,0xb6},{0x0033,0x5d,0xb9},{0x0033,0x5e,0xb3},
+	{0x0033,0x60,0xa9},{0x0033,0x7c,0xb7},{0x0033,0x7e,0xac},
+	{0x0053,0x23,0xbb},{0x0053,0x40,0xbd},{0x0053,0x5b,0xb8},{0x0053,0x5c,0xb6},
+	{0x0053,0x5d,0xb9},{0x0053,0x5e,0xaa},{0x0053,0x60,0xa9},{0x0053,0x7b,0xb3},
+	{0x0053,0x7c,0xb7},{0x0053,0x7d,0xb5},{0x0053,0x7e,0xac},
+	{0x00d3,0x40,0xf2},{0x00d3,0x5b,0xb8},{0x00d3,0x5c,0xb6},{0x00d3,0x5d,0xb4},
+	{0x00d3,0x5e,0xb9},{0x00d3,0x60,0xa9},{0x00d3,0x7b,0xa8},{0x00d3,0x7c,0xb7},
+	{0x00d3,0x7d,0xb5},{0x00d3,0x7e,0xab},
+	{0x0093,0x40,0xbd},{0x0093,0x5b,0xe1},{0x0093,0x5c,0xb4},{0x0093,0x5d,0xe9},
+	{0x0093,0x5e,0xaa},{0x0093,0x60,0xa9},{0x0093,0x7b,0xe2},{0x0093,0x7c,0xb5},
+	{0x0093,0x7d,0xea},{0x0093,0x7e,0xb3},
+	{0x00b3,0x40,0xa8},{0x00b3,0x5b,0xe1},{0x00b3,0x5c,0xb4},{0x00b3,0x5d,0xe9},
+	{0x00b3,0x5e,0xaa},{0x00b3,0x60,0xa9},{0x00b3,0x7b,0xe2},{0x00b3,0x7c,0xb5},
+	{0x00b3,0x7d,0xea},{0x00b3,0x7e,0xac},
+	{0x0004,0x5b,0xd3},{0x0004,0x5c,0xd2},{0x0004,0x5d,0xd0},{0x0004,0x5e,0xaa},
+	{0x0004,0x60,0xa9},{0x0004,0x7b,0xd7},{0x0004,0x7c,0xd6},{0x0004,0x7d,0xd4},
+	{0x0004,0x7e,0xb0},
+	{0x0024,0x23,0xbd},{0x0024,0x5b,0xd3},{0x0024,0x5c,0xd2},{0x0024,0x5d,0xd0},
+	{0x0024,0x5e,0xaa},{0x0024,0x60,0xa9},{0x0024,0x7b,0xd7},{0x0024,0x7e,0x7c},
+	{0x0024,0x7d,0xd4},{0x0024,0x7c,0xd6},
 };
 
 uint8_t symbol_glyph_byte(int symbol_set, uint8_t ch)
@@ -236,6 +275,11 @@ private:
 	bool render_ljii_text(uint8_t b);
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
+	LjiiFontRequest &font_request(int slot);
+	const LjiiFontRequest &font_request(int slot) const;
+	LjiiFontRequest &active_font_request();
+	const LjiiFontRequest &active_font_request() const;
+	void sync_active_font_state();
 	void set_page_size(int code);
 	void set_orientation(int orientation);
 	void publish_current_page();
@@ -253,12 +297,18 @@ private:
 
 	int line_term_ = 0;
 	int orientation_ = 0;
+	int page_size_code_ = 2;
 	float physical_w_in_ = 8.5f;
 	float physical_h_in_ = 11.0f;
+	float logical_x0_in_ = 50.0f / kDotsPerIn;
+	float logical_y0_in_ = 60.0f / kDotsPerIn;
+	float logical_w_in_ = 8.0f;
+	float logical_h_in_ = 11.0f;
 	float hmi_in_ = 1.0f / 10.0f;
 	float vmi_in_ = 1.0f / 6.0f;
 	float text_length_in_ = 10.0f;
-	int symbol_set_ = kSymbolRoman8;
+	LjiiFontRequest font_req_[2];
+	int active_font_slot_ = 0;
 	std::vector<uint16_t> vfc_table_;
 	int vfc_last_line_ = 63;
 	int vfc_text_last_line_ = 62;
@@ -276,6 +326,8 @@ private:
 	float rect_w_in_ = 0.0f;
 	float rect_h_in_ = 0.0f;
 	int fill_pattern_ = 0;
+	int copy_count_ = 1;
+	bool wrap_enabled_ = true;
 
 	int macro_id_ = 0;
 	bool defining_macro_ = false;
@@ -288,6 +340,7 @@ private:
 	uint8_t soft_char_code_ = 0;
 	bool soft_font_active_ = false;
 	std::map<uint8_t, SoftGlyph> soft_glyphs_;
+	std::vector<std::pair<float, float>> cursor_stack_;
 };
 
 void PclPrinter::apply_config(const PrinterConfig &cfg)
@@ -308,12 +361,21 @@ void PclPrinter::reset_ljii_state()
 	payload_buf_.clear();
 	line_term_ = 0;
 	orientation_ = 0;
+	page_size_code_ = 2;
 	physical_w_in_ = 8.5f;
 	physical_h_in_ = 11.0f;
+	logical_x0_in_ = 50.0f / kDotsPerIn;
+	logical_y0_in_ = 60.0f / kDotsPerIn;
+	logical_w_in_ = 8.0f;
+	logical_h_in_ = 11.0f;
 	hmi_in_ = 1.0f / 10.0f;
 	vmi_in_ = 1.0f / 6.0f;
 	text_length_in_ = 10.0f;
-	symbol_set_ = kSymbolRoman8;
+	font_req_[0] = LjiiFontRequest{};
+	font_req_[1] = LjiiFontRequest{};
+	font_req_[1].secondary = true;
+	font_req_[1].symbol_set = 0x000e;
+	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_raster_count_ = -1;
 	raster_resolution_ = 300;
@@ -326,6 +388,8 @@ void PclPrinter::reset_ljii_state()
 	rect_w_in_ = 0.0f;
 	rect_h_in_ = 0.0f;
 	fill_pattern_ = 0;
+	copy_count_ = 1;
+	wrap_enabled_ = true;
 	macro_id_ = 0;
 	defining_macro_ = false;
 	replaying_macro_ = false;
@@ -335,16 +399,18 @@ void PclPrinter::reset_ljii_state()
 	soft_char_code_ = 0;
 	soft_font_active_ = false;
 	soft_glyphs_.clear();
+	cursor_stack_.clear();
 
 	st_.pitch_cpi = 10.0f;
 	st_.line_spacing_in = vmi_in_;
-	st_.left_margin_in = 0.25f;
-	st_.right_margin_in = 8.0f;
-	st_.top_margin_in = 0.5f;
+	st_.left_margin_in = logical_x0_in_;
+	st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+	st_.top_margin_in = logical_y0_in_;
 	st_.page_width_in = physical_w_in_;
 	st_.page_height_in = physical_h_in_;
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	sync_active_font_state();
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 }
@@ -433,7 +499,7 @@ void PclPrinter::process_control(uint8_t b)
 	case 0x0C:
 		if (line_term_ == 2 || line_term_ == 3)
 			carriage_return();
-		form_feed();
+		publish_current_page();
 		break;
 	case 0x0D:
 		carriage_return();
@@ -441,8 +507,12 @@ void PclPrinter::process_control(uint8_t b)
 			line_feed();
 		break;
 	case 0x0E:
+		active_font_slot_ = 1;
+		sync_active_font_state();
 		break;
 	case 0x0F:
+		active_font_slot_ = 0;
+		sync_active_font_state();
 		break;
 	default:
 		break;
@@ -470,7 +540,22 @@ void PclPrinter::process_escape(uint8_t b)
 		state_ = State::DisplayFunctions;
 		return;
 	}
-	if (b == 'Z' || b == 'z' || b == '9' || b == '=') {
+	if (b == '9') {
+		st_.left_margin_in = logical_x0_in_;
+		st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+		st_.x_pos = st_.left_margin_in;
+		state_ = State::Normal;
+		return;
+	}
+	if (b == '=') {
+		new_page_if_needed();
+		st_.y_pos += st_.line_spacing_in * 0.5f;
+		if (st_.y_pos >= st_.page_height_in)
+			publish_current_page();
+		state_ = State::Normal;
+		return;
+	}
+	if (b == 'Z' || b == 'z') {
 		state_ = State::Normal;
 		return;
 	}
@@ -544,7 +629,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'E':
-			st_.top_margin_in = std::max(0.0f, (float)value * vmi_in_);
+			st_.top_margin_in = logical_y0_in_ +
+			                    std::max(0.0f, (float)value * vmi_in_);
 			st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 			update_vfc_bounds();
 			rebuild_default_vfc_table();
@@ -560,9 +646,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			rebuild_default_vfc_table();
 			break;
 		case 'H':
+			if (ival > 0)
+				publish_current_page();
 			break;
 		case 'L':
-			st_.perf_skip_lines = (ival == 1) ? 1 : 0;
+			st_.perf_skip_lines = (ival == 1) ? 6 : 0;
 			break;
 		case 'O':
 			set_orientation(ival);
@@ -589,6 +677,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				begin_payload(State::VfcData, std::max(0, ival));
 			break;
 		case 'X':
+			if (ival < 1)
+				ival = 1;
+			copy_count_ = std::min(99, ival);
 			break;
 		default:
 			break;
@@ -596,24 +687,30 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'a') {
 		switch (term) {
 		case 'C':
-			st_.x_pos = st_.left_margin_in + (float)value / st_.pitch_cpi;
+			st_.x_pos = logical_x0_in_ + (float)value / st_.pitch_cpi;
 			break;
 		case 'H':
-			st_.x_pos = std::max(0.0f, (float)value / 720.0f);
+			st_.x_pos = std::max(logical_x0_in_,
+			                      logical_x0_in_ + (float)value / 720.0f);
 			break;
 		case 'L':
-			st_.left_margin_in = std::max(0.0f, (float)value / st_.pitch_cpi);
+			st_.left_margin_in = logical_x0_in_ +
+			                     std::max(0.0f, (float)value / st_.pitch_cpi);
 			st_.x_pos = std::max(st_.x_pos, st_.left_margin_in);
 			break;
 		case 'M':
 			st_.right_margin_in = std::max(st_.left_margin_in,
-			                               (float)value / st_.pitch_cpi);
+			                               logical_x0_in_ +
+			                               ((float)value + 1.0f) / st_.pitch_cpi);
+			st_.right_margin_in = std::min(st_.right_margin_in,
+			                               logical_x0_in_ + logical_w_in_);
 			break;
 		case 'R':
 			st_.y_pos = st_.top_margin_in + (float)value * st_.line_spacing_in;
 			break;
 		case 'V':
-			st_.y_pos = std::max(0.0f, (float)value / 720.0f);
+			st_.y_pos = std::max(logical_y0_in_,
+			                      st_.top_margin_in + (float)value / 720.0f);
 			break;
 		default:
 			break;
@@ -638,38 +735,48 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (value > 0.0) {
 				hmi_in_ = (float)value / 120.0f;
 				st_.pitch_cpi = 1.0f / hmi_in_;
+				active_font_request().pitch =
+					(int)std::lround(st_.pitch_cpi * 100.0f);
 			}
 			break;
 		case 'S':
-			if (ival == 0)
+			if (ival == 0) {
 				st_.pitch_cpi = 10.0f;
-			else if (ival == 2)
+			} else if (ival == 2) {
 				st_.pitch_cpi = 16.66f;
-			else if (ival == 4)
+			} else if (ival == 4) {
 				st_.pitch_cpi = 12.0f;
+			}
+			active_font_request().pitch =
+				(int)std::lround(st_.pitch_cpi * 100.0f);
 			hmi_in_ = 1.0f / std::max(1.0f, st_.pitch_cpi);
 			break;
 		default:
 			break;
 		}
 	} else if ((group == '(' || group == ')') && subgroup == 's') {
+		int slot = group == ')' ? 1 : 0;
+		LjiiFontRequest &req = font_request(slot);
 		switch (term) {
 		case 'B':
-			st_.bold = (ival >= 3);
+			req.stroke = ival;
 			break;
 		case 'H':
 			if (value > 0.0)
-				st_.pitch_cpi = (float)value;
+				req.pitch = (int)std::lround(value * 100.0);
 			break;
 		case 'P':
-			st_.proportional = (ival != 0);
+			req.spacing = ival;
 			break;
 		case 'S':
-			st_.italic = (ival == 1);
+			req.style = ival;
 			break;
 		case 'T':
+			req.typeface = ival;
 			break;
 		case 'V':
+			if (value > 0.0)
+				req.height = (int)std::lround(value * 100.0);
 			break;
 		case 'W':
 			begin_payload(State::DownloadData, std::max(0, ival));
@@ -677,14 +784,34 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		default:
 			break;
 		}
+		if (slot == active_font_slot_)
+			sync_active_font_state();
 	} else if ((group == '(' || group == ')') && subgroup == 0) {
+		int slot = group == ')' ? 1 : 0;
 		if (term >= 'A' && term <= 'Z')
-			symbol_set_ = pcl_symbol_value(ival, term);
+			font_request(slot).symbol_set = pcl_symbol_value(ival, term);
 	} else if (group == '&' && subgroup == 'p') {
 		if (term == 'X')
 			begin_payload(State::TransparentData, std::max(0, ival));
+	} else if (group == '&' && subgroup == 's') {
+		if (term == 'C') {
+			if (ival == 0)
+				wrap_enabled_ = true;
+			else if (ival == 1)
+				wrap_enabled_ = false;
+		}
 	} else if (group == '&' && subgroup == 'f') {
 		switch (term) {
+		case 'S':
+			if (ival == 0) {
+				if (cursor_stack_.size() < 20)
+					cursor_stack_.push_back({ st_.x_pos, st_.y_pos });
+			} else if (ival == 1 && !cursor_stack_.empty()) {
+				st_.x_pos = cursor_stack_.back().first;
+				st_.y_pos = cursor_stack_.back().second;
+				cursor_stack_.pop_back();
+			}
+			break;
 		case 'Y':
 			macro_id_ = ival;
 			break;
@@ -715,10 +842,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'p') {
 		switch (term) {
 		case 'X':
-			st_.x_pos = std::max(0.0f, (float)value / kDotsPerIn);
+			st_.x_pos = std::max(logical_x0_in_,
+			                      logical_x0_in_ + (float)value / kDotsPerIn);
 			break;
 		case 'Y':
-			st_.y_pos = std::max(0.0f, (float)value / kDotsPerIn);
+			st_.y_pos = std::max(logical_y0_in_,
+			                      st_.top_margin_in + (float)value / kDotsPerIn);
 			break;
 		default:
 			break;
@@ -1115,6 +1244,8 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		return false;
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+		if (!wrap_enabled_)
+			return true;
 		carriage_return();
 		line_feed();
 	}
@@ -1157,9 +1288,13 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 
 bool PclPrinter::render_ljii_text(uint8_t b)
 {
-	float char_w_in = 1.0f / std::max(1.0f, st_.pitch_cpi);
+	const LjiiFontRequest &req = active_font_request();
+	float pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
+	float char_w_in = 1.0f / pitch_cpi;
 	if (b == 0x20) {
 		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+			if (!wrap_enabled_)
+				return true;
 			carriage_return();
 			line_feed();
 		}
@@ -1189,8 +1324,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	uint8_t glyph_byte = text_glyph_byte(b);
 	if (glyph_byte == 0)
 		return true;
-	uint32_t context = default_ljii_context_for_pitch(st_.pitch_cpi,
-	                                                 symbol_set_);
+	uint32_t context = select_ljii_context(req);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
 	if (!glyph.found || !glyph.data) {
 		uint16_t cp = text_unicode(b);
@@ -1209,6 +1343,8 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	}
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+		if (!wrap_enabled_)
+			return true;
 		carriage_return();
 		line_feed();
 	}
@@ -1254,14 +1390,16 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 
 uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
 {
-	if (symbol_set_ == kSymbolRoman8 || symbol_set_ == 0)
+	int symbol_set = active_font_request().symbol_set;
+	if (symbol_set == kSymbolRoman8 || symbol_set == 0)
 		return b;
-	return symbol_glyph_byte(symbol_set_, b);
+	return symbol_glyph_byte(symbol_set, b);
 }
 
 uint16_t PclPrinter::text_unicode(uint8_t b) const
 {
-	if (symbol_set_ == 0x0015)
+	int symbol_set = active_font_request().symbol_set;
+	if (symbol_set == 0x0015)
 		return b < 0x80 ? b : 0;
 	uint8_t glyph_byte = text_glyph_byte(b);
 	if (glyph_byte == 0)
@@ -1269,12 +1407,43 @@ uint16_t PclPrinter::text_unicode(uint8_t b) const
 	return roman8_to_unicode(glyph_byte);
 }
 
+LjiiFontRequest &PclPrinter::font_request(int slot)
+{
+	return font_req_[slot ? 1 : 0];
+}
+
+const LjiiFontRequest &PclPrinter::font_request(int slot) const
+{
+	return font_req_[slot ? 1 : 0];
+}
+
+LjiiFontRequest &PclPrinter::active_font_request()
+{
+	return font_request(active_font_slot_);
+}
+
+const LjiiFontRequest &PclPrinter::active_font_request() const
+{
+	return font_request(active_font_slot_);
+}
+
+void PclPrinter::sync_active_font_state()
+{
+	const LjiiFontRequest &req = active_font_request();
+	st_.pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
+	hmi_in_ = 1.0f / st_.pitch_cpi;
+	st_.proportional = (req.spacing != 0);
+	st_.italic = (req.style == 1);
+	st_.bold = (req.stroke >= 3);
+}
+
 void PclPrinter::set_page_size(int code)
 {
 	publish_current_page();
-	PageSize sz = pcl_page_size(code);
-	physical_w_in_ = sz.w;
-	physical_h_in_ = sz.h;
+	page_size_code_ = code;
+	PageGeometry geom = pcl_page_geometry(code, orientation_);
+	physical_w_in_ = dots_to_in(geom.physical_w);
+	physical_h_in_ = dots_to_in(geom.physical_h);
 	set_orientation(orientation_);
 }
 
@@ -1282,15 +1451,18 @@ void PclPrinter::set_orientation(int orientation)
 {
 	publish_current_page();
 	orientation_ = orientation & 1;
-	if (orientation_ == 0) {
-		st_.page_width_in = physical_w_in_;
-		st_.page_height_in = physical_h_in_;
-	} else {
-		st_.page_width_in = physical_h_in_;
-		st_.page_height_in = physical_w_in_;
-	}
-	st_.left_margin_in = 0.25f;
-	st_.right_margin_in = std::max(0.25f, st_.page_width_in - 0.25f);
+	PageGeometry geom = pcl_page_geometry(page_size_code_, orientation_);
+	physical_w_in_ = dots_to_in(geom.physical_w);
+	physical_h_in_ = dots_to_in(geom.physical_h);
+	logical_x0_in_ = dots_to_in(geom.left);
+	logical_y0_in_ = dots_to_in(geom.top);
+	logical_w_in_ = dots_to_in(geom.logical_w);
+	logical_h_in_ = dots_to_in(geom.logical_h);
+	st_.page_width_in = physical_w_in_;
+	st_.page_height_in = physical_h_in_;
+	st_.left_margin_in = logical_x0_in_;
+	st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+	st_.top_margin_in = logical_y0_in_;
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	update_vfc_bounds();
@@ -1300,8 +1472,14 @@ void PclPrinter::set_orientation(int orientation)
 void PclPrinter::publish_current_page()
 {
 	flush_pending_line();
-	if (page_ && page_dirty_)
-		form_feed();
+	if (page_ && page_dirty_) {
+		int copies = std::max(1, copy_count_);
+		for (int i = 0; i < copies; i++)
+			pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
+		text_buf_.clear();
+		page_dirty_ = false;
+	}
+	page_.reset();
 }
 
 bool PclPrinter::capture_macro_definition_byte(uint8_t b)
