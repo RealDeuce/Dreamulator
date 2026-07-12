@@ -863,7 +863,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			publish_current_page();
 			break;
 		case 'L':
-			st_.perf_skip_lines = (ival == 1) ? 6 : 0;
+			ival = std::abs(ival);
+			if (ival == 0)
+				st_.perf_skip_lines = 0;
+			else if (ival == 1)
+				st_.perf_skip_lines = 6;
 			break;
 		case 'O':
 			set_orientation(ival);
@@ -981,7 +985,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'k') {
 		switch (term) {
 		case 'G':
-			line_term_ = std::max(0, std::min(3, ival));
+			line_term_ = std::min(3, std::abs(ival));
 			break;
 		case 'H':
 			if (value > 0.0) {
@@ -1071,6 +1075,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			begin_payload(State::TransparentData, std::abs(ival));
 	} else if (group == '&' && subgroup == 's') {
 		if (term == 'C') {
+			ival = std::abs(ival);
 			if (ival == 0)
 				wrap_enabled_ = true;
 			else if (ival == 1)

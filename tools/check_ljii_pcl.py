@@ -203,6 +203,36 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        line_term_positive = write(tmp / "line-term-positive.pcl",
+                                   ESC + b"&k2G" + b"A\nB" + FF)
+        line_term_negative = write(tmp / "line-term-negative.pcl",
+                                   ESC + b"&k-2G" + b"A\nB" + FF)
+        line_term_positive_pdf = tmp / "line-term-positive.pdf"
+        line_term_negative_pdf = tmp / "line-term-negative.pdf"
+        render(dreamprint, line_term_positive, line_term_positive_pdf)
+        render(dreamprint, line_term_negative, line_term_negative_pdf)
+        if ppm_sha256(line_term_positive_pdf, tmp / "line-term-positive",
+                      dpi=150) != \
+           ppm_sha256(line_term_negative_pdf, tmp / "line-term-negative",
+                      dpi=150):
+            raise AssertionError("negative line termination selector was not absolute")
+
+        wrap_positive = write(tmp / "wrap-positive.pcl",
+                              b"X" + ESC + b"&s1C" + ESC + b"&a80C" +
+                              b"A" + FF)
+        wrap_negative = write(tmp / "wrap-negative.pcl",
+                              b"X" + ESC + b"&s-1C" + ESC + b"&a80C" +
+                              b"A" + FF)
+        wrap_positive_pdf = tmp / "wrap-positive.pdf"
+        wrap_negative_pdf = tmp / "wrap-negative.pdf"
+        render(dreamprint, wrap_positive, wrap_positive_pdf)
+        render(dreamprint, wrap_negative, wrap_negative_pdf)
+        if "".join(pdftotext(wrap_negative_pdf).split()) != "X":
+            raise AssertionError("negative wrap-disable selector allowed overflow text")
+        if ppm_sha256(wrap_positive_pdf, tmp / "wrap-positive", dpi=150) != \
+           ppm_sha256(wrap_negative_pdf, tmp / "wrap-negative", dpi=150):
+            raise AssertionError("negative wrap-disable selector did not match positive")
+
         control_z = write(tmp / "control-z.pcl",
                           b"A" + bytes([0x1a, 0x58]) + b"B" + FF)
         control_z_pdf = tmp / "control-z.pdf"
@@ -475,6 +505,28 @@ def main():
         render(dreamprint, overflow_pcl, overflow_pdf)
         if pdf_pages(overflow_pdf) != 3:
             raise AssertionError("copy-count overflow did not publish 3 pages")
+
+        perf_lines = bytearray()
+        for i in range(59):
+            perf_lines += f"P{i:02d}\n".encode("ascii")
+        perf_enabled = write(tmp / "perf-enabled.pcl",
+                             ESC + b"&l1L" + bytes(perf_lines) + FF)
+        perf_preserved = write(tmp / "perf-preserved.pcl",
+                               ESC + b"&l1L" + ESC + b"&l-2L" +
+                               bytes(perf_lines) + FF)
+        perf_disabled = write(tmp / "perf-disabled.pcl",
+                              ESC + b"&l1L" + ESC + b"&l0L" +
+                              bytes(perf_lines) + FF)
+        perf_enabled_pdf = tmp / "perf-enabled.pdf"
+        perf_preserved_pdf = tmp / "perf-preserved.pdf"
+        perf_disabled_pdf = tmp / "perf-disabled.pdf"
+        render(dreamprint, perf_enabled, perf_enabled_pdf)
+        render(dreamprint, perf_preserved, perf_preserved_pdf)
+        render(dreamprint, perf_disabled, perf_disabled_pdf)
+        if pdf_pages(perf_preserved_pdf) != pdf_pages(perf_enabled_pdf):
+            raise AssertionError("invalid perforation selector did not preserve state")
+        if pdf_pages(perf_disabled_pdf) == pdf_pages(perf_enabled_pdf):
+            raise AssertionError("perforation regression is not sensitive to disabled state")
 
         paper_zero = write(tmp / "paper-zero.pcl",
                            b"A" + ESC + b"&l0H" + b"B" + FF)
