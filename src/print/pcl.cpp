@@ -192,6 +192,7 @@ private:
 		Parameterized,
 		RasterData,
 		TransparentData,
+		VfcData,
 		DisplayFunctions,
 		DownloadData,
 	};
@@ -217,6 +218,11 @@ private:
 	                      int row_count);
 	void draw_raster_dot(int x_dot, int y_dot);
 	void set_raster_resolution(int dpi);
+	void rebuild_default_vfc_table();
+	void update_vfc_bounds();
+	void apply_vfc_payload(const std::vector<uint8_t> &payload);
+	void vfc_channel_jump(int selector);
+	float vfc_line_y(int line) const;
 	bool render_ljii_text(uint8_t b);
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
@@ -243,6 +249,11 @@ private:
 	float vmi_in_ = 1.0f / 6.0f;
 	float text_length_in_ = 10.0f;
 	int symbol_set_ = kSymbolRoman8;
+	std::vector<uint16_t> vfc_table_;
+	int vfc_last_line_ = 63;
+	int vfc_text_last_line_ = 62;
+	int pending_vfc_count_ = -1;
+	int pending_raster_count_ = -1;
 
 	int raster_resolution_ = 300;
 	int raster_mode_ = 0;
@@ -286,6 +297,8 @@ void PclPrinter::reset_ljii_state()
 	vmi_in_ = 1.0f / 6.0f;
 	text_length_in_ = 10.0f;
 	symbol_set_ = kSymbolRoman8;
+	pending_vfc_count_ = -1;
+	pending_raster_count_ = -1;
 	raster_resolution_ = 300;
 	raster_mode_ = 0;
 	raster_scale_ = 1;
@@ -309,6 +322,8 @@ void PclPrinter::reset_ljii_state()
 	st_.page_height_in = physical_h_in_;
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	update_vfc_bounds();
+	rebuild_default_vfc_table();
 }
 
 void PclPrinter::parse_byte(uint8_t b)
@@ -350,6 +365,7 @@ void PclPrinter::parse_byte(uint8_t b)
 		return;
 	case State::RasterData:
 	case State::TransparentData:
+	case State::VfcData:
 	case State::DownloadData:
 		finish_payload_byte(b);
 		return;
@@ -462,9 +478,15 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		if (state_ == State::Parameterized)
 			state_ = State::Normal;
 	} else if (b >= 'a' && b <= 'z') {
-		if (!(group_ == '*' && subgroup_ == 'b' && b == 'w'))
+		int lower_value = static_cast<int>(std::lround(value));
+		if (group_ == '*' && subgroup_ == 'b' && b == 'w') {
+			pending_raster_count_ = std::max(0, lower_value);
+		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
+			pending_vfc_count_ = std::max(0, lower_value);
+		} else {
 			apply_param(group_, subgroup_, value,
 			            static_cast<char>(std::toupper(b)));
+		}
 		if (state_ == State::Parameterized) {
 			param_pos_ = 0;
 			param_buf_[0] = 0;
@@ -481,25 +503,70 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	if (group == '&' && subgroup == 'l') {
 		switch (term) {
 		case 'A': set_page_size(ival); break;
-		case 'D':
-			if (ival > 0) {
-				vmi_in_ = 1.0f / static_cast<float>(ival);
+		case 'C':
+			if (value > 0.0) {
+				vmi_in_ = (float)value / 48.0f;
 				st_.line_spacing_in = vmi_in_;
+				update_vfc_bounds();
+				rebuild_default_vfc_table();
+			}
+			break;
+		case 'D':
+			if (ival == 0)
+				ival = 12;
+			if (ival == 1 || ival == 2 || ival == 3 || ival == 4 ||
+			    ival == 6 || ival == 8 || ival == 12 || ival == 16 ||
+			    ival == 24 || ival == 48) {
+				vmi_in_ = 1.0f / (float)ival;
+				st_.line_spacing_in = vmi_in_;
+				update_vfc_bounds();
+				rebuild_default_vfc_table();
 			}
 			break;
 		case 'E':
-			st_.top_margin_in = std::max(0.0f, (float)value / 6.0f);
+			st_.top_margin_in = std::max(0.0f, (float)value * vmi_in_);
+			st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+			update_vfc_bounds();
+			rebuild_default_vfc_table();
 			break;
 		case 'F':
-			text_length_in_ = std::max(0.0f, (float)value / 6.0f);
+			if (value > 0.0)
+				text_length_in_ = std::max(0.0f, (float)value * vmi_in_);
+			else
+				text_length_in_ = std::max(0.0f, st_.page_height_in -
+				                                  st_.top_margin_in -
+				                                  st_.line_spacing_in);
+			update_vfc_bounds();
+			rebuild_default_vfc_table();
 			break;
 		case 'H':
 			break;
 		case 'L':
-			st_.perf_skip_lines = std::max(0, ival);
+			st_.perf_skip_lines = (ival == 1) ? 1 : 0;
 			break;
 		case 'O':
 			set_orientation(ival);
+			break;
+		case 'P':
+			if (value > 0.0) {
+				physical_h_in_ = std::max(1.0f, (float)value * vmi_in_);
+				set_orientation(orientation_);
+				update_vfc_bounds();
+				rebuild_default_vfc_table();
+			}
+			break;
+		case 'V':
+			vfc_channel_jump(ival);
+			break;
+		case 'W':
+			if (pending_vfc_count_ >= 0) {
+				ival = pending_vfc_count_;
+				pending_vfc_count_ = -1;
+			}
+			if (ival == 0)
+				rebuild_default_vfc_table();
+			else
+				begin_payload(State::VfcData, std::max(0, ival));
 			break;
 		case 'X':
 			break;
@@ -650,6 +717,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'M':
 			break;
 		case 'W':
+			if (pending_raster_count_ >= 0) {
+				ival = pending_raster_count_;
+				pending_raster_count_ = -1;
+			}
 			begin_payload(State::RasterData, std::max(0, ival));
 			break;
 		case 'Y':
@@ -711,6 +782,8 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 
 	if (payload_state_ == State::RasterData)
 		draw_raster_row(payload_buf_);
+	else if (payload_state_ == State::VfcData)
+		apply_vfc_payload(payload_buf_);
 
 	payload_buf_.clear();
 	payload_state_ = State::Normal;
@@ -830,6 +903,132 @@ void PclPrinter::set_raster_resolution(int dpi)
 		raster_mode_ = 3;
 		raster_scale_ = 4;
 	}
+}
+
+void PclPrinter::rebuild_default_vfc_table()
+{
+	vfc_table_.assign(128, 0);
+	int text_last = std::max(0, std::min(127, vfc_text_last_line_));
+	int last = std::max(text_last, std::min(127, vfc_last_line_));
+
+	auto set_channel = [this](int line, int channel) {
+		if (line < 0 || line >= 128 || channel <= 0 || channel > 16)
+			return;
+		vfc_table_[(size_t)line] |= (uint16_t)(1u << (channel - 1));
+	};
+
+	set_channel(0, 1);
+	set_channel(std::max(0, text_last - 1), 2);
+	set_channel(text_last, 2);
+	for (int line = 0; line <= text_last; line++)
+		set_channel(line, 3);
+	set_channel(last, 3);
+	for (int line = 0; line <= last; line++) {
+		if ((line % 2) == 0) set_channel(line, 4);
+		if ((line % 3) == 0) set_channel(line, 5);
+		if ((line % 10) == 0) set_channel(line, 8);
+		if ((line % 7) == 0) set_channel(line, 13);
+		if ((line % 6) == 0) set_channel(line, 14);
+		if ((line % 5) == 0) set_channel(line, 15);
+		if ((line % 4) == 0) set_channel(line, 16);
+	}
+	set_channel(0, 6);
+	set_channel(text_last / 2, 6);
+	set_channel(0, 7);
+	set_channel(text_last / 4, 7);
+	set_channel(text_last / 2, 7);
+	set_channel((text_last * 3) / 4, 7);
+	set_channel(text_last, 9);
+	set_channel(0, 12);
+}
+
+void PclPrinter::update_vfc_bounds()
+{
+	float line0 = st_.top_margin_in + st_.line_spacing_in;
+	float available = std::max(0.0f, st_.page_height_in - line0);
+	float vmi = std::max(1.0f / 300.0f, vmi_in_);
+	vfc_last_line_ = std::max(0, std::min(127, (int)std::floor(available / vmi)));
+
+	float text_available = std::max(0.0f, text_length_in_ - st_.line_spacing_in);
+	vfc_text_last_line_ = std::max(0, std::min(vfc_last_line_,
+	                                           (int)std::floor(text_available / vmi)));
+}
+
+void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
+{
+	if (payload.empty()) {
+		rebuild_default_vfc_table();
+		return;
+	}
+	if ((payload.size() & 1) || payload.size() > 256 ||
+	    payload.size() > (size_t)(vfc_last_line_ + 1) * 2)
+		return;
+
+	if (vfc_table_.size() != 128)
+		vfc_table_.assign(128, 0);
+	std::fill(vfc_table_.begin(), vfc_table_.end(), 0);
+	for (size_t i = 0; i + 1 < payload.size(); i += 2) {
+		uint16_t word = (uint16_t)(((uint16_t)payload[i] << 8) | payload[i + 1]);
+		vfc_table_[i / 2] = word;
+	}
+}
+
+float PclPrinter::vfc_line_y(int line) const
+{
+	return st_.top_margin_in + st_.line_spacing_in * (float)(line + 1);
+}
+
+void PclPrinter::vfc_channel_jump(int selector)
+{
+	if (vfc_table_.size() != 128)
+		rebuild_default_vfc_table();
+
+	float vmi = std::max(1.0f / 300.0f, vmi_in_);
+	int current = (int)std::floor((st_.y_pos - vfc_line_y(0)) / vmi + 0.0001f);
+	int start = std::max(0, current + 1);
+
+	if (selector <= 0) {
+		if (current > 0 && page_ && page_dirty_)
+			publish_current_page();
+		st_.x_pos = st_.left_margin_in;
+		st_.y_pos = vfc_line_y(0);
+		return;
+	}
+
+	uint16_t mask = (selector <= 16) ? (uint16_t)(1u << (selector - 1)) : 0;
+	if (mask == 0)
+		return;
+
+	int last = std::max(0, std::min(127, vfc_last_line_));
+	int target = -1;
+	bool wrapped = false;
+	for (int line = start; line <= last; line++) {
+		if (vfc_table_[(size_t)line] & mask) {
+			target = line;
+			break;
+		}
+	}
+	if (target < 0) {
+		for (int line = 0; line < std::min(start, last + 1); line++) {
+			if (vfc_table_[(size_t)line] & mask) {
+				target = line;
+				wrapped = true;
+				break;
+			}
+		}
+	}
+
+	if (target < 0) {
+		if (current >= 0 && current <= last && page_ && page_dirty_)
+			publish_current_page();
+		target = 0;
+		wrapped = true;
+	}
+
+	if (wrapped && current >= 0 && current <= last && page_ && page_dirty_)
+		publish_current_page();
+	st_.x_pos = st_.left_margin_in;
+	st_.y_pos = vfc_line_y(target);
 }
 
 bool PclPrinter::render_ljii_text(uint8_t b)
@@ -953,6 +1152,8 @@ void PclPrinter::set_orientation(int orientation)
 	st_.right_margin_in = std::max(0.25f, st_.page_width_in - 0.25f);
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	update_vfc_bounds();
+	rebuild_default_vfc_table();
 }
 
 void PclPrinter::publish_current_page()
