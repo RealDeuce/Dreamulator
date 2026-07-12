@@ -1115,6 +1115,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'f') {
 		switch (term) {
 		case 'S':
+			ival = std::abs(ival);
 			if (ival == 0) {
 				if (cursor_stack_.size() < 20)
 					cursor_stack_.push_back({ st_.x_pos, st_.y_pos });
@@ -1127,9 +1128,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'Y':
-			macro_id_ = ival;
+			macro_id_ = std::abs(ival);
 			break;
 		case 'X':
+			ival = std::abs(ival);
 			if (ival == 0) {
 				defining_macro_ = true;
 				macros_[macro_id_].bytes.clear();

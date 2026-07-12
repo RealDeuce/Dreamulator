@@ -242,6 +242,24 @@ def main():
                       dpi=150):
             raise AssertionError("negative right margin did not match positive value")
 
+        cursor_pop_positive = write(tmp / "cursor-pop-positive.pcl",
+                                    ESC + b"&a20C" + ESC + b"&f0S" +
+                                    ESC + b"&a30C" + ESC + b"&f1S" +
+                                    b"!" + FF)
+        cursor_pop_negative = write(tmp / "cursor-pop-negative.pcl",
+                                    ESC + b"&a20C" + ESC + b"&f0S" +
+                                    ESC + b"&a30C" + ESC + b"&f-1S" +
+                                    b"!" + FF)
+        cursor_pop_positive_pdf = tmp / "cursor-pop-positive.pdf"
+        cursor_pop_negative_pdf = tmp / "cursor-pop-negative.pdf"
+        render(dreamprint, cursor_pop_positive, cursor_pop_positive_pdf)
+        render(dreamprint, cursor_pop_negative, cursor_pop_negative_pdf)
+        if ppm_sha256(cursor_pop_positive_pdf, tmp / "cursor-pop-positive",
+                      dpi=150) != \
+           ppm_sha256(cursor_pop_negative_pdf, tmp / "cursor-pop-negative",
+                      dpi=150):
+            raise AssertionError("negative cursor-stack selector did not pop")
+
         line_term_positive = write(tmp / "line-term-positive.pcl",
                                    ESC + b"&k2G" + b"A\nB" + FF)
         line_term_negative = write(tmp / "line-term-negative.pcl",
@@ -765,6 +783,17 @@ def main():
             raise AssertionError("macro execute did not replay payload")
         if "!" not in pdftotext(macro_call_pdf):
             raise AssertionError("macro call did not replay payload")
+
+        macro_negative = write(tmp / "macro-negative.pcl",
+                               ESC + b"&f-321Y" +
+                               ESC + b"&f0X" + b"!" +
+                               ESC + b"&f1X" +
+                               ESC + b"&f321Y" +
+                               ESC + b"&f-2X" + FF)
+        macro_negative_pdf = tmp / "macro-negative.pdf"
+        render(dreamprint, macro_negative, macro_negative_pdf)
+        if "!" not in pdftotext(macro_negative_pdf):
+            raise AssertionError("negative macro id/selector did not replay payload")
 
         overlay = write(tmp / "overlay.pcl",
                         ESC + b"&f123Y" +
