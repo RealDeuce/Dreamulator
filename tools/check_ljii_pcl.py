@@ -485,6 +485,25 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_nonzero_pdf).split()):
             raise AssertionError("nonzero page length lost text")
 
+        lpi_positive = write(tmp / "lpi-positive.pcl",
+                             ESC + b"&l8D" + b"A\nB" + FF)
+        lpi_negative = write(tmp / "lpi-negative.pcl",
+                             ESC + b"&l-8D" + b"A\nB" + FF)
+        lpi_positive_pdf = tmp / "lpi-positive.pdf"
+        lpi_negative_pdf = tmp / "lpi-negative.pdf"
+        render(dreamprint, lpi_positive, lpi_positive_pdf)
+        render(dreamprint, lpi_negative, lpi_negative_pdf)
+        if ppm_sha256(lpi_positive_pdf, tmp / "lpi-positive", dpi=150) != \
+           ppm_sha256(lpi_negative_pdf, tmp / "lpi-negative", dpi=150):
+            raise AssertionError("negative LPI selector did not match positive selector")
+
+        copies_negative = write(tmp / "copies-negative.pcl",
+                                ESC + b"&l-2X" + b"!" + FF)
+        copies_negative_pdf = tmp / "copies-negative.pdf"
+        render(dreamprint, copies_negative, copies_negative_pdf)
+        if pdf_pages(copies_negative_pdf) != 2:
+            raise AssertionError("negative copy count was not absolute")
+
         vfc_negative = write(tmp / "vfc-negative.pcl",
                              ESC + b"&l-4W" + b"\x00\x00\x00\x02" +
                              b"!" + FF)

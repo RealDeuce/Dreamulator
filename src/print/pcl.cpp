@@ -828,6 +828,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'D':
+			ival = std::abs(ival);
 			if (ival == 0)
 				ival = 12;
 			if (ival == 1 || ival == 2 || ival == 3 || ival == 4 ||
@@ -889,6 +890,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				begin_payload(State::VfcData, std::abs(ival));
 			break;
 		case 'X':
+			ival = std::abs(ival);
 			if (ival < 1)
 				ival = 1;
 			copy_count_ = std::min(99, ival);
