@@ -203,6 +203,18 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        hmi_positive = write(tmp / "hmi-positive.pcl",
+                             ESC + b"&k6H" + b"!!" + FF)
+        hmi_negative = write(tmp / "hmi-negative.pcl",
+                             ESC + b"&k-6H" + b"!!" + FF)
+        hmi_positive_pdf = tmp / "hmi-positive.pdf"
+        hmi_negative_pdf = tmp / "hmi-negative.pdf"
+        render(dreamprint, hmi_positive, hmi_positive_pdf)
+        render(dreamprint, hmi_negative, hmi_negative_pdf)
+        if ppm_sha256(hmi_positive_pdf, tmp / "hmi-positive", dpi=150) != \
+           ppm_sha256(hmi_negative_pdf, tmp / "hmi-negative", dpi=150):
+            raise AssertionError("negative HMI value did not match positive value")
+
         line_term_positive = write(tmp / "line-term-positive.pcl",
                                    ESC + b"&k2G" + b"A\nB" + FF)
         line_term_negative = write(tmp / "line-term-negative.pcl",
@@ -594,6 +606,48 @@ def main():
             raise AssertionError("negative page length did not match positive selector")
         if "AB" not in "".join(pdftotext(page_length_negative_pdf).split()):
             raise AssertionError("negative page length lost text")
+
+        vmi_positive = write(tmp / "vmi-positive.pcl",
+                             ESC + b"&l6C" + b"A\nB" + FF)
+        vmi_negative = write(tmp / "vmi-negative.pcl",
+                             ESC + b"&l-6C" + b"A\nB" + FF)
+        vmi_positive_pdf = tmp / "vmi-positive.pdf"
+        vmi_negative_pdf = tmp / "vmi-negative.pdf"
+        render(dreamprint, vmi_positive, vmi_positive_pdf)
+        render(dreamprint, vmi_negative, vmi_negative_pdf)
+        if ppm_sha256(vmi_positive_pdf, tmp / "vmi-positive", dpi=150) != \
+           ppm_sha256(vmi_negative_pdf, tmp / "vmi-negative", dpi=150):
+            raise AssertionError("negative VMI value did not match positive value")
+
+        top_margin_positive = write(tmp / "top-margin-positive.pcl",
+                                    ESC + b"&l3E" + b"!" + FF)
+        top_margin_negative = write(tmp / "top-margin-negative.pcl",
+                                    ESC + b"&l-3E" + b"!" + FF)
+        top_margin_positive_pdf = tmp / "top-margin-positive.pdf"
+        top_margin_negative_pdf = tmp / "top-margin-negative.pdf"
+        render(dreamprint, top_margin_positive, top_margin_positive_pdf)
+        render(dreamprint, top_margin_negative, top_margin_negative_pdf)
+        if ppm_sha256(top_margin_positive_pdf, tmp / "top-margin-positive",
+                      dpi=150) != \
+           ppm_sha256(top_margin_negative_pdf, tmp / "top-margin-negative",
+                      dpi=150):
+            raise AssertionError("negative top margin did not match positive value")
+
+        text_length_lines = bytearray()
+        for i in range(25):
+            text_length_lines += f"T{i:02d}\n".encode("ascii")
+        text_length_positive = write(tmp / "text-length-positive.pcl",
+                                     ESC + b"&l10F" +
+                                     bytes(text_length_lines) + FF)
+        text_length_negative = write(tmp / "text-length-negative.pcl",
+                                     ESC + b"&l-10F" +
+                                     bytes(text_length_lines) + FF)
+        text_length_positive_pdf = tmp / "text-length-positive.pdf"
+        text_length_negative_pdf = tmp / "text-length-negative.pdf"
+        render(dreamprint, text_length_positive, text_length_positive_pdf)
+        render(dreamprint, text_length_negative, text_length_negative_pdf)
+        if pdf_pages(text_length_negative_pdf) != pdf_pages(text_length_positive_pdf):
+            raise AssertionError("negative text length did not match positive value")
 
         lpi_positive = write(tmp / "lpi-positive.pcl",
                              ESC + b"&l8D" + b"A\nB" + FF)

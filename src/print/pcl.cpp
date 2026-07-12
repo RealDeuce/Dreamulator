@@ -838,7 +838,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		switch (term) {
 		case 'A': set_page_size(std::abs(ival)); break;
 		case 'C':
-			if (value > 0.0) {
+			value = std::abs(value);
+			if (value <= 336.0) {
 				vmi_in_ = (float)value / 48.0f;
 				st_.line_spacing_in = vmi_in_;
 				update_vfc_bounds();
@@ -859,6 +860,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'E':
+			value = std::abs(value);
 			flush_underline_span();
 			st_.top_margin_in = logical_y0_in_ +
 			                    std::max(0.0f, (float)value * vmi_in_);
@@ -868,6 +870,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			restart_underline_span();
 			break;
 		case 'F':
+			value = std::abs(value);
 			if (value > 0.0)
 				text_length_in_ = std::max(0.0f, (float)value * vmi_in_);
 			else
@@ -1008,7 +1011,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			line_term_ = std::min(3, std::abs(ival));
 			break;
 		case 'H':
-			if (value > 0.0) {
+			value = std::abs(value);
+			if (value > 0.0 && value <= 840.0) {
 				hmi_in_ = (float)value / 120.0f;
 				st_.pitch_cpi = 1.0f / hmi_in_;
 				active_font_request().pitch =
