@@ -1030,7 +1030,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'W':
 			download_font_slot_ = slot;
-			if (ival <= 0) {
+			ival = std::abs(ival);
+			if (ival == 0) {
 				payload_buf_.clear();
 				apply_download_payload(payload_buf_);
 			} else {
@@ -1065,7 +1066,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		}
 	} else if (group == '&' && subgroup == 'p') {
 		if (term == 'X')
-			begin_payload(State::TransparentData, std::max(0, ival));
+			begin_payload(State::TransparentData, std::abs(ival));
 	} else if (group == '&' && subgroup == 's') {
 		if (term == 'C') {
 			if (ival == 0)

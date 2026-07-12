@@ -183,6 +183,13 @@ def main():
            ppm_sha256(explicit_spaces_pdf, tmp / "explicit-spaces", dpi=150):
             raise AssertionError("transparent controls did not advance as spaces")
 
+        transparent_negative = write(tmp / "transparent-negative.pcl",
+                                     ESC + b"&p-2X" + ESC + b"EAB" + FF)
+        transparent_negative_pdf = tmp / "transparent-negative.pdf"
+        render(dreamprint, transparent_negative, transparent_negative_pdf)
+        if "".join(pdftotext(transparent_negative_pdf).split()) != "EAB":
+            raise AssertionError("negative transparent count did not consume payload")
+
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",
                              b"A" + ESC + b"&a8C" + b"B" + FF)
@@ -340,6 +347,13 @@ def main():
            ppm_sha256(bad_char_payload_pdf, tmp / "bad-char-payload",
                       dpi=150):
             raise AssertionError("bad character payload installed a glyph")
+
+        negative_download = write(tmp / "negative-download.pcl",
+                                  ESC + b")s-2W" + b"ZZ" + b"!" + FF)
+        negative_download_pdf = tmp / "negative-download.pdf"
+        render(dreamprint, negative_download, negative_download_pdf)
+        if pdftotext(negative_download_pdf).strip() != "!":
+            raise AssertionError("negative downloaded-font count leaked payload")
 
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +
