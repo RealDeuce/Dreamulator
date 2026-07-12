@@ -292,6 +292,20 @@ def main():
         if "".join(pdftotext(model_query_pdf).split()) != "AB":
             raise AssertionError("model query byte leaked printable text")
 
+        symbol_positive = write(tmp / "symbol-positive.pcl",
+                                ESC + b"(2S" + b"@#[]" + FF)
+        symbol_negative = write(tmp / "symbol-negative.pcl",
+                                ESC + b"(-2S" + b"@#[]" + FF)
+        symbol_positive_pdf = tmp / "symbol-positive.pdf"
+        symbol_negative_pdf = tmp / "symbol-negative.pdf"
+        render(dreamprint, symbol_positive, symbol_positive_pdf)
+        render(dreamprint, symbol_negative, symbol_negative_pdf)
+        if ppm_sha256(symbol_positive_pdf, tmp / "symbol-positive",
+                      dpi=150) != \
+           ppm_sha256(symbol_negative_pdf, tmp / "symbol-negative",
+                      dpi=150):
+            raise AssertionError("negative symbol-set parameter was not absolute")
+
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)
         same_orientation_pdf = tmp / "same-orientation.pdf"
