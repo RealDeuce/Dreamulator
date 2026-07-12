@@ -380,6 +380,25 @@ def main():
         if pdf_pages(page_length_zero_pdf) != 2:
             raise AssertionError("page-length selector zero did not publish")
 
+        macro_execute = write(tmp / "macro-execute.pcl",
+                              ESC + b"&f321Y" +
+                              ESC + b"&f0X" + b"!\r" +
+                              ESC + b"&f1X" +
+                              ESC + b"&f2X" + FF)
+        macro_call = write(tmp / "macro-call.pcl",
+                           ESC + b"&f322Y" +
+                           ESC + b"&f0X" + b"!\r" +
+                           ESC + b"&f1X" +
+                           ESC + b"&f3X" + FF)
+        macro_execute_pdf = tmp / "macro-execute.pdf"
+        macro_call_pdf = tmp / "macro-call.pdf"
+        render(dreamprint, macro_execute, macro_execute_pdf)
+        render(dreamprint, macro_call, macro_call_pdf)
+        if "!" not in pdftotext(macro_execute_pdf):
+            raise AssertionError("macro execute did not replay payload")
+        if "!" not in pdftotext(macro_call_pdf):
+            raise AssertionError("macro call did not replay payload")
+
         overlay = write(tmp / "overlay.pcl",
                         ESC + b"&f123Y" +
                         ESC + b"&f0X" + b"!\r" +
