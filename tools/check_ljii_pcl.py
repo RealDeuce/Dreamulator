@@ -183,6 +183,34 @@ def main():
            ppm_sha256(explicit_spaces_pdf, tmp / "explicit-spaces", dpi=150):
             raise AssertionError("transparent controls did not advance as spaces")
 
+        transparent_probe_x = write(tmp / "transparent-probe-x.pcl",
+                                    ESC + b"&p3X" + b"A\x1aXB" + FF)
+        transparent_probe_del = write(tmp / "transparent-probe-del.pcl",
+                                      ESC + b"&p3X" + b"A\x7fB" + FF)
+        transparent_probe_x_pdf = tmp / "transparent-probe-x.pdf"
+        transparent_probe_del_pdf = tmp / "transparent-probe-del.pdf"
+        render(dreamprint, transparent_probe_x, transparent_probe_x_pdf)
+        render(dreamprint, transparent_probe_del, transparent_probe_del_pdf)
+        if ppm_sha256(transparent_probe_x_pdf, tmp / "transparent-probe-x",
+                      dpi=150) != \
+           ppm_sha256(transparent_probe_del_pdf, tmp / "transparent-probe-del",
+                      dpi=150):
+            raise AssertionError("transparent 0x1a X did not normalize to 0x7f")
+
+        transparent_probe_q = write(tmp / "transparent-probe-q.pcl",
+                                    ESC + b"&p3X" + b"A\x1aQB" + FF)
+        transparent_probe_plain = write(tmp / "transparent-probe-plain.pcl",
+                                        ESC + b"&p3X" + b"AQB" + FF)
+        transparent_probe_q_pdf = tmp / "transparent-probe-q.pdf"
+        transparent_probe_plain_pdf = tmp / "transparent-probe-plain.pdf"
+        render(dreamprint, transparent_probe_q, transparent_probe_q_pdf)
+        render(dreamprint, transparent_probe_plain, transparent_probe_plain_pdf)
+        if ppm_sha256(transparent_probe_q_pdf, tmp / "transparent-probe-q",
+                      dpi=150) != \
+           ppm_sha256(transparent_probe_plain_pdf,
+                      tmp / "transparent-probe-plain", dpi=150):
+            raise AssertionError("transparent 0x1a non-X probe did not keep probe byte")
+
         transparent_negative = write(tmp / "transparent-negative.pcl",
                                      ESC + b"&p-2X" + ESC + b"EAB" + FF)
         transparent_negative_pdf = tmp / "transparent-negative.pdf"

@@ -1318,7 +1318,15 @@ void PclPrinter::begin_payload(State state, int count)
 void PclPrinter::finish_payload_byte(uint8_t b)
 {
 	if (payload_state_ == State::TransparentData) {
-		emit_transparent_byte(b);
+		if (payload_control_pending_) {
+			payload_control_pending_ = false;
+			emit_transparent_byte(b == 0x58 ? 0x7f : b);
+		} else if (b == 0x1a) {
+			payload_control_pending_ = true;
+			return;
+		} else {
+			emit_transparent_byte(b);
+		}
 	} else {
 		if ((payload_state_ == State::RasterData ||
 		     payload_state_ == State::DownloadData) && payload_control_pending_) {
@@ -1353,10 +1361,8 @@ void PclPrinter::emit_transparent_byte(uint8_t b)
 {
 	if (b < 0x20 || (b >= 0x80 && b <= 0x9f))
 		advance_fixed_space();
-	else if (b != 0x7F)
-		process_printable(b);
 	else
-		process_control(b);
+		process_printable(b);
 }
 
 void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
