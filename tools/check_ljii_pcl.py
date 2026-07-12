@@ -865,6 +865,36 @@ def main():
                       dpi=150):
             raise AssertionError("negative VFC channel selector did not match positive")
 
+        vfc_probe_x = write(tmp / "vfc-probe-x.pcl",
+                            ESC + b"&l4W" + b"\x1aX\x00\x00\x02" +
+                            ESC + b"&l2V" + b"!" + FF)
+        vfc_probe_plain = write(tmp / "vfc-probe-plain.pcl",
+                                ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                                ESC + b"&l2V" + b"!" + FF)
+        vfc_probe_x_pdf = tmp / "vfc-probe-x.pdf"
+        vfc_probe_plain_pdf = tmp / "vfc-probe-plain.pdf"
+        render(dreamprint, vfc_probe_x, vfc_probe_x_pdf)
+        render(dreamprint, vfc_probe_plain, vfc_probe_plain_pdf)
+        if ppm_sha256(vfc_probe_x_pdf, tmp / "vfc-probe-x", dpi=150) != \
+           ppm_sha256(vfc_probe_plain_pdf, tmp / "vfc-probe-plain",
+                      dpi=150):
+            raise AssertionError("VFC 0x1a X did not normalize to zero byte")
+
+        vfc_probe_q = write(tmp / "vfc-probe-q.pcl",
+                            ESC + b"&l4W" + b"\x1aQ\x00\x00\x02" +
+                            ESC + b"&l2V" + b"!" + FF)
+        vfc_probe_q_plain = write(tmp / "vfc-probe-q-plain.pcl",
+                                  ESC + b"&l4W" + b"Q\x00\x00\x02" +
+                                  ESC + b"&l2V" + b"!" + FF)
+        vfc_probe_q_pdf = tmp / "vfc-probe-q.pdf"
+        vfc_probe_q_plain_pdf = tmp / "vfc-probe-q-plain.pdf"
+        render(dreamprint, vfc_probe_q, vfc_probe_q_pdf)
+        render(dreamprint, vfc_probe_q_plain, vfc_probe_q_plain_pdf)
+        if ppm_sha256(vfc_probe_q_pdf, tmp / "vfc-probe-q", dpi=150) != \
+           ppm_sha256(vfc_probe_q_plain_pdf, tmp / "vfc-probe-q-plain",
+                      dpi=150):
+            raise AssertionError("VFC 0x1a non-X probe did not keep probe byte")
+
         macro_execute = write(tmp / "macro-execute.pcl",
                               ESC + b"&f321Y" +
                               ESC + b"&f0X" + b"!\r" +

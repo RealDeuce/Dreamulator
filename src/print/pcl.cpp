@@ -1329,11 +1329,13 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		}
 	} else {
 		if ((payload_state_ == State::RasterData ||
+		     payload_state_ == State::VfcData ||
 		     payload_state_ == State::DownloadData) && payload_control_pending_) {
 			payload_control_pending_ = false;
 			if (b == 0x58)
 				b = 0x00;
 		} else if ((payload_state_ == State::RasterData ||
+		            payload_state_ == State::VfcData ||
 		            payload_state_ == State::DownloadData) && b == 0x1a) {
 			payload_control_pending_ = true;
 			return;
