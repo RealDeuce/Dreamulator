@@ -163,6 +163,19 @@ def main():
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
 
+        tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
+        explicit_tab = write(tmp / "explicit-tab.pcl",
+                             b"A" + ESC + b"&a8C" + b"B" + FF)
+        tabbed_pdf = tmp / "tabbed.pdf"
+        explicit_tab_pdf = tmp / "explicit-tab.pdf"
+        render(dreamprint, tabbed, tabbed_pdf)
+        render(dreamprint, explicit_tab, explicit_tab_pdf)
+        if "AB" not in "".join(pdftotext(tabbed_pdf).split()):
+            raise AssertionError("tabbed text did not extract")
+        if ppm_sha256(tabbed_pdf, tmp / "tabbed", dpi=150) != \
+           ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
+            raise AssertionError("horizontal tab did not use next tab stop")
+
         upright = write(tmp / "upright.pcl",
                         ESC + b"(s0p10h0s0b3TItalic sample" + FF)
         italic = write(tmp / "italic.pcl",

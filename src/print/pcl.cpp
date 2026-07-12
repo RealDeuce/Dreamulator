@@ -605,10 +605,15 @@ void PclPrinter::process_control(uint8_t b)
 		st_.x_pos = std::max(st_.left_margin_in, st_.x_pos - hmi_in_);
 		break;
 	case 0x09:
-		st_.x_pos += hmi_in_ * 8.0f;
+	{
+		float rel = std::max(0.0f, st_.x_pos - st_.left_margin_in);
+		float cols = rel / std::max(0.0001f, hmi_in_);
+		float next = (std::floor(cols / 8.0f) + 1.0f) * 8.0f;
+		st_.x_pos = st_.left_margin_in + next * hmi_in_;
 		if (st_.x_pos > st_.right_margin_in)
 			st_.x_pos = st_.right_margin_in;
 		break;
+	}
 	case 0x0A:
 		if (line_term_ == 2 || line_term_ == 3)
 			carriage_return();
