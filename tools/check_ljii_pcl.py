@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import shutil
 import subprocess
 import sys
@@ -40,7 +41,7 @@ def pdf_pages(pdf):
     raise AssertionError("pdfinfo did not report page count")
 
 
-def ppm_nonwhite(pdf, stem, dpi=72):
+def ppm_pixels(pdf, stem, dpi=72):
     run(["pdftoppm", "-r", str(dpi), "-singlefile", str(pdf), str(stem)])
     data = Path(f"{stem}.ppm").read_bytes()
     if not data.startswith(b"P6"):
@@ -70,8 +71,17 @@ def ppm_nonwhite(pdf, stem, dpi=72):
     pixels = data[cursor:]
     if len(pixels) < width * height * 3:
         raise AssertionError("truncated PPM payload")
+    return pixels[:width * height * 3]
+
+
+def ppm_nonwhite(pdf, stem, dpi=72):
+    pixels = ppm_pixels(pdf, stem, dpi)
     return sum(1 for i in range(0, len(pixels), 3)
                if pixels[i:i + 3] != b"\xff\xff\xff")
+
+
+def ppm_sha256(pdf, stem, dpi=72):
+    return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
 
 
 def write(path, data):
@@ -127,6 +137,18 @@ def main():
         display_esc_text = "".join(pdftotext(display_esc_pdf).split())
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
+
+        upright = write(tmp / "upright.pcl",
+                        ESC + b"(s0p10h0s0b3TItalic sample" + FF)
+        italic = write(tmp / "italic.pcl",
+                       ESC + b"(s0p10h1s0b3TItalic sample" + FF)
+        upright_pdf = tmp / "upright.pdf"
+        italic_pdf = tmp / "italic.pdf"
+        render(dreamprint, upright, upright_pdf)
+        render(dreamprint, italic, italic_pdf)
+        if ppm_sha256(upright_pdf, tmp / "upright", dpi=150) == \
+           ppm_sha256(italic_pdf, tmp / "italic", dpi=150):
+            raise AssertionError("italic font request did not affect pixels")
 
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +

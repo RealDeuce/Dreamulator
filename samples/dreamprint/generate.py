@@ -561,8 +561,8 @@ def pcl_param(prefix: bytes, body: bytes) -> bytes:
 
 def ljii_font(pitch: str, italic: bool, bold: bool) -> bytes:
     if pitch == "line-printer":
-        return pcl_param(b"&k", b"2S")
-    if pitch == "12cpi":
+        pitch_body = b"16.66h"
+    elif pitch == "12cpi":
         pitch_body = b"12h"
     else:
         pitch_body = b"10h"
@@ -580,16 +580,28 @@ def build_ljii_text_attributes() -> bytes:
     out += ESC + b"E"
     out += b"LaserJet II text capability sample\r\n\r\n"
 
+    out += b"Resident font request matrix\r\n"
     pitch_rows = [
-        ("Courier 10 cpi", "10cpi"),
-        ("Courier 12 cpi", "12cpi"),
-        ("Line printer pitch", "line-printer"),
+        ("10 cpi", "10cpi"),
+        ("12 cpi", "12cpi"),
+        ("16.66 cpi line-printer", "line-printer"),
     ]
     for title, pitch_mode in pitch_rows:
-        out += ljii_plain()
-        out += title.encode("ascii") + b"\r\n"
-        out += ljii_font(pitch_mode, False, False)
-        out += sample_text() + b"\r\n\r\n"
+        for italic in (False, True):
+            for bold in (False, True):
+                out += ljii_plain()
+                out += ljii_font(pitch_mode, italic, bold)
+                attrs = [title]
+                attrs.append("italic-request" if italic else "upright-request")
+                attrs.append("stroke-3B" if bold else "stroke-0B")
+                out += (" / ".join(attrs) + ": ").encode("ascii")
+                out += sample_text() + b"\r\n"
+        out += b"\r\n"
+
+    out += ljii_plain()
+    out += pcl_param(b"&k", b"2S")
+    out += b"Compatibility pitch command ESC &k2S: "
+    out += sample_text() + b"\r\n\r\n"
 
     out += ljii_plain()
     out += b"Underline includes spaces\r\n"
@@ -617,6 +629,10 @@ def build_ljii_text_attributes() -> bytes:
 
     out += b"Transparent text payload\r\n"
     out += pcl_param(b"&p", b"19XTransparent payload")
+    out += b"\r\n\r\n"
+
+    out += b"Display-functions text reader\r\n"
+    out += ESC + b"YDisplay " + ESC + b"Z"
     out += b"\r\n\r\n"
 
     out += b"Relative cursor movement\r\n"

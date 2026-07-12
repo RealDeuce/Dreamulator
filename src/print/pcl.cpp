@@ -1667,13 +1667,14 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		size_t row_off = (size_t)row * glyph.span;
 		if (row_off >= glyph.bitmap.size())
 			break;
+		int italic_shift = st_.italic ? (int)(glyph.rows - 1 - row) / 6 : 0;
 		for (uint16_t col = 0; col < glyph.width; col++) {
 			size_t byte_off = row_off + (col >> 3);
 			if (byte_off >= glyph.bitmap.size())
 				continue;
 			uint8_t byte = glyph.bitmap[byte_off];
 			if (byte & (0x80u >> (col & 7)))
-				page_->set_pixel(base_x + col, base_y + row, 0);
+				page_->set_pixel(base_x + col + italic_shift, base_y + row, 0);
 		}
 	}
 
@@ -1763,10 +1764,11 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - glyph.y_offset;
 	for (uint8_t row = 0; row < glyph.rows; row++) {
 		const uint8_t *src = glyph.data + (size_t)row * glyph.span;
+		int italic_shift = st_.italic ? (int)(glyph.rows - 1 - row) / 6 : 0;
 		for (uint8_t col = 0; col < glyph.width; col++) {
 			uint8_t byte = src[col >> 3];
 			if (byte & (0x80u >> (col & 7)))
-				page_->set_pixel(base_x + col, base_y + row, 0);
+				page_->set_pixel(base_x + col + italic_shift, base_y + row, 0);
 		}
 	}
 	if (st_.underline) {
