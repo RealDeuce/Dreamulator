@@ -403,6 +403,7 @@ private:
 	void ljii_carriage_return();
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
+	bool apply_builtin_font_id(int slot, int id);
 	LjiiFontRequest &font_request(int slot);
 	const LjiiFontRequest &font_request(int slot) const;
 	LjiiFontRequest &active_font_request();
@@ -1119,10 +1120,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 					sync_active_font_state();
 			}
 		} else if (term == 'X') {
+			ival = std::abs(ival);
 			auto it = soft_fonts_.find(ival);
 			if (it != soft_fonts_.end() && it->second.active) {
 				selected_soft_font_id_[slot] = ival;
 				font_request(slot).symbol_set = it->second.symbol_set;
+				if (slot == active_font_slot_)
+					sync_active_font_state();
+			} else if (apply_builtin_font_id(slot, ival)) {
+				selected_soft_font_id_[slot] = -1;
 				if (slot == active_font_slot_)
 					sync_active_font_state();
 			}
@@ -2141,6 +2147,32 @@ uint16_t PclPrinter::text_unicode(uint8_t b) const
 	if (b < 0x80)
 		return b;
 	return roman8_to_unicode(b);
+}
+
+bool PclPrinter::apply_builtin_font_id(int slot, int id)
+{
+	LjiiFontRequest &req = font_request(slot);
+	if (slot == 0 && id == 7) {
+		req.symbol_set = kSymbolRoman8;
+		req.pitch = 1000;
+		req.height = 1200;
+		req.spacing = 0;
+		req.style = 0;
+		req.stroke = 3;
+		req.typeface = 3;
+		return true;
+	}
+	if (slot == 1 && id == 8) {
+		req.symbol_set = 0x000e;
+		req.pitch = 1666;
+		req.height = 850;
+		req.spacing = 0;
+		req.style = 0;
+		req.stroke = 0;
+		req.typeface = 0;
+		return true;
+	}
+	return false;
 }
 
 LjiiFontRequest &PclPrinter::font_request(int slot)

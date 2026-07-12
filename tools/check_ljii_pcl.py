@@ -483,6 +483,32 @@ def main():
            ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
             raise AssertionError("final-3@ did not reset to default font")
 
+        font_id_bold = write(tmp / "font-id-bold.pcl",
+                             ESC + b"(7X" + b"Stroke sample" + FF)
+        font_id_bold_pdf = tmp / "font-id-bold.pdf"
+        render(dreamprint, font_id_bold, font_id_bold_pdf)
+        if ppm_sha256(font_id_bold_pdf, tmp / "font-id-bold", dpi=150) != \
+           ppm_sha256(explicit_bold_pdf, tmp / "explicit-bold", dpi=150):
+            raise AssertionError("built-in primary font ID 7 did not select bold Courier")
+
+        secondary_line = write(tmp / "secondary-line.pcl",
+                               ESC + b")8X" + b"\x0e" +
+                               b"Line sample" + FF)
+        explicit_secondary_line = write(
+            tmp / "explicit-secondary-line.pcl",
+            ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
+            b"Line sample" + FF,
+        )
+        secondary_line_pdf = tmp / "secondary-line.pdf"
+        explicit_secondary_line_pdf = tmp / "explicit-secondary-line.pdf"
+        render(dreamprint, secondary_line, secondary_line_pdf)
+        render(dreamprint, explicit_secondary_line, explicit_secondary_line_pdf)
+        if ppm_sha256(secondary_line_pdf, tmp / "secondary-line",
+                      dpi=150) != \
+           ppm_sha256(explicit_secondary_line_pdf,
+                      tmp / "explicit-secondary-line", dpi=150):
+            raise AssertionError("built-in secondary font ID 8 did not select line-printer context")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",
