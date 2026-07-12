@@ -455,6 +455,34 @@ def main():
            ppm_nonwhite(medium_pdf, tmp / "medium", dpi=150):
             raise AssertionError("bold stroke request did not increase ink")
 
+        invalid_default = write(tmp / "invalid-default.pcl",
+                                ESC + b"(s0p10h12v0s3b3T" +
+                                ESC + b"(99@" + b"Stroke sample" + FF)
+        explicit_bold = write(tmp / "explicit-bold.pcl",
+                              ESC + b"(s0p10h12v0s3b3T" +
+                              b"Stroke sample" + FF)
+        default_font = write(tmp / "default-font.pcl",
+                             ESC + b"(s0p10h12v0s3b3T" +
+                             ESC + b"(3@" + b"Stroke sample" + FF)
+        explicit_medium = write(tmp / "explicit-medium.pcl",
+                                ESC + b"(s0p10h12v0s0b3T" +
+                                b"Stroke sample" + FF)
+        invalid_default_pdf = tmp / "invalid-default.pdf"
+        explicit_bold_pdf = tmp / "explicit-bold.pdf"
+        default_font_pdf = tmp / "default-font.pdf"
+        explicit_medium_pdf = tmp / "explicit-medium.pdf"
+        render(dreamprint, invalid_default, invalid_default_pdf)
+        render(dreamprint, explicit_bold, explicit_bold_pdf)
+        render(dreamprint, default_font, default_font_pdf)
+        render(dreamprint, explicit_medium, explicit_medium_pdf)
+        if ppm_sha256(invalid_default_pdf, tmp / "invalid-default",
+                      dpi=150) != \
+           ppm_sha256(explicit_bold_pdf, tmp / "explicit-bold", dpi=150):
+            raise AssertionError("invalid final-@ reset the selected font")
+        if ppm_sha256(default_font_pdf, tmp / "default-font", dpi=150) != \
+           ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
+            raise AssertionError("final-3@ did not reset to default font")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",
