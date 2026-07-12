@@ -262,6 +262,41 @@ def main():
         if "AB" not in "".join(pdftotext(same_orientation_pdf).split()):
             raise AssertionError("unchanged orientation shifted text output")
 
+        orientation_positive = write(tmp / "orientation-positive.pcl",
+                                     b"A" + ESC + b"&l1O" + b"B" + FF)
+        orientation_negative = write(tmp / "orientation-negative.pcl",
+                                     b"A" + ESC + b"&l-1O" + b"B" + FF)
+        orientation_positive_pdf = tmp / "orientation-positive.pdf"
+        orientation_negative_pdf = tmp / "orientation-negative.pdf"
+        render(dreamprint, orientation_positive, orientation_positive_pdf)
+        render(dreamprint, orientation_negative, orientation_negative_pdf)
+        if pdf_pages(orientation_negative_pdf) != pdf_pages(orientation_positive_pdf):
+            raise AssertionError("negative orientation selector was not absolute")
+
+        page_size_positive = write(tmp / "page-size-positive.pcl",
+                                   ESC + b"&l3A" + b"!" + FF)
+        page_size_negative = write(tmp / "page-size-negative.pcl",
+                                   ESC + b"&l-3A" + b"!" + FF)
+        page_size_invalid = write(tmp / "page-size-invalid.pcl",
+                                  ESC + b"&l3A" + ESC + b"&l999A" +
+                                  b"!" + FF)
+        page_size_positive_pdf = tmp / "page-size-positive.pdf"
+        page_size_negative_pdf = tmp / "page-size-negative.pdf"
+        page_size_invalid_pdf = tmp / "page-size-invalid.pdf"
+        render(dreamprint, page_size_positive, page_size_positive_pdf)
+        render(dreamprint, page_size_negative, page_size_negative_pdf)
+        render(dreamprint, page_size_invalid, page_size_invalid_pdf)
+        if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
+                      dpi=72) != \
+           ppm_sha256(page_size_negative_pdf, tmp / "page-size-negative",
+                      dpi=72):
+            raise AssertionError("negative page-size selector was not absolute")
+        if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
+                      dpi=72) != \
+           ppm_sha256(page_size_invalid_pdf, tmp / "page-size-invalid",
+                      dpi=72):
+            raise AssertionError("invalid page-size selector did not preserve state")
+
         upright = write(tmp / "upright.pcl",
                         ESC + b"(s0p10h0s0b3TItalic sample" + FF)
         italic = write(tmp / "italic.pcl",
@@ -550,6 +585,15 @@ def main():
             raise AssertionError("nonzero page length did not publish")
         if "AB" not in "".join(pdftotext(page_length_nonzero_pdf).split()):
             raise AssertionError("nonzero page length lost text")
+
+        page_length_negative = write(tmp / "page-length-negative.pcl",
+                                     b"A" + ESC + b"&l-66P" + b"B" + FF)
+        page_length_negative_pdf = tmp / "page-length-negative.pdf"
+        render(dreamprint, page_length_negative, page_length_negative_pdf)
+        if pdf_pages(page_length_negative_pdf) != pdf_pages(page_length_nonzero_pdf):
+            raise AssertionError("negative page length did not match positive selector")
+        if "AB" not in "".join(pdftotext(page_length_negative_pdf).split()):
+            raise AssertionError("negative page length lost text")
 
         lpi_positive = write(tmp / "lpi-positive.pcl",
                              ESC + b"&l8D" + b"A\nB" + FF)

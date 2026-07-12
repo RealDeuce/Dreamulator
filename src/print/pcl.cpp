@@ -58,6 +58,24 @@ PageGeometry pcl_page_geometry(int code, int orientation)
 	return landscape;
 }
 
+bool pcl_page_size_selector_valid(int code)
+{
+	switch (code) {
+	case 0:
+	case 1:
+	case 2:
+	case 3:
+	case 26:
+	case 80:
+	case 81:
+	case 90:
+	case 91:
+		return true;
+	default:
+		return false;
+	}
+}
+
 float dots_to_in(int dots)
 {
 	return (float)dots / kDotsPerIn;
@@ -818,7 +836,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 
 	if (group == '&' && subgroup == 'l') {
 		switch (term) {
-		case 'A': set_page_size(ival); break;
+		case 'A': set_page_size(std::abs(ival)); break;
 		case 'C':
 			if (value > 0.0) {
 				vmi_in_ = (float)value / 48.0f;
@@ -870,9 +888,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				st_.perf_skip_lines = 6;
 			break;
 		case 'O':
-			set_orientation(ival);
+			set_orientation(std::abs(ival));
 			break;
 		case 'P':
+			value = std::abs(value);
+			ival = std::abs(ival);
 			if (value > 0.0) {
 				publish_current_page();
 				set_page_length(std::max(1.0f, (float)value * vmi_in_));
@@ -2099,14 +2119,20 @@ void PclPrinter::ljii_line_feed()
 
 void PclPrinter::set_page_size(int code)
 {
+	code = std::abs(code);
+	if (!pcl_page_size_selector_valid(code))
+		return;
 	publish_current_page();
+	if (code == 0)
+		code = 2;
 	page_size_code_ = code;
 	apply_page_geometry();
 }
 
 void PclPrinter::set_orientation(int orientation)
 {
-	if (orientation < 0 || orientation > 1 || orientation == orientation_)
+	orientation = std::abs(orientation);
+	if (orientation > 1 || orientation == orientation_)
 		return;
 	publish_current_page();
 	orientation_ = orientation;
