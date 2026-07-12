@@ -140,6 +140,39 @@ uint8_t symbol_glyph_byte(int symbol_set, uint8_t ch)
 	return ch;
 }
 
+uint16_t expand_raster_2x(uint8_t byte)
+{
+	uint16_t out = 0;
+	for (int bit = 7; bit >= 0; bit--) {
+		out <<= 2;
+		if (byte & (1 << bit))
+			out |= 0x0003;
+	}
+	return out;
+}
+
+uint32_t expand_raster_3x(uint8_t byte)
+{
+	uint32_t out = 0;
+	for (int bit = 7; bit >= 0; bit--) {
+		out <<= 3;
+		if (byte & (1 << bit))
+			out |= 0x0007;
+	}
+	return out << 8;
+}
+
+uint32_t expand_raster_4x(uint8_t byte)
+{
+	uint32_t out = 0;
+	for (int bit = 7; bit >= 0; bit--) {
+		out <<= 4;
+		if (byte & (1 << bit))
+			out |= 0x0000000f;
+	}
+	return out;
+}
+
 } // namespace
 
 class PclPrinter : public PrinterSim {
@@ -180,6 +213,10 @@ private:
 	void emit_transparent_byte(uint8_t b);
 	void draw_rule(float x_in, float y_in, float w_in, float h_in, uint8_t gray);
 	void draw_raster_row(const std::vector<uint8_t> &row);
+	void draw_raster_bits(uint32_t bits, int bit_count, int x_dot, int y_dot,
+	                      int row_count);
+	void draw_raster_dot(int x_dot, int y_dot);
+	void set_raster_resolution(int dpi);
 	bool render_ljii_text(uint8_t b);
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
@@ -208,11 +245,12 @@ private:
 	int symbol_set_ = kSymbolRoman8;
 
 	int raster_resolution_ = 300;
-	int raster_compression_ = 0;
+	int raster_mode_ = 0;
+	int raster_scale_ = 1;
+	bool raster_active_ = false;
 	float raster_x_in_ = 0.0f;
 	float raster_y_in_ = 0.0f;
 	int raster_row_ = 0;
-	int raster_plane_ = 0;
 
 	float rect_w_in_ = 0.0f;
 	float rect_h_in_ = 0.0f;
@@ -249,11 +287,12 @@ void PclPrinter::reset_ljii_state()
 	text_length_in_ = 10.0f;
 	symbol_set_ = kSymbolRoman8;
 	raster_resolution_ = 300;
-	raster_compression_ = 0;
+	raster_mode_ = 0;
+	raster_scale_ = 1;
+	raster_active_ = false;
 	raster_x_in_ = 0.0f;
 	raster_y_in_ = 0.0f;
 	raster_row_ = 0;
-	raster_plane_ = 0;
 	rect_w_in_ = 0.0f;
 	rect_h_in_ = 0.0f;
 	fill_pattern_ = 0;
@@ -423,8 +462,9 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		if (state_ == State::Parameterized)
 			state_ = State::Normal;
 	} else if (b >= 'a' && b <= 'z') {
-		apply_param(group_, subgroup_, value,
-		            static_cast<char>(std::toupper(b)));
+		if (!(group_ == '*' && subgroup_ == 'b' && b == 'w'))
+			apply_param(group_, subgroup_, value,
+			            static_cast<char>(std::toupper(b)));
 		if (state_ == State::Parameterized) {
 			param_pos_ = 0;
 			param_buf_[0] = 0;
@@ -584,17 +624,19 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		}
 	} else if (group == '*' && subgroup == 't') {
 		if (term == 'R' && ival > 0)
-			raster_resolution_ = ival;
+			set_raster_resolution(ival);
 	} else if (group == '*' && subgroup == 'r') {
 		switch (term) {
 		case 'A':
-			raster_x_in_ = st_.x_pos;
-			raster_y_in_ = st_.y_pos;
-			raster_row_ = 0;
-			raster_plane_ = std::max(0, ival);
+			if (!raster_active_) {
+				raster_x_in_ = (ival == 1) ? st_.x_pos : 0.0f;
+				raster_y_in_ = st_.y_pos;
+				raster_row_ = 0;
+				raster_active_ = true;
+			}
 			break;
 		case 'B':
-			raster_row_ = 0;
+			raster_active_ = false;
 			break;
 		case 'S':
 			break;
@@ -606,13 +648,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'b') {
 		switch (term) {
 		case 'M':
-			raster_compression_ = std::max(0, std::min(3, ival));
 			break;
 		case 'W':
 			begin_payload(State::RasterData, std::max(0, ival));
 			break;
 		case 'Y':
-			raster_row_ += std::max(0, ival);
+			raster_row_ += std::max(0, ival) * raster_scale_;
 			break;
 		default:
 			break;
@@ -710,45 +751,85 @@ void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
 
 void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 {
-	if (row.empty())
+	if (row.empty() || !raster_active_)
 		return;
 	new_page_if_needed();
 	page_dirty_ = true;
 
-	std::vector<uint8_t> decoded;
-	if (raster_compression_ == 0) {
-		decoded = row;
-	} else if (raster_compression_ == 1) {
-		for (size_t i = 0; i + 1 < row.size();) {
-			uint8_t count = row[i++];
-			uint8_t value = row[i++];
-			decoded.insert(decoded.end(), (size_t)count + 1, value);
+	if (raster_mode_ == 0) {
+		int x_dot = 0;
+		for (uint8_t byte : row) {
+			draw_raster_bits(byte, 8, x_dot, 0, 1);
+			x_dot += 8;
 		}
+	} else if (raster_mode_ == 1) {
+		int x_dot = 0;
+		for (uint8_t byte : row) {
+			draw_raster_bits(expand_raster_2x(byte), 16, x_dot, 0, 2);
+			x_dot += 16;
+		}
+	} else if (raster_mode_ == 2) {
+		for (size_t i = 0; i < row.size(); i += 2)
+			draw_raster_bits(expand_raster_3x(row[i]), 32,
+			                 (int)(i / 2) * 48, 0, 3);
+		for (size_t i = 1; i < row.size(); i += 2)
+			draw_raster_bits(expand_raster_3x(row[i]), 32,
+			                 (int)(i / 2) * 48 + 16, 0, 3);
 	} else {
-		decoded = row;
-	}
-
-	float scale = kDotsPerIn / (float)std::max(1, raster_resolution_);
-	int dpi = prof_.render_dpi;
-	int y0 = (int)std::lround((raster_y_in_ * kDotsPerIn +
-	                          (float)raster_row_ * scale) *
-	                         (float)dpi / kDotsPerIn);
-	int row_px = std::max(1, (int)std::ceil(scale * (float)dpi / kDotsPerIn));
-	int col_px = row_px;
-	int bit_index = 0;
-	for (uint8_t byte : decoded) {
-		for (int bit = 7; bit >= 0; bit--, bit_index++) {
-			if (!(byte & (1 << bit)))
-				continue;
-			int x0 = (int)std::lround((raster_x_in_ * kDotsPerIn +
-			                          (float)bit_index * scale) *
-			                         (float)dpi / kDotsPerIn);
-			for (int yy = 0; yy < row_px; yy++)
-				for (int xx = 0; xx < col_px; xx++)
-					page_->set_pixel(x0 + xx, y0 + yy, 0);
+		int x_dot = 0;
+		for (uint8_t byte : row) {
+			draw_raster_bits(expand_raster_4x(byte), 32, x_dot, 0, 4);
+			x_dot += 32;
 		}
 	}
-	raster_row_++;
+	raster_row_ += raster_scale_;
+}
+
+void PclPrinter::draw_raster_bits(uint32_t bits, int bit_count, int x_dot,
+                                  int y_dot, int row_count)
+{
+	for (int bit = bit_count - 1; bit >= 0; bit--, x_dot++) {
+		if (!(bits & (1u << bit)))
+			continue;
+		for (int row = 0; row < row_count; row++)
+			draw_raster_dot(x_dot, y_dot + row);
+	}
+}
+
+void PclPrinter::draw_raster_dot(int x_dot, int y_dot)
+{
+	int dpi = prof_.render_dpi;
+	float base_x = raster_x_in_ * kDotsPerIn + (float)x_dot;
+	float base_y = raster_y_in_ * kDotsPerIn + (float)raster_row_ + (float)y_dot;
+	int x0 = (int)std::floor(base_x * (float)dpi / kDotsPerIn);
+	int y0 = (int)std::floor(base_y * (float)dpi / kDotsPerIn);
+	int x1 = (int)std::ceil((base_x + 1.0f) * (float)dpi / kDotsPerIn);
+	int y1 = (int)std::ceil((base_y + 1.0f) * (float)dpi / kDotsPerIn);
+	x1 = std::max(x1, x0 + 1);
+	y1 = std::max(y1, y0 + 1);
+	for (int y = y0; y < y1; y++)
+		for (int x = x0; x < x1; x++)
+			page_->set_pixel(x, y, 0);
+}
+
+void PclPrinter::set_raster_resolution(int dpi)
+{
+	if (raster_active_)
+		return;
+	raster_resolution_ = dpi;
+	if (dpi >= 300) {
+		raster_mode_ = 0;
+		raster_scale_ = 1;
+	} else if (dpi >= 150) {
+		raster_mode_ = 1;
+		raster_scale_ = 2;
+	} else if (dpi >= 100) {
+		raster_mode_ = 2;
+		raster_scale_ = 3;
+	} else {
+		raster_mode_ = 3;
+		raster_scale_ = 4;
+	}
 }
 
 bool PclPrinter::render_ljii_text(uint8_t b)
