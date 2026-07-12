@@ -949,6 +949,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'L':
 			flush_underline_span();
+			value = std::abs(value);
 			st_.left_margin_in = logical_x0_in_ +
 			                     std::max(0.0f, (float)value / st_.pitch_cpi);
 			st_.x_pos = std::max(st_.x_pos, st_.left_margin_in);
@@ -956,6 +957,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'M':
 			flush_underline_span();
+			value = std::abs(value);
 			st_.right_margin_in = std::max(st_.left_margin_in,
 			                               logical_x0_in_ +
 			                               ((float)value + 1.0f) / st_.pitch_cpi);

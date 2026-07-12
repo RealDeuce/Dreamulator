@@ -215,6 +215,33 @@ def main():
            ppm_sha256(hmi_negative_pdf, tmp / "hmi-negative", dpi=150):
             raise AssertionError("negative HMI value did not match positive value")
 
+        left_margin_positive = write(tmp / "left-margin-positive.pcl",
+                                     ESC + b"&a6L" + b"!" + FF)
+        left_margin_negative = write(tmp / "left-margin-negative.pcl",
+                                     ESC + b"&a-6L" + b"!" + FF)
+        right_margin_positive = write(tmp / "right-margin-positive.pcl",
+                                      ESC + b"&a1l9M" + b"!" + FF)
+        right_margin_negative = write(tmp / "right-margin-negative.pcl",
+                                      ESC + b"&a1l-9M" + b"!" + FF)
+        left_margin_positive_pdf = tmp / "left-margin-positive.pdf"
+        left_margin_negative_pdf = tmp / "left-margin-negative.pdf"
+        right_margin_positive_pdf = tmp / "right-margin-positive.pdf"
+        right_margin_negative_pdf = tmp / "right-margin-negative.pdf"
+        render(dreamprint, left_margin_positive, left_margin_positive_pdf)
+        render(dreamprint, left_margin_negative, left_margin_negative_pdf)
+        render(dreamprint, right_margin_positive, right_margin_positive_pdf)
+        render(dreamprint, right_margin_negative, right_margin_negative_pdf)
+        if ppm_sha256(left_margin_positive_pdf, tmp / "left-margin-positive",
+                      dpi=150) != \
+           ppm_sha256(left_margin_negative_pdf, tmp / "left-margin-negative",
+                      dpi=150):
+            raise AssertionError("negative left margin did not match positive value")
+        if ppm_sha256(right_margin_positive_pdf, tmp / "right-margin-positive",
+                      dpi=150) != \
+           ppm_sha256(right_margin_negative_pdf, tmp / "right-margin-negative",
+                      dpi=150):
+            raise AssertionError("negative right margin did not match positive value")
+
         line_term_positive = write(tmp / "line-term-positive.pcl",
                                    ESC + b"&k2G" + b"A\nB" + FF)
         line_term_negative = write(tmp / "line-term-negative.pcl",
