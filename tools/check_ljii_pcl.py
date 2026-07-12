@@ -436,12 +436,20 @@ def main():
                           ESC + b"*c64a64b50g2P" + FF)
         rule_pattern = write(tmp / "rule-pattern.pcl",
                              ESC + b"*c64a64b2g3P" + FF)
+        rule_neg_gray = write(tmp / "rule-neg-gray.pcl",
+                              ESC + b"*c64a64b-50g-2P" + FF)
+        rule_neg_pattern = write(tmp / "rule-neg-pattern.pcl",
+                                 ESC + b"*c64a64b-2g-3P" + FF)
         rule_solid_pdf = tmp / "rule-solid.pdf"
         rule_gray_pdf = tmp / "rule-gray.pdf"
         rule_pattern_pdf = tmp / "rule-pattern.pdf"
+        rule_neg_gray_pdf = tmp / "rule-neg-gray.pdf"
+        rule_neg_pattern_pdf = tmp / "rule-neg-pattern.pdf"
         render(dreamprint, rule_solid, rule_solid_pdf)
         render(dreamprint, rule_gray, rule_gray_pdf)
         render(dreamprint, rule_pattern, rule_pattern_pdf)
+        render(dreamprint, rule_neg_gray, rule_neg_gray_pdf)
+        render(dreamprint, rule_neg_pattern, rule_neg_pattern_pdf)
         solid_pixels = ppm_nonwhite(rule_solid_pdf, tmp / "rule-solid",
                                     dpi=300)
         gray_pixels = ppm_nonwhite(rule_gray_pdf, tmp / "rule-gray",
@@ -452,6 +460,12 @@ def main():
             raise AssertionError("rule percent fill did not use pattern mask")
         if not (0 < pattern_pixels < solid_pixels):
             raise AssertionError("rule hatch fill did not use pattern mask")
+        if ppm_sha256(rule_neg_gray_pdf, tmp / "rule-neg-gray", dpi=300) != \
+           ppm_sha256(rule_gray_pdf, tmp / "rule-gray", dpi=300):
+            raise AssertionError("negative rule percent fill did not normalize")
+        if ppm_sha256(rule_neg_pattern_pdf, tmp / "rule-neg-pattern", dpi=300) != \
+           ppm_sha256(rule_pattern_pdf, tmp / "rule-pattern", dpi=300):
+            raise AssertionError("negative rule hatch fill did not normalize")
 
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):

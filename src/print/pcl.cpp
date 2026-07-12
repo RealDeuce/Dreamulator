@@ -1241,13 +1241,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'G':
-			fill_pattern_ = ival;
+			fill_pattern_ = std::abs(ival);
 			break;
 		case 'H':
 			rect_w_in_ = std::max(0.0f, (float)value / 720.0f);
 			break;
 		case 'P': {
-			int selector = rule_selector_for_fill_command(ival, fill_pattern_,
+			int selector = rule_selector_for_fill_command(std::abs(ival), fill_pattern_,
 			                                              orientation_);
 			if (selector >= 0)
 				draw_rule(st_.x_pos, st_.y_pos, rect_w_in_, rect_h_in_,
