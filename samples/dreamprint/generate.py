@@ -578,34 +578,60 @@ def ljii_plain() -> bytes:
 def build_ljii_text_attributes() -> bytes:
     out = bytearray()
     out += ESC + b"E"
-    out += b"LaserJet II text attribute matrix\r\n\r\n"
-    pitches = [
-        ("10cpi", "10cpi"),
-        ("12cpi", "12cpi"),
-        ("line-printer", "line-printer"),
-    ]
-    for pitch_name, pitch_mode in pitches:
-        for underline in (False, True):
-            for italic in (False, True):
-                for bold in (False, True):
-                    if pitch_mode == "line-printer" and (italic or bold):
-                        continue
-                    parts = [pitch_name]
-                    if bold:
-                        parts.append("bold")
-                    if italic:
-                        parts.append("italic")
-                    if underline:
-                        parts.append("underline")
+    out += b"LaserJet II text capability sample\r\n\r\n"
 
-                    out += ljii_plain()
-                    out += label(parts) + b"\r\n"
-                    out += ljii_font(pitch_mode, italic, bold)
-                    if underline:
-                        out += pcl_param(b"&d", b"0D")
-                    out += sample_text() + b"\r\n"
-                    out += ljii_plain()
-                    out += b"\r\n"
+    pitch_rows = [
+        ("Courier 10 cpi", "10cpi"),
+        ("Courier 12 cpi", "12cpi"),
+        ("Line printer pitch", "line-printer"),
+    ]
+    for title, pitch_mode in pitch_rows:
+        out += ljii_plain()
+        out += title.encode("ascii") + b"\r\n"
+        out += ljii_font(pitch_mode, False, False)
+        out += sample_text() + b"\r\n\r\n"
+
+    out += ljii_plain()
+    out += b"Underline includes spaces\r\n"
+    out += pcl_param(b"&d", b"0D")
+    out += b"underlined words with visible space gaps\r\n"
+    out += ljii_plain()
+    out += b"\r\n"
+
+    out += b"Stroke request 3B selects resident fallback when no bold face exists\r\n"
+    out += ljii_font("10cpi", False, True)
+    out += sample_text() + b"\r\n\r\n"
+
+    out += ljii_plain()
+    out += b"UK symbol set remaps # \\ ^ ~\r\n"
+    out += pcl_param(b"(", b"1E")
+    out += b"# \\ ^ ~\r\n"
+    out += pcl_param(b"(", b"8U")
+    out += b"\r\n"
+
+    out += b"Roman Extension 0E lower half\r\n"
+    out += pcl_param(b"(", b"0E")
+    out += b" !\"#$%&'()*+,-./\r\n"
+    out += pcl_param(b"(", b"8U")
+    out += b"\r\n"
+
+    out += b"Transparent text payload\r\n"
+    out += pcl_param(b"&p", b"19XTransparent payload")
+    out += b"\r\n\r\n"
+
+    out += b"Relative cursor movement\r\n"
+    out += b"A"
+    out += pcl_param(b"&a", b"2c+1R")
+    out += b"B\r\n\r\n"
+
+    out += ljii_plain()
+    out += b"Downloaded glyph selected by font id\r\n"
+    out += pcl_param(b"*c", b"4660D")
+    out += pcl_param(b"*c", b"41E")
+    out += pcl_param(b")s", b"18W")
+    out += bytes.fromhex("f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
+    out += pcl_param(b"(", b"4660X")
+    out += b")\r\n"
 
     out += ljii_plain()
     out += FF

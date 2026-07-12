@@ -1627,13 +1627,11 @@ uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
 
 uint16_t PclPrinter::text_unicode(uint8_t b) const
 {
-	int symbol_set = active_font_request().symbol_set;
-	if (symbol_set == 0x0015)
-		return b < 0x80 ? b : 0;
-	uint8_t glyph_byte = text_glyph_byte(b);
-	if (glyph_byte == 0)
+	if (b == 0x7f)
 		return 0;
-	return roman8_to_unicode(glyph_byte);
+	if (b < 0x80)
+		return b;
+	return roman8_to_unicode(b);
 }
 
 LjiiFontRequest &PclPrinter::font_request(int slot)
