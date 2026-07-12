@@ -34636,17 +34636,18 @@ static constexpr LjiiGlyphEntry ljii_glyphs[] = {
 	{ 23u, 0xffu, 29u, -22, 17, 17u, 4u, 468466u, 68u },
 };
 
-uint32_t default_ljii_context_for_pitch(float pitch_cpi, bool bold,
-                                        bool italic)
+uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set)
 {
 	if (pitch_cpi > 14.0f) {
-		if (bold && italic) return 0x40094f5cu;
-		if (italic) return 0x44094b08u;
-		return bold ? 0x440946b4u : 0x400942e4u;
+		if (symbol_set == 0x0155) return 0x440946b4u;
+		if (symbol_set == 0x0175) return 0x44094b08u;
+		if (symbol_set == 0x000e) return 0x40094f5cu;
+		return 0x400942e4u;
 	}
-	if (bold && italic) return 0x4008ac1cu;
-	if (italic) return 0x4408a7ccu;
-	return bold ? 0x4408a37cu : 0x40089fb0u;
+	if (symbol_set == 0x0155) return 0x4408a37cu;
+	if (symbol_set == 0x0175) return 0x4408a7ccu;
+	if (symbol_set == 0x000e) return 0x4008ac1cu;
+	return 0x40089fb0u;
 }
 
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte)

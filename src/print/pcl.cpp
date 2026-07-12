@@ -1189,11 +1189,24 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	uint8_t glyph_byte = text_glyph_byte(b);
 	if (glyph_byte == 0)
 		return true;
-	uint32_t context = default_ljii_context_for_pitch(st_.pitch_cpi, st_.bold,
-	                                                 st_.italic);
+	uint32_t context = default_ljii_context_for_pitch(st_.pitch_cpi,
+	                                                 symbol_set_);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
-	if (!glyph.found || !glyph.data)
-		return false;
+	if (!glyph.found || !glyph.data) {
+		uint16_t cp = text_unicode(b);
+		if (cp >= 0x20) {
+			uint8_t sty = 0;
+			if (st_.bold) sty |= TextGlyph::BOLD;
+			if (st_.underline) sty |= TextGlyph::UNDERLINE;
+			text_buf_.push_back({
+				st_.x_pos, st_.y_pos, cp, char_w_in,
+				char_w_in * 72.0f / 0.6f, sty
+			});
+		}
+		st_.x_pos += char_w_in;
+		mark_line_output(true);
+		return true;
+	}
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		carriage_return();
