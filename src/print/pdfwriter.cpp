@@ -91,13 +91,26 @@ long PdfWriter::write_image_stream(const PageBitmap &bmp)
 	return img_id;
 }
 
+static uint8_t unicode_to_winansi(uint16_t codepoint)
+{
+	if (codepoint < 0x100)
+		return static_cast<uint8_t>(codepoint);
+
+	switch (codepoint) {
+	case 0x0192: return 0x83;
+	case 0x02C6: return 0x88;
+	case 0x0160: return 0x8A;
+	case 0x0161: return 0x9A;
+	case 0x02DC: return 0x98;
+	case 0x0178: return 0x9F;
+	case 0x2014: return 0x97;
+	default:     return '?';
+	}
+}
+
 static void pdf_escape(char *out, size_t out_sz, uint16_t codepoint)
 {
-	uint8_t ch;
-	if (codepoint < 0x100)
-		ch = static_cast<uint8_t>(codepoint);
-	else
-		ch = '?';
+	uint8_t ch = unicode_to_winansi(codepoint);
 
 	if (ch == '(' || ch == ')' || ch == '\\') {
 		snprintf(out, out_sz, "\\%c", ch);

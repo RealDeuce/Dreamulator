@@ -568,6 +568,8 @@ def build_ljii() -> bytes:
     out += b"Courier 10 cpi bold stroke\r\n"
     out += pcl_param(b"(s", b"0p12h0s0b3T")
     out += b"Courier 12 cpi\r\n"
+    out += pcl_param(b"(", b"1E") + b"UK symbol set: #\\^~"
+    out += pcl_param(b"(", b"8U") + b"\r\n"
     out += pcl_param(b"&d", b"0D")
     out += b"Underlined text should copy from the invisible layer"
     out += pcl_param(b"&d", b"@")
