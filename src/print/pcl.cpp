@@ -316,6 +316,7 @@ private:
 		VfcData,
 		DisplayFunctions,
 		DownloadData,
+		ControlZ,
 	};
 
 	struct Macro {
@@ -596,6 +597,14 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::DisplayFunctions:
 		process_display_byte(b);
 		return;
+	case State::ControlZ:
+		if (b == 0x1A) {
+			/* The default selected contexts leave nested Control-Z invisible. */
+		} else if (b == 0x58) {
+			/* Synthetic 0x100 route: consume the pair without printing X. */
+		}
+		state_ = State::Normal;
+		return;
 	}
 }
 
@@ -603,6 +612,10 @@ void PclPrinter::process_normal(uint8_t b)
 {
 	if (b == 0x1B) {
 		state_ = State::Esc;
+		return;
+	}
+	if (b == 0x1A) {
+		state_ = State::ControlZ;
 		return;
 	}
 	if (b < 0x20 || b == 0x7F)

@@ -184,6 +184,13 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        control_z = write(tmp / "control-z.pcl",
+                          b"A" + bytes([0x1a, 0x58]) + b"B" + FF)
+        control_z_pdf = tmp / "control-z.pdf"
+        render(dreamprint, control_z, control_z_pdf)
+        if "".join(pdftotext(control_z_pdf).split()) != "AB":
+            raise AssertionError("normal Control-Z X leaked printable text")
+
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)
         same_orientation_pdf = tmp / "same-orientation.pdf"
