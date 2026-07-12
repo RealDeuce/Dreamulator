@@ -1055,6 +1055,39 @@ def main():
         if "!" not in pdftotext(macro_call_pdf):
             raise AssertionError("macro call did not replay payload")
 
+        macro_call_restore = write(
+            tmp / "macro-call-restore.pcl",
+            b"A" +
+            ESC + b"&f410Y" +
+            ESC + b"&f0X" + ESC + b"*p300X" + b"M" +
+            ESC + b"&f1X" +
+            ESC + b"&f3X" + b"B" + FF)
+        macro_execute_no_restore = write(
+            tmp / "macro-execute-no-restore.pcl",
+            b"A" +
+            ESC + b"&f411Y" +
+            ESC + b"&f0X" + ESC + b"*p300X" + b"M" +
+            ESC + b"&f1X" +
+            ESC + b"&f2X" + b"B" + FF)
+        macro_call_restore_pdf = tmp / "macro-call-restore.pdf"
+        macro_execute_no_restore_pdf = tmp / "macro-execute-no-restore.pdf"
+        render(dreamprint, macro_call_restore, macro_call_restore_pdf)
+        render(dreamprint, macro_execute_no_restore,
+               macro_execute_no_restore_pdf)
+        call_cursor_pixels = ppm_rect_nonwhite(
+            macro_call_restore_pdf, tmp / "macro-call-restore", 78, 70, 112,
+            130, dpi=300)
+        execute_cursor_pixels = ppm_rect_nonwhite(
+            macro_execute_no_restore_pdf, tmp / "macro-execute-no-restore",
+            78, 70, 112, 130, dpi=300)
+        execute_macro_pixels = ppm_rect_nonwhite(
+            macro_execute_no_restore_pdf, tmp / "macro-execute-no-restore-far",
+            375, 70, 420, 130, dpi=300)
+        if call_cursor_pixels < 200:
+            raise AssertionError("macro call did not restore caller cursor")
+        if execute_cursor_pixels > 50 or execute_macro_pixels < 200:
+            raise AssertionError("macro execute unexpectedly restored cursor")
+
         macro_negative = write(tmp / "macro-negative.pcl",
                                ESC + b"&f-321Y" +
                                ESC + b"&f0X" + b"!" +

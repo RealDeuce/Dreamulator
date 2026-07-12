@@ -343,6 +343,49 @@ private:
 		bool permanent = false;
 	};
 
+	enum class MacroReplayMode {
+		Execute,
+		Call,
+		Overlay
+	};
+
+	struct MacroPrintEnvironment {
+		PrinterState st;
+		int orientation = 0;
+		int page_size_code = 2;
+		float physical_w_in = 8.5f;
+		float physical_h_in = 11.0f;
+		float logical_x0_in = 50.0f / kDotsPerIn;
+		float logical_y0_in = 60.0f / kDotsPerIn;
+		float logical_w_in = 8.0f;
+		float logical_h_in = 11.0f;
+		float hmi_in = 1.0f / 10.0f;
+		float vmi_in = 1.0f / 6.0f;
+		float text_length_in = 10.0f;
+		LjiiFontRequest font_req[2];
+		int active_font_slot = 0;
+		std::vector<uint16_t> vfc_table;
+		int vfc_last_line = 63;
+		int vfc_text_last_line = 62;
+		int underline_selector = 0;
+		bool pending_cursor_y = false;
+		int raster_resolution = 300;
+		int raster_mode = 0;
+		int raster_scale = 1;
+		bool raster_active = false;
+		float raster_x_in = 0.0f;
+		float raster_y_in = 0.0f;
+		int raster_row = 0;
+		float rect_w_in = 0.0f;
+		float rect_h_in = 0.0f;
+		int fill_pattern = 0;
+		int copy_count = 1;
+		bool wrap_enabled = true;
+		int selected_soft_font_id[2] = { -1, -1 };
+		int download_font_slot = 1;
+		std::vector<std::pair<float, float>> cursor_stack;
+	};
+
 	struct SoftGlyph {
 		uint16_t width = 0;
 		uint16_t rows = 0;
@@ -418,7 +461,9 @@ private:
 	void set_page_length(float length_in);
 	void publish_current_page();
 	bool capture_macro_definition_byte(uint8_t b);
-	void replay_macro(int id);
+	MacroPrintEnvironment capture_print_environment() const;
+	void restore_print_environment(const MacroPrintEnvironment &env);
+	void replay_macro(int id, MacroReplayMode mode);
 
 	State state_ = State::Normal;
 	State payload_state_ = State::Normal;
@@ -1191,8 +1236,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 					macros_[macro_id_].bytes.resize(macro_command_start_);
 				defining_macro_ = false;
 				macro_stop_buf_.clear();
-			} else if (ival == 2 || ival == 3) {
-				replay_macro(macro_id_);
+			} else if (ival == 2) {
+				replay_macro(macro_id_, MacroReplayMode::Execute);
+			} else if (ival == 3) {
+				replay_macro(macro_id_, MacroReplayMode::Call);
 			} else if (ival == 4) {
 				overlay_macro_id_ = macro_id_;
 				overlay_enabled_ = true;
@@ -2313,7 +2360,7 @@ void PclPrinter::publish_current_page()
 	flush_underline_span();
 	if (overlay_enabled_ && !replaying_macro_ &&
 	    macros_.find(overlay_macro_id_) != macros_.end())
-		replay_macro(overlay_macro_id_);
+		replay_macro(overlay_macro_id_, MacroReplayMode::Overlay);
 	flush_underline_span();
 	flush_pending_line();
 	if (page_ && page_dirty_) {
@@ -2379,19 +2426,112 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 	return true;
 }
 
-void PclPrinter::replay_macro(int id)
+PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
+{
+	MacroPrintEnvironment env;
+	env.st = st_;
+	env.orientation = orientation_;
+	env.page_size_code = page_size_code_;
+	env.physical_w_in = physical_w_in_;
+	env.physical_h_in = physical_h_in_;
+	env.logical_x0_in = logical_x0_in_;
+	env.logical_y0_in = logical_y0_in_;
+	env.logical_w_in = logical_w_in_;
+	env.logical_h_in = logical_h_in_;
+	env.hmi_in = hmi_in_;
+	env.vmi_in = vmi_in_;
+	env.text_length_in = text_length_in_;
+	env.font_req[0] = font_req_[0];
+	env.font_req[1] = font_req_[1];
+	env.active_font_slot = active_font_slot_;
+	env.vfc_table = vfc_table_;
+	env.vfc_last_line = vfc_last_line_;
+	env.vfc_text_last_line = vfc_text_last_line_;
+	env.underline_selector = underline_selector_;
+	env.pending_cursor_y = pending_cursor_y_;
+	env.raster_resolution = raster_resolution_;
+	env.raster_mode = raster_mode_;
+	env.raster_scale = raster_scale_;
+	env.raster_active = raster_active_;
+	env.raster_x_in = raster_x_in_;
+	env.raster_y_in = raster_y_in_;
+	env.raster_row = raster_row_;
+	env.rect_w_in = rect_w_in_;
+	env.rect_h_in = rect_h_in_;
+	env.fill_pattern = fill_pattern_;
+	env.copy_count = copy_count_;
+	env.wrap_enabled = wrap_enabled_;
+	env.selected_soft_font_id[0] = selected_soft_font_id_[0];
+	env.selected_soft_font_id[1] = selected_soft_font_id_[1];
+	env.download_font_slot = download_font_slot_;
+	env.cursor_stack = cursor_stack_;
+	return env;
+}
+
+void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
+{
+	st_ = env.st;
+	orientation_ = env.orientation;
+	page_size_code_ = env.page_size_code;
+	physical_w_in_ = env.physical_w_in;
+	physical_h_in_ = env.physical_h_in;
+	logical_x0_in_ = env.logical_x0_in;
+	logical_y0_in_ = env.logical_y0_in;
+	logical_w_in_ = env.logical_w_in;
+	logical_h_in_ = env.logical_h_in;
+	hmi_in_ = env.hmi_in;
+	vmi_in_ = env.vmi_in;
+	text_length_in_ = env.text_length_in;
+	font_req_[0] = env.font_req[0];
+	font_req_[1] = env.font_req[1];
+	active_font_slot_ = env.active_font_slot;
+	vfc_table_ = env.vfc_table;
+	vfc_last_line_ = env.vfc_last_line;
+	vfc_text_last_line_ = env.vfc_text_last_line;
+	underline_selector_ = env.underline_selector;
+	pending_cursor_y_ = env.pending_cursor_y;
+	raster_resolution_ = env.raster_resolution;
+	raster_mode_ = env.raster_mode;
+	raster_scale_ = env.raster_scale;
+	raster_active_ = env.raster_active;
+	raster_x_in_ = env.raster_x_in;
+	raster_y_in_ = env.raster_y_in;
+	raster_row_ = env.raster_row;
+	rect_w_in_ = env.rect_w_in;
+	rect_h_in_ = env.rect_h_in;
+	fill_pattern_ = env.fill_pattern;
+	copy_count_ = env.copy_count;
+	wrap_enabled_ = env.wrap_enabled;
+	selected_soft_font_id_[0] = env.selected_soft_font_id[0];
+	selected_soft_font_id_[1] = env.selected_soft_font_id[1];
+	download_font_slot_ = env.download_font_slot;
+	cursor_stack_ = env.cursor_stack;
+	restart_underline_span();
+}
+
+void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 {
 	if (replaying_macro_)
 		return;
 	auto it = macros_.find(id);
 	if (it == macros_.end())
 		return;
+	MacroPrintEnvironment env;
+	const bool restores_environment = (mode != MacroReplayMode::Execute);
+	if (restores_environment) {
+		flush_underline_span();
+		env = capture_print_environment();
+	}
 	replaying_macro_ = true;
 	const std::vector<uint8_t> bytes = it->second.bytes;
 	state_ = State::Normal;
 	for (uint8_t byte : bytes)
 		parse_byte(byte);
 	state_ = State::Normal;
+	if (restores_environment) {
+		flush_underline_span();
+		restore_print_environment(env);
+	}
 	replaying_macro_ = false;
 }
 
