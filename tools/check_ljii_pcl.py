@@ -41,7 +41,7 @@ def pdf_pages(pdf):
     raise AssertionError("pdfinfo did not report page count")
 
 
-def ppm_pixels(pdf, stem, dpi=72):
+def ppm_image(pdf, stem, dpi=72):
     run(["pdftoppm", "-r", str(dpi), "-singlefile", str(pdf), str(stem)])
     data = Path(f"{stem}.ppm").read_bytes()
     if not data.startswith(b"P6"):
@@ -71,7 +71,11 @@ def ppm_pixels(pdf, stem, dpi=72):
     pixels = data[cursor:]
     if len(pixels) < width * height * 3:
         raise AssertionError("truncated PPM payload")
-    return pixels[:width * height * 3]
+    return width, height, pixels[:width * height * 3]
+
+
+def ppm_pixels(pdf, stem, dpi=72):
+    return ppm_image(pdf, stem, dpi)[2]
 
 
 def ppm_nonwhite(pdf, stem, dpi=72):
@@ -82,6 +86,27 @@ def ppm_nonwhite(pdf, stem, dpi=72):
 
 def ppm_sha256(pdf, stem, dpi=72):
     return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
+
+
+def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0):
+    width, height, pixels = ppm_image(pdf, stem, dpi)
+    min_x = width
+    min_y = height
+    max_x = -1
+    max_y = -1
+    for y in range(height):
+        row = y * width * 3
+        for x in range(min_x_filter, width):
+            off = row + x * 3
+            if pixels[off:off + 3] == b"\xff\xff\xff":
+                continue
+            min_x = min(min_x, x)
+            min_y = min(min_y, y)
+            max_x = max(max_x, x)
+            max_y = max(max_y, y)
+    if max_x < 0:
+        return None
+    return min_x, min_y, max_x, max_y
 
 
 def write(path, data):
@@ -199,6 +224,24 @@ def main():
                                   dpi=150)
         if not (0 < cap_pixels < full_pixels):
             raise AssertionError("raster transfer cap did not reduce row")
+
+        raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
+        raster_text = bytearray(raster_only)
+        for _ in range(30):
+            raster_only += ESC + b"*b1W" + b"\xff"
+            raster_text += ESC + b"*b1W" + b"\xff"
+        raster_only += FF
+        raster_text += ESC + b"&a5C" + b"T" + FF
+        raster_only_pcl = write(tmp / "raster-only.pcl", bytes(raster_only))
+        raster_text_pcl = write(tmp / "raster-text.pcl", bytes(raster_text))
+        raster_only_pdf = tmp / "raster-only.pdf"
+        raster_text_pdf = tmp / "raster-text.pdf"
+        render(dreamprint, raster_only_pcl, raster_only_pdf)
+        render(dreamprint, raster_text_pcl, raster_text_pdf)
+        raster_text_box = ppm_bbox(raster_text_pdf, tmp / "raster-text",
+                                   dpi=150, min_x_filter=70)
+        if raster_text_box is None or raster_text_box[1] < 100:
+            raise AssertionError("raster transfer did not advance text cursor")
 
         rule_solid = write(tmp / "rule-solid.pcl",
                            ESC + b"*c64a64b0P" + FF)

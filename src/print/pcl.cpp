@@ -334,6 +334,7 @@ private:
 	void draw_raster_bits(uint32_t bits, int bit_count, int x_dot, int y_dot,
 	                      int row_count);
 	void draw_raster_dot(int x_dot, int y_dot);
+	void advance_raster_cursor_after_transfer();
 	void set_raster_resolution(int dpi);
 	void rebuild_default_vfc_table();
 	void update_vfc_bounds();
@@ -1070,8 +1071,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		switch (term) {
 		case 'A':
 			if (!raster_active_) {
-				raster_x_in_ = (ival == 1) ? st_.x_pos : 0.0f;
-				raster_y_in_ = st_.y_pos;
+				raster_x_in_ = (ival == 1)
+					? ((orientation_ & 1) ? st_.y_pos : st_.x_pos)
+					: 0.0f;
+				raster_y_in_ = (orientation_ & 1) ? st_.x_pos : st_.y_pos;
 				raster_row_ = 0;
 				raster_active_ = true;
 			}
@@ -1256,6 +1259,7 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 
 	if (raster_row_ < 0) {
 		raster_row_ += raster_scale_;
+		advance_raster_cursor_after_transfer();
 		return;
 	}
 	if (start_y_dot > page_h_dot)
@@ -1269,6 +1273,7 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 	accepted = std::max(0, std::min(accepted, (int)row.size()));
 	if (accepted <= 0) {
 		raster_row_ += raster_scale_;
+		advance_raster_cursor_after_transfer();
 		return;
 	}
 
@@ -1303,6 +1308,7 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 		}
 	}
 	raster_row_ += raster_scale_;
+	advance_raster_cursor_after_transfer();
 }
 
 void PclPrinter::draw_raster_bits(uint32_t bits, int bit_count, int x_dot,
@@ -1330,6 +1336,20 @@ void PclPrinter::draw_raster_dot(int x_dot, int y_dot)
 	for (int y = y0; y < y1; y++)
 		for (int x = x0; x < x1; x++)
 			page_->set_pixel(x, y, 0);
+}
+
+void PclPrinter::advance_raster_cursor_after_transfer()
+{
+	float step = (float)raster_scale_ / kDotsPerIn;
+	if (orientation_ & 1) {
+		st_.x_pos = std::max(0.0f, st_.x_pos - step);
+		st_.y_pos = std::max(logical_y0_in_,
+		                     std::min(raster_x_in_, st_.page_height_in));
+	} else {
+		st_.x_pos = raster_x_in_;
+		st_.y_pos = std::max(logical_y0_in_,
+		                     std::min(st_.y_pos + step, st_.page_height_in));
+	}
 }
 
 void PclPrinter::set_raster_resolution(int dpi)
