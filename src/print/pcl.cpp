@@ -10,6 +10,7 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -202,6 +203,13 @@ private:
 		bool permanent = false;
 	};
 
+	struct SoftGlyph {
+		uint8_t width = 0;
+		uint8_t rows = 0;
+		uint8_t span = 0;
+		std::vector<uint8_t> bitmap;
+	};
+
 	void reset_ljii_state();
 	void process_normal(uint8_t b);
 	void process_control(uint8_t b);
@@ -223,6 +231,8 @@ private:
 	void apply_vfc_payload(const std::vector<uint8_t> &payload);
 	void vfc_channel_jump(int selector);
 	float vfc_line_y(int line) const;
+	void apply_download_payload(const std::vector<uint8_t> &payload);
+	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
@@ -273,6 +283,11 @@ private:
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
+
+	int soft_font_id_ = 0;
+	uint8_t soft_char_code_ = 0;
+	bool soft_font_active_ = false;
+	std::map<uint8_t, SoftGlyph> soft_glyphs_;
 };
 
 void PclPrinter::apply_config(const PrinterConfig &cfg)
@@ -316,6 +331,10 @@ void PclPrinter::reset_ljii_state()
 	replaying_macro_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
+	soft_font_id_ = 0;
+	soft_char_code_ = 0;
+	soft_font_active_ = false;
+	soft_glyphs_.clear();
 
 	st_.pitch_cpi = 10.0f;
 	st_.line_spacing_in = vmi_in_;
@@ -752,6 +771,20 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'B':
 			rect_h_in_ = std::max(0.0f, (float)value / kDotsPerIn);
 			break;
+		case 'D':
+			soft_font_id_ = ival;
+			break;
+		case 'E':
+			soft_char_code_ = (uint8_t)(ival & 0xff);
+			break;
+		case 'F':
+			if (ival == 0 || ival == 1) {
+				soft_glyphs_.clear();
+				soft_font_active_ = false;
+			} else {
+				soft_font_active_ = true;
+			}
+			break;
 		case 'G':
 			fill_pattern_ = ival;
 			break;
@@ -799,6 +832,8 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		draw_raster_row(payload_buf_);
 	else if (payload_state_ == State::VfcData)
 		apply_vfc_payload(payload_buf_);
+	else if (payload_state_ == State::DownloadData)
+		apply_download_payload(payload_buf_);
 
 	payload_buf_.clear();
 	payload_state_ = State::Normal;
@@ -1046,6 +1081,80 @@ void PclPrinter::vfc_channel_jump(int selector)
 	st_.y_pos = vfc_line_y(target);
 }
 
+void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
+{
+	if (payload.empty())
+		return;
+
+	if (payload.size() >= 64) {
+		soft_font_active_ = true;
+		return;
+	}
+
+	SoftGlyph glyph;
+	if ((payload.size() & 1) == 0) {
+		glyph.width = 16;
+		glyph.span = 2;
+		glyph.rows = (uint8_t)std::max<size_t>(1, payload.size() / 2);
+	} else {
+		glyph.width = 8;
+		glyph.span = 1;
+		glyph.rows = (uint8_t)std::max<size_t>(1, payload.size());
+	}
+	glyph.bitmap = payload;
+	soft_glyphs_[soft_char_code_] = std::move(glyph);
+	soft_font_active_ = true;
+}
+
+bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
+{
+	if (!soft_font_active_)
+		return false;
+	auto it = soft_glyphs_.find(b);
+	if (it == soft_glyphs_.end())
+		return false;
+
+	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+		carriage_return();
+		line_feed();
+	}
+
+	new_page_if_needed();
+	page_dirty_ = true;
+
+	const SoftGlyph &glyph = it->second;
+	int dpi = prof_.render_dpi;
+	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
+	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
+	for (uint8_t row = 0; row < glyph.rows; row++) {
+		size_t row_off = (size_t)row * glyph.span;
+		if (row_off >= glyph.bitmap.size())
+			break;
+		for (uint8_t col = 0; col < glyph.width; col++) {
+			size_t byte_off = row_off + (col >> 3);
+			if (byte_off >= glyph.bitmap.size())
+				continue;
+			uint8_t byte = glyph.bitmap[byte_off];
+			if (byte & (0x80u >> (col & 7)))
+				page_->set_pixel(base_x + col, base_y + row, 0);
+		}
+	}
+
+	uint16_t cp = text_unicode(b);
+	if (cp >= 0x20) {
+		uint8_t sty = 0;
+		if (st_.bold) sty |= TextGlyph::BOLD;
+		if (st_.underline) sty |= TextGlyph::UNDERLINE;
+		text_buf_.push_back({
+			st_.x_pos, st_.y_pos, cp, char_w_in,
+			char_w_in * 72.0f / 0.6f, sty
+		});
+	}
+	st_.x_pos += char_w_in;
+	mark_line_output(true);
+	return true;
+}
+
 bool PclPrinter::render_ljii_text(uint8_t b)
 {
 	float char_w_in = 1.0f / std::max(1.0f, st_.pitch_cpi);
@@ -1073,6 +1182,9 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		st_.x_pos += char_w_in;
 		return true;
 	}
+
+	if (render_soft_glyph(b, char_w_in))
+		return true;
 
 	uint8_t glyph_byte = text_glyph_byte(b);
 	if (glyph_byte == 0)
