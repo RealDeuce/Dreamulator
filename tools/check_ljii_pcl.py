@@ -171,6 +171,18 @@ def main():
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
 
+        transparent_fixed = write(tmp / "transparent-fixed.pcl",
+                                  ESC + b"&p4X" + b"!\x05\x85!" + FF)
+        explicit_spaces = write(tmp / "explicit-spaces.pcl", b"!  !" + FF)
+        transparent_fixed_pdf = tmp / "transparent-fixed.pdf"
+        explicit_spaces_pdf = tmp / "explicit-spaces.pdf"
+        render(dreamprint, transparent_fixed, transparent_fixed_pdf)
+        render(dreamprint, explicit_spaces, explicit_spaces_pdf)
+        if ppm_sha256(transparent_fixed_pdf, tmp / "transparent-fixed",
+                      dpi=150) != \
+           ppm_sha256(explicit_spaces_pdf, tmp / "explicit-spaces", dpi=150):
+            raise AssertionError("transparent controls did not advance as spaces")
+
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",
                              b"A" + ESC + b"&a8C" + b"B" + FF)

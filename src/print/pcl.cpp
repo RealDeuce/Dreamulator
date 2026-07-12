@@ -1299,7 +1299,9 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 
 void PclPrinter::emit_transparent_byte(uint8_t b)
 {
-	if (b >= 0x20 && b != 0x7F)
+	if (b < 0x20 || (b >= 0x80 && b <= 0x9f))
+		advance_fixed_space();
+	else if (b != 0x7F)
 		process_printable(b);
 	else
 		process_control(b);
