@@ -162,6 +162,29 @@ def main():
         if not (0 < cap_pixels < full_pixels):
             raise AssertionError("raster transfer cap did not reduce row")
 
+        rule_solid = write(tmp / "rule-solid.pcl",
+                           ESC + b"*c64a64b0P" + FF)
+        rule_gray = write(tmp / "rule-gray.pcl",
+                          ESC + b"*c64a64b50g2P" + FF)
+        rule_pattern = write(tmp / "rule-pattern.pcl",
+                             ESC + b"*c64a64b2g3P" + FF)
+        rule_solid_pdf = tmp / "rule-solid.pdf"
+        rule_gray_pdf = tmp / "rule-gray.pdf"
+        rule_pattern_pdf = tmp / "rule-pattern.pdf"
+        render(dreamprint, rule_solid, rule_solid_pdf)
+        render(dreamprint, rule_gray, rule_gray_pdf)
+        render(dreamprint, rule_pattern, rule_pattern_pdf)
+        solid_pixels = ppm_nonwhite(rule_solid_pdf, tmp / "rule-solid",
+                                    dpi=300)
+        gray_pixels = ppm_nonwhite(rule_gray_pdf, tmp / "rule-gray",
+                                   dpi=300)
+        pattern_pixels = ppm_nonwhite(rule_pattern_pdf, tmp / "rule-pattern",
+                                      dpi=300)
+        if not (solid_pixels > gray_pixels > 0):
+            raise AssertionError("rule percent fill did not use pattern mask")
+        if not (0 < pattern_pixels < solid_pixels):
+            raise AssertionError("rule hatch fill did not use pattern mask")
+
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):
             overflow += f"L{i:02d}\n".encode("ascii")

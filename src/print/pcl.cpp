@@ -215,6 +215,63 @@ uint32_t expand_raster_4x(uint8_t byte)
 	return out;
 }
 
+static constexpr uint16_t kRulePatterns[14][16] = {
+	{0x8080,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0808,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000},
+	{0x8080,0x0000,0x0000,0x0000,0x0808,0x0000,0x0000,0x0000,0x8080,0x0000,0x0000,0x0000,0x0808,0x0000,0x0000,0x0000},
+	{0xc0c0,0xc0c0,0x0000,0x0000,0x0c0c,0x0c0c,0x0000,0x0000,0xc0c0,0xc0c0,0x0000,0x0000,0x0c0c,0x0c0c,0x0000,0x0000},
+	{0xc1c1,0xc1c1,0x8080,0x0808,0x1c1c,0x1c1c,0x0808,0x8080,0xc1c1,0xc1c1,0x8080,0x0808,0x1c1c,0x1c1c,0x0808,0x8080},
+	{0xc1c1,0xebeb,0xc1c1,0x8888,0x1c1c,0xbebe,0x1c1c,0x8888,0xc1c1,0xebeb,0xc1c1,0x8888,0x1c1c,0xbebe,0x1c1c,0x8888},
+	{0xe3e3,0xe3e3,0xe3e3,0xdddd,0x3e3e,0x3e3e,0x3e3e,0xdddd,0xe3e3,0xe3e3,0xe3e3,0xdddd,0x3e3e,0x3e3e,0x3e3e,0xdddd},
+	{0xf7f7,0xe3e3,0xf7f7,0xffff,0x7f7f,0x3e3e,0x7f7f,0xffff,0xf7f7,0xe3e3,0xf7f7,0xffff,0x7f7f,0x3e3e,0x7f7f,0xffff},
+	{0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff,0xffff},
+	{0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0xffff,0xffff,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000,0x0000},
+	{0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180},
+	{0x8003,0x0007,0x000e,0x001c,0x0038,0x0070,0x00e0,0x01c0,0x0380,0x0700,0x0e00,0x1c00,0x3800,0x7000,0xe000,0xc001},
+	{0xc001,0xe000,0x7000,0x3800,0x1c00,0x0e00,0x0700,0x0380,0x01c0,0x00e0,0x0070,0x0038,0x001c,0x000e,0x0007,0x8003},
+	{0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0xffff,0xffff,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180,0x0180},
+	{0xc003,0xe007,0x700e,0x381c,0x1c38,0x0e70,0x07e0,0x03c0,0x03c0,0x07e0,0x0e70,0x1c38,0x381c,0x700e,0xe007,0xc003},
+};
+
+int rule_selector_for_fill_command(int mode, int fill_pattern, int orientation)
+{
+	if (mode == 0)
+		return 7;
+
+	if (mode == 2) {
+		if (fill_pattern >= 1 && fill_pattern <= 2)
+			return 0;
+		if (fill_pattern >= 3 && fill_pattern <= 10)
+			return 1;
+		if (fill_pattern >= 11 && fill_pattern <= 20)
+			return 2;
+		if (fill_pattern >= 21 && fill_pattern <= 35)
+			return 3;
+		if (fill_pattern >= 36 && fill_pattern <= 55)
+			return 4;
+		if (fill_pattern >= 56 && fill_pattern <= 80)
+			return 5;
+		if (fill_pattern >= 81 && fill_pattern <= 99)
+			return 6;
+		if (fill_pattern == 100)
+			return 7;
+		return -1;
+	}
+
+	if (mode != 3 || fill_pattern < 1 || fill_pattern > 6)
+		return -1;
+
+	if (orientation & 1) {
+		switch (fill_pattern) {
+		case 1: return 9;
+		case 2: return 8;
+		case 3: return 11;
+		case 4: return 10;
+		default: break;
+		}
+	}
+	return 7 + fill_pattern;
+}
+
 } // namespace
 
 class PclPrinter : public PrinterSim {
@@ -269,7 +326,7 @@ private:
 	void begin_payload(State state, int count);
 	void finish_payload_byte(uint8_t b);
 	void emit_transparent_byte(uint8_t b);
-	void draw_rule(float x_in, float y_in, float w_in, float h_in, uint8_t gray);
+	void draw_rule(float x_in, float y_in, float w_in, float h_in, int selector);
 	void draw_raster_row(const std::vector<uint8_t> &row);
 	void draw_raster_bits(uint32_t bits, int bit_count, int x_dot, int y_dot,
 	                      int row_count);
@@ -1034,10 +1091,14 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'H':
 			rect_w_in_ = std::max(0.0f, (float)value / 720.0f);
 			break;
-		case 'P':
-			draw_rule(st_.x_pos, st_.y_pos, rect_w_in_, rect_h_in_,
-			          fill_pattern_ == 0 ? 0 : 64);
+		case 'P': {
+			int selector = rule_selector_for_fill_command(ival, fill_pattern_,
+			                                              orientation_);
+			if (selector >= 0)
+				draw_rule(st_.x_pos, st_.y_pos, rect_w_in_, rect_h_in_,
+				          selector);
 			break;
+		}
 		case 'V':
 			rect_h_in_ = std::max(0.0f, (float)value / 720.0f);
 			break;
@@ -1104,9 +1165,9 @@ void PclPrinter::emit_transparent_byte(uint8_t b)
 }
 
 void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
-                           uint8_t gray)
+                           int selector)
 {
-	if (w_in <= 0.0f || h_in <= 0.0f)
+	if (w_in <= 0.0f || h_in <= 0.0f || selector < 0 || selector > 13)
 		return;
 	new_page_if_needed();
 	page_dirty_ = true;
@@ -1121,9 +1182,15 @@ void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
 	x1 = std::min(page_->width(), x1);
 	y1 = std::min(page_->height(), y1);
 
+	float pattern_scale = kDotsPerIn / (float)dpi;
 	for (int y = y0; y < y1; y++) {
-		for (int x = x0; x < x1; x++)
-			page_->set_pixel(x, y, gray);
+		int pattern_y = (int)std::floor((float)y * pattern_scale) & 15;
+		uint16_t row = kRulePatterns[selector][pattern_y];
+		for (int x = x0; x < x1; x++) {
+			int pattern_x = (int)std::floor((float)x * pattern_scale) & 15;
+			if (row & (uint16_t)(0x8000u >> pattern_x))
+				page_->set_pixel(x, y, 0);
+		}
 	}
 }
 
