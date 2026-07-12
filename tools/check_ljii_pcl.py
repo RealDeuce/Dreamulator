@@ -210,6 +210,20 @@ def main():
         if pdf_pages(overflow_pdf) != 3:
             raise AssertionError("copy-count overflow did not publish 3 pages")
 
+        paper_zero = write(tmp / "paper-zero.pcl",
+                           b"A" + ESC + b"&l0H" + b"B" + FF)
+        paper_zero_pdf = tmp / "paper-zero.pdf"
+        render(dreamprint, paper_zero, paper_zero_pdf)
+        if pdf_pages(paper_zero_pdf) != 2:
+            raise AssertionError("paper-source selector zero did not publish")
+
+        page_length_zero = write(tmp / "page-length-zero.pcl",
+                                 b"A" + ESC + b"&l0P" + b"B" + FF)
+        page_length_zero_pdf = tmp / "page-length-zero.pdf"
+        render(dreamprint, page_length_zero, page_length_zero_pdf)
+        if pdf_pages(page_length_zero_pdf) != 2:
+            raise AssertionError("page-length selector zero did not publish")
+
         overlay = write(tmp / "overlay.pcl",
                         ESC + b"&f123Y" +
                         ESC + b"&f0X" + b"!\r" +

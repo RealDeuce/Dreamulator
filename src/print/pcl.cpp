@@ -789,8 +789,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			rebuild_default_vfc_table();
 			break;
 		case 'H':
-			if (ival > 0)
-				publish_current_page();
+			publish_current_page();
 			break;
 		case 'L':
 			st_.perf_skip_lines = (ival == 1) ? 6 : 0;
@@ -804,6 +803,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				set_orientation(orientation_);
 				update_vfc_bounds();
 				rebuild_default_vfc_table();
+			} else if (ival == 0) {
+				set_page_size(page_size_code_);
 			}
 			break;
 		case 'V':
