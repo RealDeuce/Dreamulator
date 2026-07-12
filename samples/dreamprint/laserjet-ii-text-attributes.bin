@@ -1,0 +1,57 @@
+ELaserJet II text attribute matrix
+
+(s0p10h0s0b3T&d@10cpi
+(s0p10h0s0b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + bold
+(s0p10h0s3b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + italic
+(s0p10h1s0b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + bold + italic
+(s0p10h1s3b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + underline
+(s0p10h0s0b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + bold + underline
+(s0p10h0s3b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + italic + underline
+(s0p10h1s0b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@10cpi + bold + italic + underline
+(s0p10h1s3b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi
+(s0p12h0s0b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + bold
+(s0p12h0s3b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + italic
+(s0p12h1s0b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + bold + italic
+(s0p12h1s3b3TThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + underline
+(s0p12h0s0b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + bold + underline
+(s0p12h0s3b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + italic + underline
+(s0p12h1s0b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@12cpi + bold + italic + underline
+(s0p12h1s3b3T&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@line-printer
+&k2SThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@line-printer + underline
+&k2S&d0DThe quick brown fox jumps 0123456789
+(s0p10h0s0b3T&d@
+(s0p10h0s0b3T&d@

@@ -559,6 +559,59 @@ def pcl_param(prefix: bytes, body: bytes) -> bytes:
     return ESC + prefix + body
 
 
+def ljii_font(pitch: str, italic: bool, bold: bool) -> bytes:
+    if pitch == "line-printer":
+        return pcl_param(b"&k", b"2S")
+    if pitch == "12cpi":
+        pitch_body = b"12h"
+    else:
+        pitch_body = b"10h"
+    style = b"1s" if italic else b"0s"
+    weight = b"3b" if bold else b"0b"
+    return pcl_param(b"(s", b"0p" + pitch_body + style + weight + b"3T")
+
+
+def ljii_plain() -> bytes:
+    return ljii_font("10cpi", False, False) + pcl_param(b"&d", b"@")
+
+
+def build_ljii_text_attributes() -> bytes:
+    out = bytearray()
+    out += ESC + b"E"
+    out += b"LaserJet II text attribute matrix\r\n\r\n"
+    pitches = [
+        ("10cpi", "10cpi"),
+        ("12cpi", "12cpi"),
+        ("line-printer", "line-printer"),
+    ]
+    for pitch_name, pitch_mode in pitches:
+        for underline in (False, True):
+            for italic in (False, True):
+                for bold in (False, True):
+                    if pitch_mode == "line-printer" and (italic or bold):
+                        continue
+                    parts = [pitch_name]
+                    if bold:
+                        parts.append("bold")
+                    if italic:
+                        parts.append("italic")
+                    if underline:
+                        parts.append("underline")
+
+                    out += ljii_plain()
+                    out += label(parts) + b"\r\n"
+                    out += ljii_font(pitch_mode, italic, bold)
+                    if underline:
+                        out += pcl_param(b"&d", b"0D")
+                    out += sample_text() + b"\r\n"
+                    out += ljii_plain()
+                    out += b"\r\n"
+
+    out += ljii_plain()
+    out += FF
+    return bytes(out)
+
+
 def build_ljii() -> bytes:
     out = bytearray()
     out += ESC + b"E"
@@ -611,6 +664,7 @@ def main() -> None:
         "bj10e-text-attributes.bin": build_bj10e(),
         "imagewriter-ii-text-attributes.bin": build_imagewriter(),
         "lq500-text-attributes.bin": build_lq500(),
+        "laserjet-ii-text-attributes.bin": build_ljii_text_attributes(),
         "laserjet-ii-pcl4-smoke.bin": build_ljii(),
     }
     for name, data in samples.items():
