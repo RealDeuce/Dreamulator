@@ -172,6 +172,8 @@ static constexpr SymbolPatch kSymbolPatches[] = {
 
 uint8_t symbol_glyph_byte(int symbol_set, uint8_t ch)
 {
+	if (symbol_set == 0x0005)
+		return ch < 0x80 ? (uint8_t)(ch | 0x80) : 0;
 	if (symbol_set == 0x0015 && ch >= 0x80)
 		return 0;
 	for (const auto &patch : kSymbolPatches)
@@ -243,10 +245,18 @@ private:
 	};
 
 	struct SoftGlyph {
-		uint8_t width = 0;
-		uint8_t rows = 0;
-		uint8_t span = 0;
+		uint16_t width = 0;
+		uint16_t rows = 0;
+		uint16_t span = 0;
 		std::vector<uint8_t> bitmap;
+	};
+
+	struct SoftFont {
+		int id = 0;
+		bool active = false;
+		bool permanent = false;
+		int symbol_set = kSymbolRoman8;
+		std::map<uint8_t, SoftGlyph> glyphs;
 	};
 
 	void reset_ljii_state();
@@ -270,6 +280,10 @@ private:
 	void apply_vfc_payload(const std::vector<uint8_t> &payload);
 	void vfc_channel_jump(int selector);
 	float vfc_line_y(int line) const;
+	SoftFont &current_soft_font();
+	SoftFont *selected_soft_font();
+	const SoftFont *selected_soft_font() const;
+	void delete_soft_font(int id);
 	void apply_download_payload(const std::vector<uint8_t> &payload);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
@@ -338,8 +352,9 @@ private:
 
 	int soft_font_id_ = 0;
 	uint8_t soft_char_code_ = 0;
-	bool soft_font_active_ = false;
-	std::map<uint8_t, SoftGlyph> soft_glyphs_;
+	int selected_soft_font_id_[2] = { -1, -1 };
+	int download_font_slot_ = 1;
+	std::map<int, SoftFont> soft_fonts_;
 	std::vector<std::pair<float, float>> cursor_stack_;
 };
 
@@ -397,8 +412,10 @@ void PclPrinter::reset_ljii_state()
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
 	soft_char_code_ = 0;
-	soft_font_active_ = false;
-	soft_glyphs_.clear();
+	selected_soft_font_id_[0] = -1;
+	selected_soft_font_id_[1] = -1;
+	download_font_slot_ = 1;
+	soft_fonts_.clear();
 	cursor_stack_.clear();
 
 	st_.pitch_cpi = 10.0f;
@@ -779,7 +796,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				req.height = (int)std::lround(value * 100.0);
 			break;
 		case 'W':
-			begin_payload(State::DownloadData, std::max(0, ival));
+			download_font_slot_ = slot;
+			if (ival <= 0) {
+				payload_buf_.clear();
+				apply_download_payload(payload_buf_);
+			} else {
+				begin_payload(State::DownloadData, ival);
+			}
 			break;
 		default:
 			break;
@@ -788,8 +811,25 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			sync_active_font_state();
 	} else if ((group == '(' || group == ')') && subgroup == 0) {
 		int slot = group == ')' ? 1 : 0;
-		if (term >= 'A' && term <= 'Z')
+		if (term == '@') {
+			font_request(slot) = LjiiFontRequest{};
+			font_request(slot).secondary = (slot != 0);
+			font_request(slot).symbol_set = slot == 0 ? kSymbolRoman8 : 0x000e;
+			selected_soft_font_id_[slot] = -1;
+			if (slot == active_font_slot_)
+				sync_active_font_state();
+		} else if (term == 'X') {
+			auto it = soft_fonts_.find(ival);
+			if (it != soft_fonts_.end() && it->second.active) {
+				selected_soft_font_id_[slot] = ival;
+				font_request(slot).symbol_set = it->second.symbol_set;
+				if (slot == active_font_slot_)
+					sync_active_font_state();
+			}
+		} else if (term >= 'A' && term <= 'Z') {
 			font_request(slot).symbol_set = pcl_symbol_value(ival, term);
+			selected_soft_font_id_[slot] = -1;
+		}
 	} else if (group == '&' && subgroup == 'p') {
 		if (term == 'X')
 			begin_payload(State::TransparentData, std::max(0, ival));
@@ -902,16 +942,26 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'D':
 			soft_font_id_ = ival;
+			current_soft_font();
 			break;
 		case 'E':
 			soft_char_code_ = (uint8_t)(ival & 0xff);
 			break;
 		case 'F':
-			if (ival == 0 || ival == 1) {
-				soft_glyphs_.clear();
-				soft_font_active_ = false;
-			} else {
-				soft_font_active_ = true;
+			if (ival == 0 || ival == 1 || ival == 3 || ival == 6) {
+				std::vector<int> ids;
+				for (const auto &entry : soft_fonts_)
+					if (ival == 0 || ival == 3 || ival == 6 ||
+					    (ival == 1 && !entry.second.permanent))
+						ids.push_back(entry.first);
+				for (int id : ids)
+					delete_soft_font(id);
+			} else if (ival == 2) {
+				delete_soft_font(soft_font_id_);
+			} else if (ival == 4) {
+				current_soft_font().permanent = false;
+			} else if (ival == 5) {
+				current_soft_font().permanent = true;
 			}
 			break;
 		case 'G':
@@ -1210,37 +1260,175 @@ void PclPrinter::vfc_channel_jump(int selector)
 	st_.y_pos = vfc_line_y(target);
 }
 
+PclPrinter::SoftFont &PclPrinter::current_soft_font()
+{
+	SoftFont &font = soft_fonts_[soft_font_id_];
+	font.id = soft_font_id_;
+	return font;
+}
+
+PclPrinter::SoftFont *PclPrinter::selected_soft_font()
+{
+	int id = selected_soft_font_id_[active_font_slot_ ? 1 : 0];
+	if (id >= 0) {
+		auto it = soft_fonts_.find(id);
+		if (it != soft_fonts_.end() && it->second.active)
+			return &it->second;
+		return nullptr;
+	}
+
+	SoftFont *fallback = nullptr;
+	for (auto &entry : soft_fonts_) {
+		if (!entry.second.active)
+			continue;
+		if (entry.second.glyphs.empty())
+			continue;
+		if (fallback)
+			return nullptr;
+		fallback = &entry.second;
+	}
+	return fallback;
+}
+
+const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
+{
+	int id = selected_soft_font_id_[active_font_slot_ ? 1 : 0];
+	if (id >= 0) {
+		auto it = soft_fonts_.find(id);
+		if (it != soft_fonts_.end() && it->second.active)
+			return &it->second;
+		return nullptr;
+	}
+
+	const SoftFont *fallback = nullptr;
+	for (const auto &entry : soft_fonts_) {
+		if (!entry.second.active)
+			continue;
+		if (entry.second.glyphs.empty())
+			continue;
+		if (fallback)
+			return nullptr;
+		fallback = &entry.second;
+	}
+	return fallback;
+}
+
+void PclPrinter::delete_soft_font(int id)
+{
+	soft_fonts_.erase(id);
+	for (int &selected : selected_soft_font_id_)
+		if (selected == id)
+			selected = -1;
+}
+
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 {
-	if (payload.empty())
+	SoftFont &font = current_soft_font();
+	font.active = true;
+	if (payload.empty()) {
+		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 		return;
+	}
 
-	if (payload.size() >= 64) {
-		soft_font_active_ = true;
+	if (payload.size() >= 64 && soft_char_code_ <= 0x20) {
+		if (payload.size() > 0x23) {
+			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
+			if (symbol != 0)
+				font.symbol_set = symbol;
+		}
+		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
+			LjiiFontRequest &req = font_request(download_font_slot_);
+			req.symbol_set = font.symbol_set;
+			if (payload.size() > 0x21)
+				req.spacing = payload[0x21] ? 1 : 0;
+			if (payload.size() > 0x31)
+				req.stroke = (int)(int8_t)payload[0x30];
+			if (payload.size() > 0x2a) {
+				int pitch = ((int)payload[0x24] << 8) | payload[0x25];
+				int height = ((int)payload[0x28] << 8) | payload[0x29];
+				if (pitch > 0)
+					req.pitch = pitch;
+				if (height > 0)
+					req.height = height;
+			}
+		}
 		return;
 	}
 
 	SoftGlyph glyph;
-	if ((payload.size() & 1) == 0) {
+	if (payload.size() >= 14 && payload[4] == 0x0c &&
+	    (payload[5] == 1 || payload[5] == 2)) {
+		glyph.rows = (uint16_t)std::max(1, ((int)payload[6] << 8) | payload[7]);
+		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
+		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
+		glyph.bitmap.assign(payload.begin() + 12, payload.end());
+	} else if (payload.size() == 18) {
+		glyph.width = 144;
+		glyph.span = 18;
+		glyph.rows = 1;
+	} else if (payload.size() == 32 || payload.size() == 64 ||
+	           payload.size() == 128 || payload.size() == 256 ||
+	           payload.size() == 258 || payload.size() == 260 ||
+	           payload.size() == 516) {
 		glyph.width = 16;
 		glyph.span = 2;
-		glyph.rows = (uint8_t)std::max<size_t>(1, payload.size() / 2);
+		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size() / 2);
+	} else if (payload.size() == 387 || payload.size() == 2193) {
+		glyph.span = payload.size() == 387 ? 3 : 17;
+		glyph.width = (uint16_t)(glyph.span * 8);
+		glyph.rows = (uint16_t)(payload.size() / glyph.span);
+	} else if ((payload.size() & 1) == 0) {
+		glyph.width = 16;
+		glyph.span = 2;
+		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size() / 2);
 	} else {
 		glyph.width = 8;
 		glyph.span = 1;
-		glyph.rows = (uint8_t)std::max<size_t>(1, payload.size());
+		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size());
 	}
-	glyph.bitmap = payload;
-	soft_glyphs_[soft_char_code_] = std::move(glyph);
-	soft_font_active_ = true;
+	if (glyph.bitmap.empty())
+		glyph.bitmap = payload;
+
+	size_t expected = (size_t)glyph.rows * glyph.span;
+	if ((glyph.span & 1) && glyph.span > 1 && glyph.bitmap.size() == expected) {
+		uint16_t prefix_span = glyph.span - 1;
+		size_t trailing_base = (size_t)glyph.rows * prefix_span;
+		std::vector<uint8_t> interleaved(expected);
+		for (uint16_t row = 0; row < glyph.rows; row++) {
+			size_t src = (size_t)row * prefix_span;
+			size_t dst = (size_t)row * glyph.span;
+			std::copy_n(glyph.bitmap.begin() +
+			            (std::vector<uint8_t>::difference_type)src,
+			            prefix_span,
+			            interleaved.begin() +
+			            (std::vector<uint8_t>::difference_type)dst);
+			interleaved[dst + prefix_span] =
+				glyph.bitmap[trailing_base + row];
+		}
+		glyph.bitmap = std::move(interleaved);
+	}
+	if (glyph.bitmap.size() < expected && !glyph.bitmap.empty()) {
+		size_t rows = glyph.bitmap.size() / std::max<uint16_t>(1, glyph.span);
+		if (rows == 0) {
+			glyph.span = 1;
+			glyph.width = 8;
+			rows = glyph.bitmap.size();
+		}
+		glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
+	}
+	font.glyphs[soft_char_code_] = std::move(glyph);
+	if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
 
 bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 {
-	if (!soft_font_active_)
+	SoftFont *font = selected_soft_font();
+	if (!font)
 		return false;
-	auto it = soft_glyphs_.find(b);
-	if (it == soft_glyphs_.end())
+	auto it = font->glyphs.find(b);
+	if (it == font->glyphs.end())
 		return false;
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
@@ -1257,11 +1445,11 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	int dpi = prof_.render_dpi;
 	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
 	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
-	for (uint8_t row = 0; row < glyph.rows; row++) {
+	for (uint16_t row = 0; row < glyph.rows; row++) {
 		size_t row_off = (size_t)row * glyph.span;
 		if (row_off >= glyph.bitmap.size())
 			break;
-		for (uint8_t col = 0; col < glyph.width; col++) {
+		for (uint16_t col = 0; col < glyph.width; col++) {
 			size_t byte_off = row_off + (col >> 3);
 			if (byte_off >= glyph.bitmap.size())
 				continue;
