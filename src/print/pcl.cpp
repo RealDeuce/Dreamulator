@@ -1360,20 +1360,27 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			soft_char_code_ = (uint8_t)(std::min(0x7fff, std::abs(ival)) & 0xff);
 			break;
 		case 'F':
-			if (ival == 0 || ival == 1 || ival == 3 || ival == 6) {
+			if (ival == 0 || ival == 1) {
 				std::vector<int> ids;
 				for (const auto &entry : soft_fonts_)
-					if (ival == 0 || ival == 3 || ival == 6 ||
-					    (ival == 1 && !entry.second.permanent))
+					if (ival == 0 || (ival == 1 && !entry.second.permanent))
 						ids.push_back(entry.first);
 				for (int id : ids)
 					delete_soft_font(id);
 			} else if (ival == 2) {
 				delete_soft_font(soft_font_id_);
+			} else if (ival == 3) {
+				auto it = soft_fonts_.find(soft_font_id_);
+				if (it != soft_fonts_.end())
+					it->second.glyphs.erase(soft_char_code_);
 			} else if (ival == 4) {
-				current_soft_font().permanent = false;
+				auto it = soft_fonts_.find(soft_font_id_);
+				if (it != soft_fonts_.end())
+					it->second.permanent = false;
 			} else if (ival == 5) {
-				current_soft_font().permanent = true;
+				auto it = soft_fonts_.find(soft_font_id_);
+				if (it != soft_fonts_.end())
+					it->second.permanent = true;
 			}
 			break;
 		case 'G':

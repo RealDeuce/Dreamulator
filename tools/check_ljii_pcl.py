@@ -624,6 +624,36 @@ def main():
            ppm_sha256(soft_negative_pdf, tmp / "soft-negative", dpi=150):
             raise AssertionError("negative downloaded font id/code did not normalize")
 
+        soft_glyph = bytes.fromhex(
+            "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
+        soft_two_glyphs = (
+            ESC + b"*c4661D" +
+            ESC + b"*c41E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"*c40E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"(4661X")
+        soft_delete_char = write(tmp / "soft-delete-char.pcl",
+                                 soft_two_glyphs +
+                                 ESC + b"*c41E" + ESC + b"*c3F" +
+                                 b"(" + FF)
+        soft_keep_char = write(tmp / "soft-keep-char.pcl",
+                               soft_two_glyphs + b"(" + FF)
+        soft_housekeeping = write(tmp / "soft-housekeeping.pcl",
+                                  soft_two_glyphs + ESC + b"*c6F" + b"(" + FF)
+        soft_delete_char_pdf = tmp / "soft-delete-char.pdf"
+        soft_keep_char_pdf = tmp / "soft-keep-char.pdf"
+        soft_housekeeping_pdf = tmp / "soft-housekeeping.pdf"
+        render(dreamprint, soft_delete_char, soft_delete_char_pdf)
+        render(dreamprint, soft_keep_char, soft_keep_char_pdf)
+        render(dreamprint, soft_housekeeping, soft_housekeeping_pdf)
+        keep_hash = ppm_sha256(soft_keep_char_pdf, tmp / "soft-keep-char",
+                               dpi=150)
+        if ppm_sha256(soft_delete_char_pdf, tmp / "soft-delete-char",
+                      dpi=150) != keep_hash:
+            raise AssertionError("downloaded character delete removed sibling glyph")
+        if ppm_sha256(soft_housekeeping_pdf, tmp / "soft-housekeeping",
+                      dpi=150) != keep_hash:
+            raise AssertionError("downloaded font housekeeping deleted glyphs")
+
         invalid_resource = (
             ESC + b"*c33E" +
             ESC + b")s80W" +
