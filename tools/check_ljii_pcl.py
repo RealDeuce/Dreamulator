@@ -251,6 +251,23 @@ def main():
                 type1_width < no_resource_width):
             raise AssertionError("resource header did not select glyph shape")
 
+        bad_char_payload = write(
+            tmp / "bad-char-payload.pcl",
+            ESC + b"*c4660D" +
+            ESC + b"*c33E" +
+            ESC + b")s6W" + bytes.fromhex("00 00 00 00 0c 00") +
+            ESC + b"(4660X" +
+            b"!" + FF,
+        )
+        bad_char_payload_pdf = tmp / "bad-char-payload.pdf"
+        render(dreamprint, bad_char_payload, bad_char_payload_pdf)
+        if pdftotext(bad_char_payload_pdf).strip() != "!":
+            raise AssertionError("bad character payload shifted text output")
+        if ppm_sha256(bang_pdf, tmp / "bang2", dpi=150) != \
+           ppm_sha256(bad_char_payload_pdf, tmp / "bad-char-payload",
+                      dpi=150):
+            raise AssertionError("bad character payload installed a glyph")
+
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +
                                ESC + b"*r0A" +

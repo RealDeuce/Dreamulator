@@ -1664,6 +1664,9 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
 		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
 		glyph.bitmap.assign(payload.begin() + 12, payload.end());
+	} else if (payload.size() >= 6 && payload[4] == 0x0c &&
+	           payload[5] != 1 && payload[5] != 2) {
+		return;
 	} else if (font.resource_header_active && payload.size() == 3) {
 		glyph.width = 4;
 		glyph.span = 1;
