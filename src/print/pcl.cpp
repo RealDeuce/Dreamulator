@@ -321,6 +321,9 @@ private:
 	void process_control(uint8_t b);
 	void process_printable(uint8_t b);
 	void process_escape(uint8_t b);
+	void process_display_byte(uint8_t b);
+	void emit_display_value(uint8_t b);
+	void advance_fixed_space();
 	void process_parameter_byte(uint8_t b);
 	void apply_param(char group, char subgroup, double value, char term);
 	void begin_payload(State state, int count);
@@ -368,6 +371,8 @@ private:
 	bool current_param_relative_ = false;
 	int payload_remaining_ = 0;
 	bool payload_control_pending_ = false;
+	bool display_escape_pending_ = false;
+	bool display_control_pending_ = false;
 	std::vector<uint8_t> payload_buf_;
 
 	int line_term_ = 0;
@@ -439,6 +444,8 @@ void PclPrinter::reset_ljii_state()
 	current_param_relative_ = false;
 	payload_remaining_ = 0;
 	payload_control_pending_ = false;
+	display_escape_pending_ = false;
+	display_control_pending_ = false;
 	payload_buf_.clear();
 	line_term_ = 0;
 	orientation_ = 0;
@@ -547,11 +554,7 @@ void PclPrinter::parse_byte(uint8_t b)
 		finish_payload_byte(b);
 		return;
 	case State::DisplayFunctions:
-		if (b == 0x1B) {
-			state_ = State::Esc;
-		} else {
-			emit_transparent_byte(b);
-		}
+		process_display_byte(b);
 		return;
 	}
 }
@@ -625,6 +628,8 @@ void PclPrinter::process_escape(uint8_t b)
 		return;
 	}
 	if (b == 'Y') {
+		display_escape_pending_ = false;
+		display_control_pending_ = false;
 		state_ = State::DisplayFunctions;
 		return;
 	}
@@ -653,6 +658,50 @@ void PclPrinter::process_escape(uint8_t b)
 		return;
 	}
 	state_ = State::Normal;
+}
+
+void PclPrinter::process_display_byte(uint8_t b)
+{
+	if (display_control_pending_) {
+		display_control_pending_ = false;
+		emit_display_value(b == 0x58 ? 0x7f : b);
+		return;
+	}
+	if (b == 0x1a) {
+		display_control_pending_ = true;
+		return;
+	}
+	emit_display_value(b);
+}
+
+void PclPrinter::emit_display_value(uint8_t b)
+{
+	if (b < 0x20 || (b >= 0x80 && b <= 0x9f))
+		advance_fixed_space();
+	else
+		process_printable(b);
+
+	if (display_escape_pending_ && b == 'Z') {
+		display_escape_pending_ = false;
+		display_control_pending_ = false;
+		state_ = State::Normal;
+		return;
+	}
+	display_escape_pending_ = (b == 0x1b);
+}
+
+void PclPrinter::advance_fixed_space()
+{
+	const LjiiFontRequest &req = active_font_request();
+	float pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
+	float char_w_in = 1.0f / pitch_cpi;
+	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
+		if (!wrap_enabled_)
+			return;
+		carriage_return();
+		ljii_line_feed();
+	}
+	st_.x_pos += char_w_in;
 }
 
 void PclPrinter::process_parameter_byte(uint8_t b)

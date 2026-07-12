@@ -112,6 +112,22 @@ def main():
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 
+        display = write(tmp / "display.pcl",
+                        ESC + b"Y!\x05!" + ESC + b"Z" + FF)
+        display_pdf = tmp / "display.pdf"
+        render(dreamprint, display, display_pdf)
+        display_text = "".join(pdftotext(display_pdf).split())
+        if "!!Z" not in display_text:
+            raise AssertionError("display-functions terminator did not route")
+
+        display_esc = write(tmp / "display-esc.pcl",
+                            ESC + b"YA" + ESC + b"EB" + ESC + b"Z" + FF)
+        display_esc_pdf = tmp / "display-esc.pdf"
+        render(dreamprint, display_esc, display_esc_pdf)
+        display_esc_text = "".join(pdftotext(display_esc_pdf).split())
+        if "AEBZ" not in display_esc_text:
+            raise AssertionError("display-functions embedded ESC became command")
+
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +
                      ESC + b"*c41E" +
