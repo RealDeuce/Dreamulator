@@ -49,9 +49,6 @@ private:
 	int pages_id_ = 0;
 	int font_ids_[4] = {};
 	std::vector<int> page_ids_;
-
-	float page_w_pt_ = 612.0f;
-	float page_h_pt_ = 792.0f;
 };
 
 #endif

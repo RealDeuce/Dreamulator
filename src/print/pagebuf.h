@@ -36,6 +36,7 @@ public:
 	                   float density);
 
 	static PageBitmap letter_at_dpi(int dpi);
+	static PageBitmap at_dpi(float width_in, float height_in, int dpi);
 
 private:
 	int w_, h_;

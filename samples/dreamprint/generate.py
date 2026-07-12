@@ -555,12 +555,61 @@ def build_lq500() -> bytes:
     return bytes(out)
 
 
+def pcl_param(prefix: bytes, body: bytes) -> bytes:
+    return ESC + prefix + body
+
+
+def build_ljii() -> bytes:
+    out = bytearray()
+    out += ESC + b"E"
+    out += b"LaserJet II PCL4 smoke sample\r\n\r\n"
+
+    out += pcl_param(b"(s", b"0p10h0s0b3T")
+    out += b"Courier 10 cpi bold stroke\r\n"
+    out += pcl_param(b"(s", b"0p12h0s0b3T")
+    out += b"Courier 12 cpi\r\n"
+    out += pcl_param(b"&d", b"0D")
+    out += b"Underlined text should copy from the invisible layer"
+    out += pcl_param(b"&d", b"@")
+    out += b"\r\n\r\n"
+
+    out += pcl_param(b"*p", b"300x900Y")
+    out += pcl_param(b"*c", b"900a90b0P")
+    out += pcl_param(b"*p", b"330x1080Y")
+    out += b"Black rule above was emitted by ESC *c.\r\n"
+
+    out += pcl_param(b"*t", b"300R")
+    out += pcl_param(b"*p", b"330x1200Y")
+    out += pcl_param(b"*r", b"1A")
+    for row in (
+        b"\xFF\x00\xFF\x00",
+        b"\x81\x00\x81\x00",
+        b"\xBD\x00\xBD\x00",
+        b"\x81\x00\x81\x00",
+        b"\xFF\x00\xFF\x00",
+    ):
+        out += pcl_param(b"*b", str(len(row)).encode("ascii") + b"W") + row
+    out += pcl_param(b"*r", b"0B")
+
+    out += pcl_param(b"*p", b"330x1320Y")
+    out += pcl_param(b"&p", b"20X") + b"Literal PCL payload"
+    out += b"\r\n"
+    out += pcl_param(b"&l", b"26A")
+    out += b"A4 page after page-size command\r\n"
+    out += FF
+    out += pcl_param(b"&l", b"1O")
+    out += b"Landscape page after orientation command\r\n"
+    out += FF
+    return bytes(out)
+
+
 def main() -> None:
     samples = {
         "fx80-text-attributes.bin": build_fx80(),
         "bj10e-text-attributes.bin": build_bj10e(),
         "imagewriter-ii-text-attributes.bin": build_imagewriter(),
         "lq500-text-attributes.bin": build_lq500(),
+        "laserjet-ii-pcl4-smoke.bin": build_ljii(),
     }
     for name, data in samples.items():
         path = OUT_DIR / name

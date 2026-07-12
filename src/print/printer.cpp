@@ -15,7 +15,7 @@ static constexpr PrinterProfile profiles[] = {
 	{ PrinterModel::EpsonLQ500,    "Epson LQ-500",       DotTech::Impact24, 720, 120,180, 360,180, 12,24, 36,  0.21f, 0.015f, 0.76f, 2.0f, 0.20f, 0.90f, 1.00f, 2.5f, 0.075f, 0.16f },
 	{ PrinterModel::EpsonFX,    "Epson FX",       DotTech::Impact9,  720, 120, 72, 240,144, 12, 9, 24,  0.27f, 0.025f, 0.72f, 2.0f, 0.20f, 0.90f, 1.00f, 2.5f, 0.075f, 0.16f },
 	{ PrinterModel::CanonBJ10e, "Canon BJ-10e",   DotTech::Inkjet,   360, 360,360, 360,360, 36,48, 30,  0.050f, 0.0f, 0.68f, 1.0f, 0.0f, 1.00f, 1.00f, 1.0f, 0.075f, 0.075f },
-	{ PrinterModel::HpJet,      "HP JET",         DotTech::Toner,    600, 300,300, 300,300, 30,50, 30,   0.13f, 0.01f, 0.98f, 0.3f, 0.0f, 1.00f, 1.00f, 1.0f, 0.075f, 0.075f },
+	{ PrinterModel::HpJet,      "HP LaserJet II", DotTech::Toner,    300, 300,300, 300,300, 30,50, 30,   0.13f, 0.01f, 0.98f, 0.3f, 0.0f, 1.00f, 1.00f, 1.0f, 0.075f, 0.075f },
 	{ PrinterModel::ImageWriter, "ImageWriter",   DotTech::Impact9,  720,  72, 72, 144,144,  8, 8, 16,  0.27f, 0.025f, 0.72f, 2.0f, 0.20f, 0.90f, 1.00f, 2.5f, 0.075f, 0.16f },
 };
 
@@ -66,7 +66,8 @@ void PrinterSim::new_page_if_needed()
 {
 	if (!page_) {
 		page_ = std::make_unique<PageBitmap>(
-			PageBitmap::letter_at_dpi(prof_.render_dpi));
+			PageBitmap::at_dpi(st_.page_width_in, st_.page_height_in,
+			                   prof_.render_dpi));
 		page_dirty_ = false;
 		st_.x_pos = st_.left_margin_in;
 		st_.y_pos = st_.top_margin_in + st_.line_spacing_in;

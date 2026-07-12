@@ -89,7 +89,7 @@ supported at varying levels of completeness:
 | Apple ImageWriter II | `WRITER` | 9-pin impact | Complete — full command set from ROM analysis |
 | IBM Proprinter X24E | `X24E` | 24-pin impact | Partial — base ESC/P only, no PPDS extensions |
 | IBM Proprinter III | `XIII` | 9-pin impact | Partial — base ESC/P only, no PPDS extensions |
-| HP LaserJet/DeskJet | `JET` | Toner | Minimal — text-only PCL subset, no graphics |
+| HP LaserJet II | `JET` | Toner | In progress — PCL4 text, page geometry, rules, raster, and invisible text layer |
 
 The [Epson FX](https://github.com/RealDeuce/epsonfx80),
 [Canon BJ-10e](https://github.com/RealDeuce/canonBJ10e), and
@@ -98,8 +98,9 @@ based on original hardware manuals and validated against reverse-engineered
 ROM disassemblies, with resident font data extracted from firmware.  The Epson
 LQ reuses the FX engine with adjusted line spacing denominators but does not
 implement ESC/P2 commands.  The IBM models inherit the base ESC/P engine but
-lack IBM-specific PPDS commands.  The HP PCL implementation handles basic
-text formatting and margins but not raster graphics.
+lack IBM-specific PPDS commands.  The HP LaserJet II implementation targets
+PCL Level IV byte streams and renders visible output as a PDF bitmap with an
+invisible selectable text layer.
 
 The default model is Epson FX.  Printer output is accessed from the
 **Media → Printer Output** menu item.

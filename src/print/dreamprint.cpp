@@ -23,7 +23,7 @@ static void usage(const char *argv0)
 		"  LQ500     Epson LQ-500 (24-pin)\n"
 		"  FX        Epson FX (9-pin)\n"
 		"  BJ10e     Canon BJ-10e (inkjet)\n"
-		"  JET       HP LaserJet/DeskJet\n"
+		"  JET       HP LaserJet II\n"
 		"  WRITER    Apple ImageWriter\n",
 		argv0);
 }

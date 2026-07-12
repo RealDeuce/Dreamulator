@@ -113,13 +113,15 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
                          const std::vector<TextGlyph> &text)
 {
 	int img_id = (int)write_image_stream(bmp);
+	float page_w_pt = (float)bmp.width() * 72.0f / (float)dpi;
+	float page_h_pt = (float)bmp.height() * 72.0f / (float)dpi;
 
 	std::string content;
 	char buf[256];
 
 	snprintf(buf, sizeof(buf),
 		"q %.2f 0 0 %.2f 0 0 cm /Img Do Q\n",
-		page_w_pt_, page_h_pt_);
+		page_w_pt, page_h_pt);
 	content += buf;
 
 	if (!text.empty()) {
@@ -131,7 +133,7 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 		while (i < text.size()) {
 			auto &first = text[i];
 			int font = (first.style & TextGlyph::BOLD) ? 1 : 0;
-			float py = page_h_pt_ - first.y_in * 72.0f;
+			float py = page_h_pt - first.y_in * 72.0f;
 			float px = first.x_in * 72.0f;
 
 			float char_w_pt = first.width_in * 72.0f;
@@ -150,7 +152,7 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 			while (j < text.size()) {
 				auto &g = text[j];
 				int gf = (g.style & TextGlyph::BOLD) ? 1 : 0;
-				float gy = page_h_pt_ - g.y_in * 72.0f;
+				float gy = page_h_pt - g.y_in * 72.0f;
 				float gw = g.width_in * 72.0f;
 				float gs = gw / natural_adv * 100.0f;
 				if (gf != font ||
@@ -186,7 +188,7 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 	int page_id = alloc_obj();
 	begin_obj(page_id);
 	fprintf(fp_, "<< /Type /Page /Parent %d 0 R\n", pages_id_);
-	fprintf(fp_, "   /MediaBox [0 0 %.2f %.2f]\n", page_w_pt_, page_h_pt_);
+	fprintf(fp_, "   /MediaBox [0 0 %.2f %.2f]\n", page_w_pt, page_h_pt);
 	fprintf(fp_, "   /Contents %d 0 R\n", stream_id);
 	fprintf(fp_, "   /Resources %d 0 R >>\n", res_id);
 	end_obj();

@@ -137,7 +137,12 @@ void PageBitmap::stamp_ink_dot(float cx, float cy, float sigma_x, float sigma_y,
 
 PageBitmap PageBitmap::letter_at_dpi(int dpi)
 {
-	int w = (int)(8.5f * (float)dpi);
-	int h = (int)(11.0f * (float)dpi);
-	return PageBitmap(w, h);
+	return at_dpi(8.5f, 11.0f, dpi);
+}
+
+PageBitmap PageBitmap::at_dpi(float width_in, float height_in, int dpi)
+{
+	int w = (int)std::ceil(width_in * (float)dpi);
+	int h = (int)std::ceil(height_in * (float)dpi);
+	return PageBitmap(std::max(1, w), std::max(1, h));
 }

@@ -1291,7 +1291,7 @@ int main(int argc, char *argv[])
 	//menu->add("&Printer/Parallel/Epson LQ...",     0, cb_printer_pdf, (void *)2);
 	menu->add("&Printer/Parallel/Epson FX-80...",          0, cb_printer_pdf, (void *)3);
 	menu->add("&Printer/Parallel/Canon BJ-10e...", 0, cb_printer_pdf, (void *)4);
-	//menu->add("&Printer/Parallel/HP JET...",       0, cb_printer_pdf, (void *)5);
+	menu->add("&Printer/Parallel/HP LaserJet II...",       0, cb_printer_pdf, (void *)5);
 	menu->add("&Printer/Parallel/Apple ImageWriter II...", 0, cb_printer_pdf, (void *)6);
 	menu->add("&Printer/Serial/Apple ImageWriter II...",   0, cb_printer_pdf_serial, (void *)6);
 	menu->add("&Printer/Finish PDF",               0, cb_printer_pdf_finish);
