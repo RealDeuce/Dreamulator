@@ -35004,7 +35004,7 @@ uint32_t select_ljii_context(const LjiiFontRequest &request)
 	mask = nearest_height_mask(mask, request.height);
 	uint32_t stroke = 0;
 	if (request.stroke >= 3)
-		stroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke == 0; });
+		stroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke >= 3; });
 	else
 		stroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });
 	if (stroke) mask = stroke;

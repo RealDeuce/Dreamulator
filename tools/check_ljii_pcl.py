@@ -440,6 +440,21 @@ def main():
            ppm_sha256(italic_pdf, tmp / "italic", dpi=150):
             raise AssertionError("italic font request did not affect pixels")
 
+        medium = write(tmp / "medium.pcl",
+                       ESC + b"(s0p10h12v0s0b3TStroke sample" + FF)
+        bold = write(tmp / "bold.pcl",
+                     ESC + b"(s0p10h12v0s3b3TStroke sample" + FF)
+        medium_pdf = tmp / "medium.pdf"
+        bold_pdf = tmp / "bold.pdf"
+        render(dreamprint, medium, medium_pdf)
+        render(dreamprint, bold, bold_pdf)
+        if ppm_sha256(medium_pdf, tmp / "medium", dpi=150) == \
+           ppm_sha256(bold_pdf, tmp / "bold", dpi=150):
+            raise AssertionError("bold stroke request selected medium glyph pixels")
+        if ppm_nonwhite(bold_pdf, tmp / "bold", dpi=150) <= \
+           ppm_nonwhite(medium_pdf, tmp / "medium", dpi=150):
+            raise AssertionError("bold stroke request did not increase ink")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",

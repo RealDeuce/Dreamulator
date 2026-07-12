@@ -268,7 +268,7 @@ def main() -> int:
     out.append("\tmask = nearest_height_mask(mask, request.height);")
     out.append("\tuint32_t stroke = 0;")
     out.append("\tif (request.stroke >= 3)")
-    out.append("\t\tstroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke == 0; });")
+    out.append("\t\tstroke = filter_ljii_records(mask, [](const auto &r) { return r.stroke >= 3; });")
     out.append("\telse")
     out.append("\t\tstroke = filter_ljii_records(mask, [&request](const auto &r) { return r.stroke == request.stroke; });")
     out.append("\tif (stroke) mask = stroke;")
