@@ -414,6 +414,17 @@ def main():
                      150, 114, dpi=300) == b"\xff\xff\xff":
             raise AssertionError("underline span did not cover tab gap")
 
+        underline_negative = write(tmp / "underline-negative.pcl",
+                                   ESC + b"&d-3D" + b"A\tB" +
+                                   ESC + b"&d@" + FF)
+        underline_negative_pdf = tmp / "underline-negative.pdf"
+        render(dreamprint, underline_negative, underline_negative_pdf)
+        if ppm_sha256(underline_span_pdf, tmp / "underline-span",
+                      dpi=150) != \
+           ppm_sha256(underline_negative_pdf, tmp / "underline-negative",
+                      dpi=150):
+            raise AssertionError("negative underline selector did not match positive")
+
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +
                      ESC + b"*c41E" +

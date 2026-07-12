@@ -992,6 +992,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'd') {
 		switch (term) {
 		case 'D':
+			ival = std::abs(ival);
 			if (ival == 3) {
 				st_.underline = true;
 				start_underline_span();
