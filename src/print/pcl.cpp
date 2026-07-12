@@ -109,7 +109,7 @@ bool is_param_byte(uint8_t b)
 
 int pcl_symbol_value(int value, char term)
 {
-	if (term >= 'A' && term <= 'Z')
+	if (term >= '@' && term <= '^')
 		return value * 32 + (term - '@');
 	if (term >= 'a' && term <= 'z')
 		return value * 32 + (term - '`');
