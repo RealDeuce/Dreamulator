@@ -794,7 +794,7 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 	} else if (b >= 'a' && b <= 'z') {
 		int lower_value = static_cast<int>(std::lround(value));
 		if (group_ == '*' && subgroup_ == 'b' && b == 'w') {
-			pending_raster_count_ = std::max(0, lower_value);
+			pending_raster_count_ = std::abs(lower_value);
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
 			pending_vfc_count_ = std::max(0, lower_value);
 		} else {
@@ -1164,7 +1164,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		switch (term) {
 		case 'A':
 			if (!raster_active_) {
-				raster_x_in_ = (ival == 1)
+				int start_selector = std::abs(ival);
+				raster_x_in_ = (start_selector == 1)
 					? ((orientation_ & 1) ? st_.y_pos : st_.x_pos)
 					: 0.0f;
 				raster_y_in_ = (orientation_ & 1) ? st_.x_pos : st_.y_pos;
@@ -1194,7 +1195,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				ival = pending_raster_count_;
 				pending_raster_count_ = -1;
 			}
-			begin_payload(State::RasterData, std::max(0, ival));
+			begin_payload(State::RasterData, std::abs(ival));
 			break;
 		case 'Y':
 			raster_row_ += std::max(0, ival) * raster_scale_;

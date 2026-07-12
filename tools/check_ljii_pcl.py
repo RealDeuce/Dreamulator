@@ -368,6 +368,28 @@ def main():
         if ppm_nonwhite(raster_control_pdf, tmp / "raster-control") < 5:
             raise AssertionError("raster payload control render looks blank")
 
+        raster_negative = write(tmp / "raster-negative.pcl",
+                                ESC + b"*t300R" +
+                                ESC + b"*r0A" +
+                                ESC + b"*b-2W" +
+                                b"QZ" + b"!" + FF)
+        raster_negative_pdf = tmp / "raster-negative.pdf"
+        render(dreamprint, raster_negative, raster_negative_pdf)
+        if pdftotext(raster_negative_pdf).strip() != "!":
+            raise AssertionError("negative raster count leaked payload")
+        if ppm_nonwhite(raster_negative_pdf, tmp / "raster-negative") < 5:
+            raise AssertionError("negative raster payload did not render")
+
+        raster_lower_negative = write(tmp / "raster-lower-negative.pcl",
+                                      ESC + b"*t300R" +
+                                      ESC + b"*r0A" +
+                                      ESC + b"*b-2w2W" +
+                                      b"QZ" + b"!" + FF)
+        raster_lower_negative_pdf = tmp / "raster-lower-negative.pdf"
+        render(dreamprint, raster_lower_negative, raster_lower_negative_pdf)
+        if pdftotext(raster_lower_negative_pdf).strip() != "!":
+            raise AssertionError("lowercase negative raster count leaked payload")
+
         raster_full = write(tmp / "raster-full.pcl",
                             ESC + b"*t300R" +
                             ESC + b"*r0A" +
