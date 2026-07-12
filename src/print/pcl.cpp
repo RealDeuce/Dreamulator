@@ -306,6 +306,8 @@ private:
 	char subgroup_ = 0;
 	char param_buf_[64] = {};
 	int param_pos_ = 0;
+	bool param_relative_ = false;
+	bool current_param_relative_ = false;
 	int payload_remaining_ = 0;
 	std::vector<uint8_t> payload_buf_;
 
@@ -372,6 +374,8 @@ void PclPrinter::reset_ljii_state()
 	subgroup_ = 0;
 	param_pos_ = 0;
 	param_buf_[0] = 0;
+	param_relative_ = false;
+	current_param_relative_ = false;
 	payload_remaining_ = 0;
 	payload_buf_.clear();
 	line_term_ = 0;
@@ -449,17 +453,20 @@ void PclPrinter::parse_byte(uint8_t b)
 			subgroup_ = static_cast<char>(b);
 			param_pos_ = 0;
 			param_buf_[0] = 0;
+			param_relative_ = false;
 			state_ = State::Parameterized;
 		} else if (is_param_byte(b)) {
 			subgroup_ = 0;
 			param_pos_ = 0;
 			param_buf_[0] = 0;
+			param_relative_ = false;
 			state_ = State::Parameterized;
 			process_parameter_byte(b);
 		} else if ((b >= 'A' && b <= 'Z') || b == '@') {
 			subgroup_ = 0;
 			param_pos_ = 0;
 			param_buf_[0] = 0;
+			param_relative_ = false;
 			state_ = State::Parameterized;
 			process_parameter_byte(b);
 		} else {
@@ -587,6 +594,8 @@ void PclPrinter::process_escape(uint8_t b)
 void PclPrinter::process_parameter_byte(uint8_t b)
 {
 	if (is_param_byte(b)) {
+		if (param_pos_ == 0 && (b == '+' || b == '-'))
+			param_relative_ = true;
 		if (param_pos_ < static_cast<int>(sizeof(param_buf_)) - 1)
 			param_buf_[param_pos_++] = static_cast<char>(b);
 		return;
@@ -594,11 +603,13 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 
 	param_buf_[param_pos_] = 0;
 	double value = param_pos_ > 0 ? std::atof(param_buf_) : 0.0;
+	current_param_relative_ = param_relative_;
 
 	if ((b >= 'A' && b <= 'Z') || b == '@') {
 		apply_param(group_, subgroup_, value, static_cast<char>(b));
 		if (state_ == State::Parameterized)
 			state_ = State::Normal;
+		param_relative_ = false;
 	} else if (b >= 'a' && b <= 'z') {
 		int lower_value = static_cast<int>(std::lround(value));
 		if (group_ == '*' && subgroup_ == 'b' && b == 'w') {
@@ -612,9 +623,11 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		if (state_ == State::Parameterized) {
 			param_pos_ = 0;
 			param_buf_[0] = 0;
+			param_relative_ = false;
 		}
 	} else {
 		state_ = State::Normal;
+		param_relative_ = false;
 	}
 }
 
@@ -704,11 +717,20 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'a') {
 		switch (term) {
 		case 'C':
-			st_.x_pos = logical_x0_in_ + (float)value / st_.pitch_cpi;
+			if (current_param_relative_)
+				st_.x_pos += (float)value / st_.pitch_cpi;
+			else
+				st_.x_pos = logical_x0_in_ + (float)value / st_.pitch_cpi;
+			st_.x_pos = std::max(logical_x0_in_,
+			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
 			break;
 		case 'H':
+			if (current_param_relative_)
+				st_.x_pos += (float)value / 720.0f;
+			else
+				st_.x_pos = logical_x0_in_ + (float)value / 720.0f;
 			st_.x_pos = std::max(logical_x0_in_,
-			                      logical_x0_in_ + (float)value / 720.0f);
+			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
 			break;
 		case 'L':
 			st_.left_margin_in = logical_x0_in_ +
@@ -723,11 +745,21 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			                               logical_x0_in_ + logical_w_in_);
 			break;
 		case 'R':
-			st_.y_pos = st_.top_margin_in + (float)value * st_.line_spacing_in;
+			if (current_param_relative_)
+				st_.y_pos += (float)value * st_.line_spacing_in;
+			else
+				st_.y_pos = st_.top_margin_in +
+				            (float)value * st_.line_spacing_in;
+			st_.y_pos = std::max(logical_y0_in_,
+			                     std::min(st_.y_pos, st_.page_height_in));
 			break;
 		case 'V':
+			if (current_param_relative_)
+				st_.y_pos += (float)value / 720.0f;
+			else
+				st_.y_pos = st_.top_margin_in + (float)value / 720.0f;
 			st_.y_pos = std::max(logical_y0_in_,
-			                      st_.top_margin_in + (float)value / 720.0f);
+			                     std::min(st_.y_pos, st_.page_height_in));
 			break;
 		default:
 			break;
@@ -882,12 +914,20 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'p') {
 		switch (term) {
 		case 'X':
+			if (current_param_relative_)
+				st_.x_pos += (float)value / kDotsPerIn;
+			else
+				st_.x_pos = logical_x0_in_ + (float)value / kDotsPerIn;
 			st_.x_pos = std::max(logical_x0_in_,
-			                      logical_x0_in_ + (float)value / kDotsPerIn);
+			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
 			break;
 		case 'Y':
+			if (current_param_relative_)
+				st_.y_pos += (float)value / kDotsPerIn;
+			else
+				st_.y_pos = st_.top_margin_in + (float)value / kDotsPerIn;
 			st_.y_pos = std::max(logical_y0_in_,
-			                      st_.top_margin_in + (float)value / kDotsPerIn);
+			                     std::min(st_.y_pos, st_.page_height_in));
 			break;
 		default:
 			break;
