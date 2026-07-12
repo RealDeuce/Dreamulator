@@ -190,6 +190,27 @@ def main():
         if ppm_nonwhite(soft_pdf, tmp / "soft") < 5:
             raise AssertionError("downloaded glyph render looks blank")
 
+        invalid_resource = (
+            ESC + b"*c33E" +
+            ESC + b")s80W" +
+            bytes.fromhex("00 01 02 03") +
+            bytes(76) +
+            b"!" + FF
+        )
+        bang = write(tmp / "bang.pcl", b"!" + FF)
+        invalid_resource_pcl = write(tmp / "invalid-resource.pcl",
+                                     invalid_resource)
+        bang_pdf = tmp / "bang.pdf"
+        invalid_resource_pdf = tmp / "invalid-resource.pdf"
+        render(dreamprint, bang, bang_pdf)
+        render(dreamprint, invalid_resource_pcl, invalid_resource_pdf)
+        if pdftotext(invalid_resource_pdf).strip() != "!":
+            raise AssertionError("invalid resource header shifted text output")
+        if ppm_sha256(bang_pdf, tmp / "bang", dpi=150) != \
+           ppm_sha256(invalid_resource_pdf, tmp / "invalid-resource",
+                      dpi=150):
+            raise AssertionError("invalid resource header installed a glyph")
+
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +
                                ESC + b"*r0A" +

@@ -272,6 +272,21 @@ int rule_selector_for_fill_command(int mode, int fill_pattern, int orientation)
 	return 7 + fill_pattern;
 }
 
+bool looks_like_ljii_font_resource_header(const std::vector<uint8_t> &payload)
+{
+	if (payload.size() < 8)
+		return false;
+	if (payload[0] != 0x00 || payload[1] != 0x01)
+		return false;
+
+	/*
+	 * Nonzero ESC )s#W resource/header payloads are not raw character
+	 * bitmaps. Invalid headers must drain without installing a candidate;
+	 * otherwise the current character code can be polluted with header bytes.
+	 */
+	return true;
+}
+
 } // namespace
 
 class PclPrinter : public PrinterSim {
@@ -1593,6 +1608,9 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		}
 		return;
 	}
+
+	if (looks_like_ljii_font_resource_header(payload))
+		return;
 
 	SoftGlyph glyph;
 	if (payload.size() >= 14 && payload[4] == 0x0c &&
