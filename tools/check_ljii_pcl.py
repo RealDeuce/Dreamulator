@@ -796,6 +796,22 @@ def main():
         if pdftotext(vfc_lower_negative_pdf).strip() != "!":
             raise AssertionError("lowercase negative VFC count leaked payload")
 
+        vfc_jump_positive = write(tmp / "vfc-jump-positive.pcl",
+                                  ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                                  ESC + b"&l2V" + b"!" + FF)
+        vfc_jump_negative = write(tmp / "vfc-jump-negative.pcl",
+                                  ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                                  ESC + b"&l-2V" + b"!" + FF)
+        vfc_jump_positive_pdf = tmp / "vfc-jump-positive.pdf"
+        vfc_jump_negative_pdf = tmp / "vfc-jump-negative.pdf"
+        render(dreamprint, vfc_jump_positive, vfc_jump_positive_pdf)
+        render(dreamprint, vfc_jump_negative, vfc_jump_negative_pdf)
+        if ppm_sha256(vfc_jump_positive_pdf, tmp / "vfc-jump-positive",
+                      dpi=150) != \
+           ppm_sha256(vfc_jump_negative_pdf, tmp / "vfc-jump-negative",
+                      dpi=150):
+            raise AssertionError("negative VFC channel selector did not match positive")
+
         macro_execute = write(tmp / "macro-execute.pcl",
                               ESC + b"&f321Y" +
                               ESC + b"&f0X" + b"!\r" +

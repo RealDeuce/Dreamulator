@@ -904,7 +904,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'V':
-			vfc_channel_jump(ival);
+			vfc_channel_jump(std::abs(ival));
 			break;
 		case 'W':
 			if (pending_vfc_count_ >= 0) {
