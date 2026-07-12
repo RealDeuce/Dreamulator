@@ -229,7 +229,7 @@ private:
 	void set_page_size(int code);
 	void set_orientation(int orientation);
 	void publish_current_page();
-	void maybe_record_macro_byte(uint8_t b);
+	bool capture_macro_definition_byte(uint8_t b);
 	void replay_macro(int id);
 
 	State state_ = State::Normal;
@@ -270,6 +270,8 @@ private:
 	int macro_id_ = 0;
 	bool defining_macro_ = false;
 	bool replaying_macro_ = false;
+	size_t macro_command_start_ = 0;
+	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
 };
 
@@ -312,6 +314,8 @@ void PclPrinter::reset_ljii_state()
 	macro_id_ = 0;
 	defining_macro_ = false;
 	replaying_macro_ = false;
+	macro_command_start_ = 0;
+	macro_stop_buf_.clear();
 
 	st_.pitch_cpi = 10.0f;
 	st_.line_spacing_in = vmi_in_;
@@ -328,8 +332,8 @@ void PclPrinter::reset_ljii_state()
 
 void PclPrinter::parse_byte(uint8_t b)
 {
-	if (defining_macro_ && state_ == State::Normal && b != 0x1B)
-		macros_[macro_id_].bytes.push_back(b);
+	if (defining_macro_ && !replaying_macro_ && capture_macro_definition_byte(b))
+		return;
 
 	switch (state_) {
 	case State::Normal:
@@ -435,9 +439,6 @@ void PclPrinter::process_printable(uint8_t b)
 
 void PclPrinter::process_escape(uint8_t b)
 {
-	maybe_record_macro_byte(0x1B);
-	maybe_record_macro_byte(b);
-
 	if (b == 'E') {
 		publish_current_page();
 		PrinterConfig cfg = cfg_;
@@ -672,8 +673,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival == 0) {
 				defining_macro_ = true;
 				macros_[macro_id_].bytes.clear();
+				macro_command_start_ = 0;
+				macro_stop_buf_.clear();
 			} else if (ival == 1) {
+				if (defining_macro_)
+					macros_[macro_id_].bytes.resize(macro_command_start_);
 				defining_macro_ = false;
+				macro_stop_buf_.clear();
 			} else if (ival == 2 || ival == 3) {
 				replay_macro(macro_id_);
 			} else if (ival == 6) {
@@ -1173,10 +1179,54 @@ void PclPrinter::publish_current_page()
 		form_feed();
 }
 
-void PclPrinter::maybe_record_macro_byte(uint8_t b)
+bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 {
-	if (defining_macro_)
+	if (b == 0x1B) {
+		macro_command_start_ = macros_[macro_id_].bytes.size();
+		macro_stop_buf_.clear();
+		macro_stop_buf_.push_back(b);
 		macros_[macro_id_].bytes.push_back(b);
+		return true;
+	}
+
+	macros_[macro_id_].bytes.push_back(b);
+	if (macro_stop_buf_.empty())
+		return true;
+
+	macro_stop_buf_.push_back(b);
+	size_t len = macro_stop_buf_.size();
+	if (len == 2 && b != '&') {
+		macro_stop_buf_.clear();
+		return true;
+	}
+	if (len == 3 && b != 'f') {
+		macro_stop_buf_.clear();
+		return true;
+	}
+	if (len >= 4) {
+		if (b == 'X') {
+			int value = 0;
+			bool have_digit = false;
+			for (size_t i = 3; i + 1 < len; i++) {
+				uint8_t ch = macro_stop_buf_[i];
+				if (ch < '0' || ch > '9') {
+					macro_stop_buf_.clear();
+					return true;
+				}
+				have_digit = true;
+				value = value * 10 + (ch - '0');
+			}
+			if (have_digit && value == 1) {
+				macros_[macro_id_].bytes.resize(macro_command_start_);
+				defining_macro_ = false;
+			}
+			macro_stop_buf_.clear();
+			return true;
+		}
+		if (b < '0' || b > '9')
+			macro_stop_buf_.clear();
+	}
+	return true;
 }
 
 void PclPrinter::replay_macro(int id)
@@ -1188,8 +1238,10 @@ void PclPrinter::replay_macro(int id)
 		return;
 	replaying_macro_ = true;
 	const std::vector<uint8_t> bytes = it->second.bytes;
+	state_ = State::Normal;
 	for (uint8_t byte : bytes)
 		parse_byte(byte);
+	state_ = State::Normal;
 	replaying_macro_ = false;
 }
 
