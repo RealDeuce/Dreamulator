@@ -374,6 +374,11 @@ private:
 	void apply_download_payload(const std::vector<uint8_t> &payload);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
+	void start_underline_span();
+	void flush_underline_span();
+	void restart_underline_span();
+	void draw_underline_range(float x0_in, float x1_in, float y_in);
+	void ljii_carriage_return();
 	uint16_t text_unicode(uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
 	LjiiFontRequest &font_request(int slot);
@@ -423,6 +428,9 @@ private:
 	int vfc_text_last_line_ = 62;
 	int pending_vfc_count_ = -1;
 	int pending_raster_count_ = -1;
+	bool underline_span_active_ = false;
+	float underline_span_x0_in_ = 0.0f;
+	float underline_span_y_in_ = 0.0f;
 
 	int raster_resolution_ = 300;
 	int raster_mode_ = 0;
@@ -495,6 +503,9 @@ void PclPrinter::reset_ljii_state()
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_raster_count_ = -1;
+	underline_span_active_ = false;
+	underline_span_x0_in_ = 0.0f;
+	underline_span_y_in_ = 0.0f;
 	raster_resolution_ = 300;
 	raster_mode_ = 0;
 	raster_scale_ = 1;
@@ -604,7 +615,9 @@ void PclPrinter::process_control(uint8_t b)
 {
 	switch (b) {
 	case 0x08:
+		flush_underline_span();
 		st_.x_pos = std::max(st_.left_margin_in, st_.x_pos - hmi_in_);
+		restart_underline_span();
 		break;
 	case 0x09:
 	{
@@ -618,16 +631,16 @@ void PclPrinter::process_control(uint8_t b)
 	}
 	case 0x0A:
 		if (line_term_ == 2 || line_term_ == 3)
-			carriage_return();
+			ljii_carriage_return();
 		ljii_line_feed();
 		break;
 	case 0x0C:
 		if (line_term_ == 2 || line_term_ == 3)
-			carriage_return();
+			ljii_carriage_return();
 		publish_current_page();
 		break;
 	case 0x0D:
-		carriage_return();
+		ljii_carriage_return();
 		if (line_term_ == 1 || line_term_ == 3)
 			ljii_line_feed();
 		break;
@@ -668,17 +681,21 @@ void PclPrinter::process_escape(uint8_t b)
 		return;
 	}
 	if (b == '9') {
+		flush_underline_span();
 		st_.left_margin_in = logical_x0_in_;
 		st_.right_margin_in = logical_x0_in_ + logical_w_in_;
 		st_.x_pos = st_.left_margin_in;
+		restart_underline_span();
 		state_ = State::Normal;
 		return;
 	}
 	if (b == '=') {
+		flush_underline_span();
 		new_page_if_needed();
 		st_.y_pos += st_.line_spacing_in * 0.5f;
 		if (st_.y_pos >= st_.page_height_in)
 			publish_current_page();
+		restart_underline_span();
 		state_ = State::Normal;
 		return;
 	}
@@ -732,7 +749,7 @@ void PclPrinter::advance_fixed_space()
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
 			return;
-		carriage_return();
+		ljii_carriage_return();
 		ljii_line_feed();
 	}
 	st_.x_pos += char_w_in;
@@ -806,11 +823,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'E':
+			flush_underline_span();
 			st_.top_margin_in = logical_y0_in_ +
 			                    std::max(0.0f, (float)value * vmi_in_);
 			st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 			update_vfc_bounds();
 			rebuild_default_vfc_table();
+			restart_underline_span();
 			break;
 		case 'F':
 			if (value > 0.0)
@@ -863,34 +882,43 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'a') {
 		switch (term) {
 		case 'C':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.x_pos += (float)value / st_.pitch_cpi;
 			else
 				st_.x_pos = logical_x0_in_ + (float)value / st_.pitch_cpi;
 			st_.x_pos = std::max(logical_x0_in_,
 			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+			restart_underline_span();
 			break;
 		case 'H':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.x_pos += (float)value / 720.0f;
 			else
 				st_.x_pos = logical_x0_in_ + (float)value / 720.0f;
 			st_.x_pos = std::max(logical_x0_in_,
 			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+			restart_underline_span();
 			break;
 		case 'L':
+			flush_underline_span();
 			st_.left_margin_in = logical_x0_in_ +
 			                     std::max(0.0f, (float)value / st_.pitch_cpi);
 			st_.x_pos = std::max(st_.x_pos, st_.left_margin_in);
+			restart_underline_span();
 			break;
 		case 'M':
+			flush_underline_span();
 			st_.right_margin_in = std::max(st_.left_margin_in,
 			                               logical_x0_in_ +
 			                               ((float)value + 1.0f) / st_.pitch_cpi);
 			st_.right_margin_in = std::min(st_.right_margin_in,
 			                               logical_x0_in_ + logical_w_in_);
+			restart_underline_span();
 			break;
 		case 'R':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.y_pos += (float)value * st_.line_spacing_in;
 			else
@@ -898,14 +926,17 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				            (float)value * st_.line_spacing_in;
 			st_.y_pos = std::max(logical_y0_in_,
 			                     std::min(st_.y_pos, st_.page_height_in));
+			restart_underline_span();
 			break;
 		case 'V':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.y_pos += (float)value / 720.0f;
 			else
 				st_.y_pos = st_.top_margin_in + (float)value / 720.0f;
 			st_.y_pos = std::max(logical_y0_in_,
 			                     std::min(st_.y_pos, st_.page_height_in));
+			restart_underline_span();
 			break;
 		default:
 			break;
@@ -913,9 +944,16 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'd') {
 		switch (term) {
 		case 'D':
-			st_.underline = true;
+			if (ival == 3) {
+				st_.underline = true;
+				start_underline_span();
+			} else {
+				flush_underline_span();
+				st_.underline = false;
+			}
 			break;
 		case '@':
+			flush_underline_span();
 			st_.underline = false;
 			break;
 		default:
@@ -1025,9 +1063,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				if (cursor_stack_.size() < 20)
 					cursor_stack_.push_back({ st_.x_pos, st_.y_pos });
 			} else if (ival == 1 && !cursor_stack_.empty()) {
+				flush_underline_span();
 				st_.x_pos = cursor_stack_.back().first;
 				st_.y_pos = cursor_stack_.back().second;
 				cursor_stack_.pop_back();
+				restart_underline_span();
 			}
 			break;
 		case 'Y':
@@ -1077,20 +1117,24 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'p') {
 		switch (term) {
 		case 'X':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.x_pos += (float)value / kDotsPerIn;
 			else
 				st_.x_pos = logical_x0_in_ + (float)value / kDotsPerIn;
 			st_.x_pos = std::max(logical_x0_in_,
 			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+			restart_underline_span();
 			break;
 		case 'Y':
+			flush_underline_span();
 			if (current_param_relative_)
 				st_.y_pos += (float)value / kDotsPerIn;
 			else
 				st_.y_pos = st_.top_margin_in + (float)value / kDotsPerIn;
 			st_.y_pos = std::max(logical_y0_in_,
 			                     std::min(st_.y_pos, st_.page_height_in));
+			restart_underline_span();
 			break;
 		default:
 			break;
@@ -1371,6 +1415,7 @@ void PclPrinter::draw_raster_dot(int x_dot, int y_dot)
 
 void PclPrinter::advance_raster_cursor_after_transfer()
 {
+	flush_underline_span();
 	float step = (float)raster_scale_ / kDotsPerIn;
 	if (orientation_ & 1) {
 		st_.x_pos = std::max(0.0f, st_.x_pos - step);
@@ -1381,6 +1426,7 @@ void PclPrinter::advance_raster_cursor_after_transfer()
 		st_.y_pos = std::max(logical_y0_in_,
 		                     std::min(st_.y_pos + step, st_.page_height_in));
 	}
+	restart_underline_span();
 }
 
 void PclPrinter::set_raster_resolution(int dpi)
@@ -1486,16 +1532,19 @@ void PclPrinter::vfc_channel_jump(int selector)
 	int start = std::max(0, current + 1);
 
 	if (selector <= 0) {
+		flush_underline_span();
 		if (current > 0 && page_ && page_dirty_)
 			publish_current_page();
 		st_.x_pos = st_.left_margin_in;
 		st_.y_pos = vfc_line_y(0);
+		restart_underline_span();
 		return;
 	}
 
 	uint16_t mask = (selector <= 16) ? (uint16_t)(1u << (selector - 1)) : 0;
 	if (mask == 0)
 		return;
+	flush_underline_span();
 
 	int last = std::max(0, std::min(127, vfc_last_line_));
 	int target = -1;
@@ -1527,6 +1576,7 @@ void PclPrinter::vfc_channel_jump(int selector)
 		publish_current_page();
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = vfc_line_y(target);
+	restart_underline_span();
 }
 
 PclPrinter::SoftFont &PclPrinter::current_soft_font()
@@ -1747,9 +1797,10 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
 			return true;
-		carriage_return();
+		ljii_carriage_return();
 		ljii_line_feed();
 	}
+	start_underline_span();
 
 	new_page_if_needed();
 	page_dirty_ = true;
@@ -1797,9 +1848,10 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 			if (!wrap_enabled_)
 				return true;
-			carriage_return();
+			ljii_carriage_return();
 			ljii_line_feed();
 		}
+		start_underline_span();
 		text_buf_.push_back({
 			st_.x_pos, st_.y_pos, 0x20, char_w_in,
 			char_w_in * 72.0f / 0.6f, 0
@@ -1829,6 +1881,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	uint32_t context = select_ljii_context(req);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
 	if (!glyph.found || !glyph.data) {
+		start_underline_span();
 		uint16_t cp = text_unicode(b);
 		if (cp >= 0x20) {
 			uint8_t sty = 0;
@@ -1847,9 +1900,10 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
 			return true;
-		carriage_return();
+		ljii_carriage_return();
 		ljii_line_feed();
 	}
+	start_underline_span();
 
 	new_page_if_needed();
 	page_dirty_ = true;
@@ -1889,6 +1943,57 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	st_.x_pos += char_w_in;
 	mark_line_output(true);
 	return true;
+}
+
+void PclPrinter::start_underline_span()
+{
+	if (!st_.underline || underline_span_active_)
+		return;
+	underline_span_active_ = true;
+	underline_span_x0_in_ = st_.x_pos;
+	underline_span_y_in_ = st_.y_pos;
+}
+
+void PclPrinter::flush_underline_span()
+{
+	if (!underline_span_active_)
+		return;
+	draw_underline_range(underline_span_x0_in_, st_.x_pos, underline_span_y_in_);
+	underline_span_active_ = false;
+}
+
+void PclPrinter::restart_underline_span()
+{
+	underline_span_active_ = false;
+	start_underline_span();
+}
+
+void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in)
+{
+	if (x1_in < x0_in)
+		std::swap(x0_in, x1_in);
+	x0_in = std::max(st_.left_margin_in, x0_in);
+	x1_in = std::min(st_.right_margin_in, x1_in);
+	if (x1_in <= x0_in + 0.0001f)
+		return;
+
+	new_page_if_needed();
+	page_dirty_ = true;
+	int dpi = prof_.render_dpi;
+	int y = (int)std::lround((y_in + 1.0f / 72.0f) * (float)dpi);
+	int x0 = (int)std::lround(x0_in * (float)dpi);
+	int x1 = (int)std::lround(x1_in * (float)dpi);
+	for (int x = x0; x < x1; x++) {
+		page_->set_pixel(x, y, 0);
+		page_->set_pixel(x, y + 1, 0);
+	}
+}
+
+void PclPrinter::ljii_carriage_return()
+{
+	flush_underline_span();
+	carriage_return();
+	restart_underline_span();
 }
 
 uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
@@ -1940,6 +2045,7 @@ void PclPrinter::sync_active_font_state()
 
 void PclPrinter::ljii_line_feed()
 {
+	flush_underline_span();
 	flush_pending_line();
 	new_page_if_needed();
 	page_dirty_ = true;
@@ -1954,6 +2060,7 @@ void PclPrinter::ljii_line_feed()
 
 	advance_line_direction();
 	finish_printed_line();
+	restart_underline_span();
 }
 
 void PclPrinter::set_page_size(int code)
@@ -1974,6 +2081,7 @@ void PclPrinter::set_orientation(int orientation)
 
 void PclPrinter::apply_page_geometry()
 {
+	flush_underline_span();
 	PageGeometry geom = pcl_page_geometry(page_size_code_, orientation_);
 	physical_w_in_ = dots_to_in(geom.physical_w);
 	physical_h_in_ = dots_to_in(geom.physical_h);
@@ -1990,10 +2098,12 @@ void PclPrinter::apply_page_geometry()
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
+	restart_underline_span();
 }
 
 void PclPrinter::set_page_length(float length_in)
 {
+	flush_underline_span();
 	physical_h_in_ = length_in;
 	logical_h_in_ = std::max(0.0f, physical_h_in_ - logical_y0_in_);
 	st_.page_height_in = physical_h_in_;
@@ -2002,13 +2112,16 @@ void PclPrinter::set_page_length(float length_in)
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
+	restart_underline_span();
 }
 
 void PclPrinter::publish_current_page()
 {
+	flush_underline_span();
 	if (overlay_enabled_ && !replaying_macro_ &&
 	    macros_.find(overlay_macro_id_) != macros_.end())
 		replay_macro(overlay_macro_id_);
+	flush_underline_span();
 	flush_pending_line();
 	if (page_ && page_dirty_) {
 		int copies = std::max(1, copy_count_);

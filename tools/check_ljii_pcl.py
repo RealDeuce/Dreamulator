@@ -109,6 +109,14 @@ def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0):
     return min_x, min_y, max_x, max_y
 
 
+def ppm_pixel(pdf, stem, x, y, dpi=72):
+    width, height, pixels = ppm_image(pdf, stem, dpi)
+    if x < 0 or y < 0 or x >= width or y >= height:
+        raise AssertionError("pixel sample outside rendered image")
+    off = (y * width + x) * 3
+    return pixels[off:off + 3]
+
+
 def write(path, data):
     path.write_bytes(data)
     return path
@@ -196,6 +204,17 @@ def main():
         if ppm_sha256(upright_pdf, tmp / "upright", dpi=150) == \
            ppm_sha256(italic_pdf, tmp / "italic", dpi=150):
             raise AssertionError("italic font request did not affect pixels")
+
+        underline_span = write(tmp / "underline-span.pcl",
+                               ESC + b"&d3D" + b"A\tB" +
+                               ESC + b"&d@" + FF)
+        underline_span_pdf = tmp / "underline-span.pdf"
+        render(dreamprint, underline_span, underline_span_pdf)
+        if "AB" not in "".join(pdftotext(underline_span_pdf).split()):
+            raise AssertionError("underline span text did not extract")
+        if ppm_pixel(underline_span_pdf, tmp / "underline-span",
+                     150, 114, dpi=300) == b"\xff\xff\xff":
+            raise AssertionError("underline span did not cover tab gap")
 
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +
