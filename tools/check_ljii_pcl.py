@@ -211,6 +211,46 @@ def main():
                       dpi=150):
             raise AssertionError("invalid resource header installed a glyph")
 
+        resource_header = bytes.fromhex(
+            "00 01 02 01 ff ff 00 04 00 06 00 09 01 05 12 34"
+            " 50 00 30 00 00 20 99 ab f0 cd 01 02 03 04 05 06"
+            " 00 07 00 08 00 00 00 09 ee f0 00 0a 00 0b 00 0c"
+            " 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 50"
+        )
+
+        def resource_width_case(name, header):
+            stream = (
+                ESC + b"*c4660D" +
+                ESC + b"*c33E" +
+                header +
+                ESC + b")s3W" + b"\xff\xff\xff" +
+                ESC + b"(4660X" +
+                b"!" + FF
+            )
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            if pdftotext(pdf).strip() != "!":
+                raise AssertionError(f"{name} resource text did not extract")
+            box = ppm_bbox(pdf, tmp / name, dpi=300)
+            if box is None:
+                raise AssertionError(f"{name} resource render is blank")
+            return box[2] - box[0] + 1
+
+        no_resource_width = resource_width_case("soft-no-resource", b"")
+        type1_width = resource_width_case(
+            "soft-type1-resource",
+            ESC + b")s80W" + resource_header + bytes(16),
+        )
+        type2_width = resource_width_case(
+            "soft-type2-resource",
+            ESC + b")s80W" + resource_header[:3] + b"\x02" +
+            resource_header[4:] + bytes(16),
+        )
+        if not (type1_width == type2_width and
+                type1_width < no_resource_width):
+            raise AssertionError("resource header did not select glyph shape")
+
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +
                                ESC + b"*r0A" +

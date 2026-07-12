@@ -287,6 +287,13 @@ bool looks_like_ljii_font_resource_header(const std::vector<uint8_t> &payload)
 	return true;
 }
 
+uint16_t be16_at(const std::vector<uint8_t> &payload, size_t off)
+{
+	if (off + 1 >= payload.size())
+		return 0;
+	return (uint16_t)(((uint16_t)payload[off] << 8) | payload[off + 1]);
+}
+
 } // namespace
 
 class PclPrinter : public PrinterSim {
@@ -327,6 +334,10 @@ private:
 		int id = 0;
 		bool active = false;
 		bool permanent = false;
+		bool resource_header_active = false;
+		uint8_t resource_type = 0;
+		uint16_t resource_first = 0;
+		uint16_t resource_last = 0x7f;
 		int symbol_set = kSymbolRoman8;
 		std::map<uint8_t, SoftGlyph> glyphs;
 	};
@@ -1584,6 +1595,43 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
+	if (looks_like_ljii_font_resource_header(payload)) {
+		if (payload.size() < 64)
+			return;
+		uint8_t resource_type = payload[3];
+		uint16_t first = be16_at(payload, 6);
+		uint16_t line_count = be16_at(payload, 8);
+		uint16_t last = be16_at(payload, 10);
+		uint8_t font_class = payload[12];
+		if (resource_type > 2 || first > 0x1067 ||
+		    line_count == 0 || line_count > 0x1068 ||
+		    last == 0 || last > 0x1068 || first > (uint16_t)(last - 1) ||
+		    font_class > 1)
+			return;
+
+		font.resource_header_active = true;
+		font.resource_type = resource_type;
+		font.resource_first = first;
+		font.resource_last = resource_type == 0 ? 0x007f : 0x00ff;
+		font.symbol_set = be16_at(payload, 14);
+		if (font.symbol_set == 0)
+			font.symbol_set = kSymbolRoman8;
+		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
+			LjiiFontRequest &req = font_request(download_font_slot_);
+			req.symbol_set = font.symbol_set;
+			req.spacing = payload[13] ? 1 : 0;
+			uint16_t pitch = be16_at(payload, 16);
+			uint16_t height = be16_at(payload, 18);
+			if (pitch > 0)
+				req.pitch = std::min<int>(pitch, 0x41a0);
+			if (height > 0)
+				req.height = std::min<int>(height, 0x2aaa);
+		}
+		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
+		return;
+	}
+
 	if (payload.size() >= 64 && soft_char_code_ <= 0x20) {
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
@@ -1609,9 +1657,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
-	if (looks_like_ljii_font_resource_header(payload))
-		return;
-
 	SoftGlyph glyph;
 	if (payload.size() >= 14 && payload[4] == 0x0c &&
 	    (payload[5] == 1 || payload[5] == 2)) {
@@ -1619,6 +1664,10 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
 		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
 		glyph.bitmap.assign(payload.begin() + 12, payload.end());
+	} else if (font.resource_header_active && payload.size() == 3) {
+		glyph.width = 4;
+		glyph.span = 1;
+		glyph.rows = 3;
 	} else if (payload.size() == 18) {
 		glyph.width = 144;
 		glyph.span = 18;
