@@ -719,7 +719,6 @@ void PclPrinter::process_escape(uint8_t b)
 		flush_underline_span();
 		st_.left_margin_in = logical_x0_in_;
 		st_.right_margin_in = logical_x0_in_ + logical_w_in_;
-		st_.x_pos = st_.left_margin_in;
 		restart_underline_span();
 		state_ = State::Normal;
 		return;

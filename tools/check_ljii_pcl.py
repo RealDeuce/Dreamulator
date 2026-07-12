@@ -242,6 +242,20 @@ def main():
                       dpi=150):
             raise AssertionError("negative right margin did not match positive value")
 
+        margin_reset_plain = write(tmp / "margin-reset-plain.pcl",
+                                   ESC + b"&a20C" + b"!" + FF)
+        margin_reset_esc9 = write(tmp / "margin-reset-esc9.pcl",
+                                  ESC + b"&a20C" + ESC + b"9" + b"!" + FF)
+        margin_reset_plain_pdf = tmp / "margin-reset-plain.pdf"
+        margin_reset_esc9_pdf = tmp / "margin-reset-esc9.pdf"
+        render(dreamprint, margin_reset_plain, margin_reset_plain_pdf)
+        render(dreamprint, margin_reset_esc9, margin_reset_esc9_pdf)
+        if ppm_sha256(margin_reset_plain_pdf, tmp / "margin-reset-plain",
+                      dpi=150) != \
+           ppm_sha256(margin_reset_esc9_pdf, tmp / "margin-reset-esc9",
+                      dpi=150):
+            raise AssertionError("ESC 9 moved current x before a consumer")
+
         cursor_pop_positive = write(tmp / "cursor-pop-positive.pcl",
                                     ESC + b"&a20C" + ESC + b"&f0S" +
                                     ESC + b"&a30C" + ESC + b"&f1S" +
