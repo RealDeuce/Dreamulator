@@ -203,6 +203,19 @@ def main():
         if "".join(pdftotext(control_z_pdf).split()) != "AB":
             raise AssertionError("normal Control-Z X leaked printable text")
 
+        raster_query = write(tmp / "raster-query.pcl",
+                             ESC + b"*r1K" + b"QAB" + FF)
+        model_query = write(tmp / "model-query.pcl",
+                            ESC + b"*s1^" + b"QAB" + FF)
+        raster_query_pdf = tmp / "raster-query.pdf"
+        model_query_pdf = tmp / "model-query.pdf"
+        render(dreamprint, raster_query, raster_query_pdf)
+        render(dreamprint, model_query, model_query_pdf)
+        if "".join(pdftotext(raster_query_pdf).split()) != "AB":
+            raise AssertionError("raster query byte leaked printable text")
+        if "".join(pdftotext(model_query_pdf).split()) != "AB":
+            raise AssertionError("model query byte leaked printable text")
+
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)
         same_orientation_pdf = tmp / "same-orientation.pdf"

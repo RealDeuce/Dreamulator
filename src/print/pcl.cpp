@@ -317,6 +317,7 @@ private:
 		DisplayFunctions,
 		DownloadData,
 		ControlZ,
+		StatusQuery,
 	};
 
 	struct Macro {
@@ -574,7 +575,7 @@ void PclPrinter::parse_byte(uint8_t b)
 			param_relative_ = false;
 			state_ = State::Parameterized;
 			process_parameter_byte(b);
-		} else if ((b >= 'A' && b <= 'Z') || b == '@') {
+		} else if (b >= '@' && b <= '^') {
 			subgroup_ = 0;
 			param_pos_ = 0;
 			param_buf_[0] = 0;
@@ -603,6 +604,9 @@ void PclPrinter::parse_byte(uint8_t b)
 		} else if (b == 0x58) {
 			/* Synthetic 0x100 route: consume the pair without printing X. */
 		}
+		state_ = State::Normal;
+		return;
+	case State::StatusQuery:
 		state_ = State::Normal;
 		return;
 	}
@@ -782,7 +786,7 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 	double value = param_pos_ > 0 ? std::atof(param_buf_) : 0.0;
 	current_param_relative_ = param_relative_;
 
-	if ((b >= 'A' && b <= 'Z') || b == '@') {
+	if (b >= '@' && b <= '^') {
 		apply_param(group_, subgroup_, value, static_cast<char>(b));
 		if (state_ == State::Parameterized)
 			state_ = State::Normal;
@@ -1170,6 +1174,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'B':
 			raster_active_ = false;
 			break;
+		case 'K':
+			state_ = State::StatusQuery;
+			break;
 		case 'S':
 			break;
 		case 'T':
@@ -1194,6 +1201,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		default:
 			break;
 		}
+	} else if (group == '*' && subgroup == 's') {
+		if (term == '^')
+			state_ = State::StatusQuery;
 	} else if (group == '*' && subgroup == 'c') {
 		switch (term) {
 		case 'A':
