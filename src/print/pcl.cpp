@@ -1198,8 +1198,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		}
 	} else if (group == '*' && subgroup == 't') {
-		if (term == 'R' && ival > 0)
-			set_raster_resolution(ival);
+		if (term == 'R')
+			set_raster_resolution(std::abs(ival));
 	} else if (group == '*' && subgroup == 'r') {
 		switch (term) {
 		case 'A':

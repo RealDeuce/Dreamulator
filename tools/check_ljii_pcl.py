@@ -584,6 +584,24 @@ def main():
         if not (0 < cap_pixels < full_pixels):
             raise AssertionError("raster transfer cap did not reduce row")
 
+        raster_150 = write(tmp / "raster-150.pcl",
+                           ESC + b"*t150R" +
+                           ESC + b"*r0A" +
+                           ESC + b"*b2W" +
+                           bytes([0xf0, 0x0f]) + FF)
+        raster_neg_150 = write(tmp / "raster-neg-150.pcl",
+                               ESC + b"*t-150R" +
+                               ESC + b"*r0A" +
+                               ESC + b"*b2W" +
+                               bytes([0xf0, 0x0f]) + FF)
+        raster_150_pdf = tmp / "raster-150.pdf"
+        raster_neg_150_pdf = tmp / "raster-neg-150.pdf"
+        render(dreamprint, raster_150, raster_150_pdf)
+        render(dreamprint, raster_neg_150, raster_neg_150_pdf)
+        if ppm_sha256(raster_150_pdf, tmp / "raster-150", dpi=300) != \
+           ppm_sha256(raster_neg_150_pdf, tmp / "raster-neg-150", dpi=300):
+            raise AssertionError("negative raster resolution did not match positive")
+
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
         for _ in range(30):
