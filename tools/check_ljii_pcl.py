@@ -389,6 +389,15 @@ def main():
         if pdf_pages(page_length_zero_pdf) != 2:
             raise AssertionError("page-length selector zero did not publish")
 
+        page_length_nonzero = write(tmp / "page-length-nonzero.pcl",
+                                    b"A" + ESC + b"&l66P" + b"B" + FF)
+        page_length_nonzero_pdf = tmp / "page-length-nonzero.pdf"
+        render(dreamprint, page_length_nonzero, page_length_nonzero_pdf)
+        if pdf_pages(page_length_nonzero_pdf) != 2:
+            raise AssertionError("nonzero page length did not publish")
+        if "AB" not in "".join(pdftotext(page_length_nonzero_pdf).split()):
+            raise AssertionError("nonzero page length lost text")
+
         macro_execute = write(tmp / "macro-execute.pcl",
                               ESC + b"&f321Y" +
                               ESC + b"&f0X" + b"!\r" +

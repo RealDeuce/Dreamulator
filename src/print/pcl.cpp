@@ -385,6 +385,7 @@ private:
 	void set_page_size(int code);
 	void set_orientation(int orientation);
 	void apply_page_geometry();
+	void set_page_length(float length_in);
 	void publish_current_page();
 	bool capture_macro_definition_byte(uint8_t b);
 	void replay_macro(int id);
@@ -832,10 +833,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'P':
 			if (value > 0.0) {
-				physical_h_in_ = std::max(1.0f, (float)value * vmi_in_);
-				set_orientation(orientation_);
-				update_vfc_bounds();
-				rebuild_default_vfc_table();
+				publish_current_page();
+				set_page_length(std::max(1.0f, (float)value * vmi_in_));
 			} else if (ival == 0) {
 				set_page_size(page_size_code_);
 			}
@@ -1986,6 +1985,18 @@ void PclPrinter::apply_page_geometry()
 	st_.page_height_in = physical_h_in_;
 	st_.left_margin_in = logical_x0_in_;
 	st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+	st_.top_margin_in = logical_y0_in_;
+	st_.x_pos = st_.left_margin_in;
+	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	update_vfc_bounds();
+	rebuild_default_vfc_table();
+}
+
+void PclPrinter::set_page_length(float length_in)
+{
+	physical_h_in_ = length_in;
+	logical_h_in_ = std::max(0.0f, physical_h_in_ - logical_y0_in_);
+	st_.page_height_in = physical_h_in_;
 	st_.top_margin_in = logical_y0_in_;
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
