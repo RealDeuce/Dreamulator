@@ -136,6 +136,16 @@ def main():
         if pdf_pages(overflow_pdf) != 3:
             raise AssertionError("copy-count overflow did not publish 3 pages")
 
+        overlay = write(tmp / "overlay.pcl",
+                        ESC + b"&f123Y" +
+                        ESC + b"&f0X" + b"!\r" +
+                        ESC + b"&f1X" +
+                        ESC + b"&f4X" + b"Live\r" + FF)
+        overlay_pdf = tmp / "overlay.pdf"
+        render(dreamprint, overlay, overlay_pdf)
+        if "Live!" not in pdftotext(overlay_pdf):
+            raise AssertionError("macro overlay did not replay at publication")
+
     print("ok: LaserJet II PCL regression checks passed")
 
 

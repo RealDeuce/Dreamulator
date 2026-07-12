@@ -347,8 +347,10 @@ private:
 	bool wrap_enabled_ = true;
 
 	int macro_id_ = 0;
+	int overlay_macro_id_ = 0;
 	bool defining_macro_ = false;
 	bool replaying_macro_ = false;
+	bool overlay_enabled_ = false;
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
@@ -411,8 +413,10 @@ void PclPrinter::reset_ljii_state()
 	copy_count_ = 1;
 	wrap_enabled_ = true;
 	macro_id_ = 0;
+	overlay_macro_id_ = 0;
 	defining_macro_ = false;
 	replaying_macro_ = false;
+	overlay_enabled_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
@@ -901,10 +905,27 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				macro_stop_buf_.clear();
 			} else if (ival == 2 || ival == 3) {
 				replay_macro(macro_id_);
+			} else if (ival == 4) {
+				overlay_macro_id_ = macro_id_;
+				overlay_enabled_ = true;
+			} else if (ival == 5) {
+				overlay_enabled_ = false;
 			} else if (ival == 6) {
 				macros_.clear();
+				overlay_enabled_ = false;
+			} else if (ival == 7) {
+				std::vector<int> ids;
+				for (const auto &entry : macros_)
+					if (!entry.second.permanent)
+						ids.push_back(entry.first);
+				for (int id : ids)
+					macros_.erase(id);
+				if (macros_.find(overlay_macro_id_) == macros_.end())
+					overlay_enabled_ = false;
 			} else if (ival == 8) {
 				macros_.erase(macro_id_);
+				if (overlay_macro_id_ == macro_id_)
+					overlay_enabled_ = false;
 			} else if (ival == 9 || ival == 10) {
 				macros_[macro_id_].permanent = (ival == 10);
 			}
@@ -1716,6 +1737,9 @@ void PclPrinter::set_orientation(int orientation)
 
 void PclPrinter::publish_current_page()
 {
+	if (overlay_enabled_ && !replaying_macro_ &&
+	    macros_.find(overlay_macro_id_) != macros_.end())
+		replay_macro(overlay_macro_id_);
 	flush_pending_line();
 	if (page_ && page_dirty_) {
 		int copies = std::max(1, copy_count_);
