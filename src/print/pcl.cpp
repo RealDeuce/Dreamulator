@@ -1255,11 +1255,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			rect_h_in_ = std::max(0.0f, (float)value / kDotsPerIn);
 			break;
 		case 'D':
-			soft_font_id_ = ival;
+			soft_font_id_ = std::min(0x7fff, std::abs(ival));
 			current_soft_font();
 			break;
 		case 'E':
-			soft_char_code_ = (uint8_t)(ival & 0xff);
+			soft_char_code_ = (uint8_t)(std::min(0x7fff, std::abs(ival)) & 0xff);
 			break;
 		case 'F':
 			if (ival == 0 || ival == 1 || ival == 3 || ival == 6) {

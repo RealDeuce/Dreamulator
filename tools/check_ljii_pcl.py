@@ -422,12 +422,25 @@ def main():
                          "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
                          "24 db 42 bd 66 99") +
                      ESC + b"(4660X" + b")" + FF)
+        soft_negative = write(tmp / "soft-negative.pcl",
+                              ESC + b"*c-4660D" +
+                              ESC + b"*c-41E" +
+                              ESC + b")s18W" +
+                              bytes.fromhex(
+                                  "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                                  "24 db 42 bd 66 99") +
+                              ESC + b"(4660X" + b")" + FF)
         soft_pdf = tmp / "soft.pdf"
+        soft_negative_pdf = tmp / "soft-negative.pdf"
         render(dreamprint, soft, soft_pdf)
+        render(dreamprint, soft_negative, soft_negative_pdf)
         if ")" not in pdftotext(soft_pdf):
             raise AssertionError("downloaded glyph text did not extract")
         if ppm_nonwhite(soft_pdf, tmp / "soft") < 5:
             raise AssertionError("downloaded glyph render looks blank")
+        if ppm_sha256(soft_pdf, tmp / "soft", dpi=150) != \
+           ppm_sha256(soft_negative_pdf, tmp / "soft-negative", dpi=150):
+            raise AssertionError("negative downloaded font id/code did not normalize")
 
         invalid_resource = (
             ESC + b"*c33E" +
