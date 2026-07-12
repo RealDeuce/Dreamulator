@@ -384,6 +384,7 @@ private:
 	void ljii_line_feed();
 	void set_page_size(int code);
 	void set_orientation(int orientation);
+	void apply_page_geometry();
 	void publish_current_page();
 	bool capture_macro_definition_byte(uint8_t b);
 	void replay_macro(int id);
@@ -1960,16 +1961,20 @@ void PclPrinter::set_page_size(int code)
 {
 	publish_current_page();
 	page_size_code_ = code;
-	PageGeometry geom = pcl_page_geometry(code, orientation_);
-	physical_w_in_ = dots_to_in(geom.physical_w);
-	physical_h_in_ = dots_to_in(geom.physical_h);
-	set_orientation(orientation_);
+	apply_page_geometry();
 }
 
 void PclPrinter::set_orientation(int orientation)
 {
+	if (orientation < 0 || orientation > 1 || orientation == orientation_)
+		return;
 	publish_current_page();
-	orientation_ = orientation & 1;
+	orientation_ = orientation;
+	apply_page_geometry();
+}
+
+void PclPrinter::apply_page_geometry()
+{
 	PageGeometry geom = pcl_page_geometry(page_size_code_, orientation_);
 	physical_w_in_ = dots_to_in(geom.physical_w);
 	physical_h_in_ = dots_to_in(geom.physical_h);

@@ -176,6 +176,15 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        same_orientation = write(tmp / "same-orientation.pcl",
+                                 b"A" + ESC + b"&l0O" + b"B" + FF)
+        same_orientation_pdf = tmp / "same-orientation.pdf"
+        render(dreamprint, same_orientation, same_orientation_pdf)
+        if pdf_pages(same_orientation_pdf) != 1:
+            raise AssertionError("unchanged orientation published a page")
+        if "AB" not in "".join(pdftotext(same_orientation_pdf).split()):
+            raise AssertionError("unchanged orientation shifted text output")
+
         upright = write(tmp / "upright.pcl",
                         ESC + b"(s0p10h0s0b3TItalic sample" + FF)
         italic = write(tmp / "italic.pcl",
