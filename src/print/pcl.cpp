@@ -1960,7 +1960,7 @@ void PclPrinter::update_vfc_bounds()
 	float line0 = st_.top_margin_in + st_.line_spacing_in;
 	float available = std::max(0.0f, st_.page_height_in - line0);
 	float vmi = std::max(1.0f / 300.0f, vmi_in_);
-	vfc_last_line_ = std::max(0, std::min(127, (int)std::floor(available / vmi)));
+	vfc_last_line_ = std::max(0, (int)std::floor(available / vmi));
 
 	float text_available = std::max(0.0f, text_length_in_ - st_.line_spacing_in);
 	vfc_text_last_line_ = std::max(0, std::min(vfc_last_line_,
@@ -1975,14 +1975,15 @@ void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
 		rebuild_default_vfc_table();
 		return;
 	}
-	if ((payload.size() & 1) || payload.size() > 256 ||
-	    payload.size() > (size_t)(vfc_last_line_ + 1) * 2)
+	size_t table_window = (size_t)std::max(0, vfc_last_line_ + 1) * 2;
+	if ((payload.size() & 1) || payload.size() > table_window)
 		return;
 
 	if (vfc_table_.size() != 128)
 		vfc_table_.assign(128, 0);
 	std::fill(vfc_table_.begin(), vfc_table_.end(), 0);
-	for (size_t i = 0; i + 1 < payload.size(); i += 2) {
+	size_t store = std::min<size_t>(payload.size(), 256);
+	for (size_t i = 0; i + 1 < store; i += 2) {
 		uint16_t word = (uint16_t)(((uint16_t)payload[i] << 8) | payload[i + 1]);
 		vfc_table_[i / 2] = word;
 	}

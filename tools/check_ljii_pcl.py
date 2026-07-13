@@ -3008,6 +3008,29 @@ def main():
         if "AB" not in "".join(pdftotext(vfc_target_after_text_pdf).split()):
             raise AssertionError("VFC target-after-text lost selectable text")
 
+        vfc_256_table = bytearray(b"\x00\x00" * 128)
+        vfc_256_table[2:4] = b"\x00\x02"
+        vfc_oversize_store = write(
+            tmp / "vfc-oversize-store.pcl",
+            ESC + b"&l48D" +
+            ESC + b"&l258W" + bytes(vfc_256_table) + b"\xff\xff" +
+            ESC + b"&l2V" + b"!" + FF)
+        vfc_256_store = write(
+            tmp / "vfc-256-store.pcl",
+            ESC + b"&l48D" +
+            ESC + b"&l256W" + bytes(vfc_256_table) +
+            ESC + b"&l2V" + b"!" + FF)
+        vfc_oversize_store_pdf = tmp / "vfc-oversize-store.pdf"
+        vfc_256_store_pdf = tmp / "vfc-256-store.pdf"
+        render(dreamprint, vfc_oversize_store, vfc_oversize_store_pdf)
+        render(dreamprint, vfc_256_store, vfc_256_store_pdf)
+        if ppm_sha256(vfc_oversize_store_pdf,
+                      tmp / "vfc-oversize-store", dpi=150) != \
+           ppm_sha256(vfc_256_store_pdf, tmp / "vfc-256-store", dpi=150):
+            raise AssertionError("oversized accepted VFC table did not store first 256 bytes")
+        if pdftotext(vfc_oversize_store_pdf).strip() != "!":
+            raise AssertionError("oversized VFC table lost following text")
+
         vfc_probe_x = write(tmp / "vfc-probe-x.pcl",
                             ESC + b"&l4W" + b"\x1aX\x00\x00\x02" +
                             ESC + b"&l2V" + b"!" + FF)
