@@ -3202,6 +3202,29 @@ def main():
         if "AB" not in "".join(pdftotext(vfc_target_after_text_pdf).split()):
             raise AssertionError("VFC target-after-text lost selectable text")
 
+        vfc_selector_zero_eject = write(tmp / "vfc-selector-zero-eject.pcl",
+                                        b"A" + ESC + b"&l0V" + b"B" + FF)
+        vfc_selector_zero_start_after_text = write(
+            tmp / "vfc-selector-zero-start-after-text.pcl",
+            b"A" + ESC + b"&a64R" + ESC + b"&l0V" + b"B" + FF)
+        vfc_selector_zero_eject_pdf = tmp / "vfc-selector-zero-eject.pdf"
+        vfc_selector_zero_start_after_text_pdf = \
+            tmp / "vfc-selector-zero-start-after-text.pdf"
+        render(dreamprint, vfc_selector_zero_eject,
+               vfc_selector_zero_eject_pdf)
+        render(dreamprint, vfc_selector_zero_start_after_text,
+               vfc_selector_zero_start_after_text_pdf)
+        if pdf_pages(vfc_selector_zero_eject_pdf) != 2:
+            raise AssertionError("VFC selector-zero did not publish old page")
+        if pdf_pages(vfc_selector_zero_start_after_text_pdf) != 1:
+            raise AssertionError("VFC selector-zero start-after-text published")
+        if "AB" not in "".join(pdftotext(vfc_selector_zero_eject_pdf).split()):
+            raise AssertionError("VFC selector-zero eject lost selectable text")
+        if "AB" not in "".join(
+                pdftotext(vfc_selector_zero_start_after_text_pdf).split()):
+            raise AssertionError(
+                "VFC selector-zero start-after-text lost selectable text")
+
         vfc_256_table = bytearray(b"\x00\x00" * 128)
         vfc_256_table[2:4] = b"\x00\x02"
         vfc_oversize_store = write(
