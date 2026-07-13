@@ -2736,7 +2736,6 @@ void PclPrinter::set_orientation(int orientation)
 	publish_current_page();
 	orientation_ = orientation;
 	apply_page_geometry();
-	sync_active_font_state();
 }
 
 void PclPrinter::apply_page_geometry()
@@ -2761,6 +2760,7 @@ void PclPrinter::apply_page_geometry()
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
+	sync_active_font_state();
 }
 
 void PclPrinter::set_page_length(float length_in)
@@ -2777,6 +2777,7 @@ void PclPrinter::set_page_length(float length_in)
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
+	sync_active_font_state();
 }
 
 void PclPrinter::publish_current_page()

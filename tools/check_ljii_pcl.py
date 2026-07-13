@@ -1311,6 +1311,22 @@ def main():
                       dpi=72):
             raise AssertionError("fractional page-size selector rounded")
 
+        page_size_hmi_base = write(tmp / "page-size-hmi-base.pcl",
+                                   ESC + b"&l3A" + b"!!" + FF)
+        page_size_hmi_refresh = write(tmp / "page-size-hmi-refresh.pcl",
+                                      ESC + b"&k6H" + ESC + b"&l3A" +
+                                      b"!!" + FF)
+        page_size_hmi_base_pdf = tmp / "page-size-hmi-base.pdf"
+        page_size_hmi_refresh_pdf = tmp / "page-size-hmi-refresh.pdf"
+        render(dreamprint, page_size_hmi_base, page_size_hmi_base_pdf)
+        render(dreamprint, page_size_hmi_refresh,
+               page_size_hmi_refresh_pdf)
+        if ppm_sha256(page_size_hmi_base_pdf,
+                      tmp / "page-size-hmi-base", dpi=150) != \
+           ppm_sha256(page_size_hmi_refresh_pdf,
+                      tmp / "page-size-hmi-refresh", dpi=150):
+            raise AssertionError("page-size change did not refresh HMI")
+
         upright = write(tmp / "upright.pcl",
                         ESC + b"(s0p10h0s0b3TStyle sample" + FF)
         style_request = write(tmp / "style-request.pcl",
@@ -2482,6 +2498,22 @@ def main():
             raise AssertionError("negative page length did not match positive selector")
         if "AB" not in "".join(pdftotext(page_length_negative_pdf).split()):
             raise AssertionError("negative page length lost text")
+
+        page_length_hmi_base = write(tmp / "page-length-hmi-base.pcl",
+                                     ESC + b"&l66P" + b"!!" + FF)
+        page_length_hmi_refresh = write(tmp / "page-length-hmi-refresh.pcl",
+                                        ESC + b"&k6H" + ESC + b"&l66P" +
+                                        b"!!" + FF)
+        page_length_hmi_base_pdf = tmp / "page-length-hmi-base.pdf"
+        page_length_hmi_refresh_pdf = tmp / "page-length-hmi-refresh.pdf"
+        render(dreamprint, page_length_hmi_base, page_length_hmi_base_pdf)
+        render(dreamprint, page_length_hmi_refresh,
+               page_length_hmi_refresh_pdf)
+        if ppm_sha256(page_length_hmi_base_pdf,
+                      tmp / "page-length-hmi-base", dpi=150) != \
+           ppm_sha256(page_length_hmi_refresh_pdf,
+                      tmp / "page-length-hmi-refresh", dpi=150):
+            raise AssertionError("page-length change did not refresh HMI")
 
         page_length_invalid = write(tmp / "page-length-invalid.pcl",
                                     b"A" + ESC + b"&l999P" + b"B" + FF)
