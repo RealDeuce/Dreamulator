@@ -168,6 +168,13 @@ int pcl_symbol_value(int value, char term)
 	return value;
 }
 
+int ljii_default_symbol_word(int slot, int orientation)
+{
+	if (slot != 0)
+		return 0x000e;
+	return (orientation & 1) ? 0x0155 : 0x0005;
+}
+
 struct SymbolPatch {
 	int symbol;
 	uint8_t dst;
@@ -1404,12 +1411,26 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		int slot = group == ')' ? 1 : 0;
 		if (term == '@') {
 			ival = pcl_integer_word(value);
-			if (ival <= 2) {
-				font_request(slot).symbol_set = slot == 0
-					? kSymbolRoman8 : 0x000e;
+			if (ival == 0) {
+				font_request(slot).symbol_set =
+					ljii_default_symbol_word(slot, orientation_);
 				selected_soft_font_id_[slot] = -1;
 				if (slot == active_font_slot_)
 					sync_active_font_state();
+			} else if (ival == 1) {
+				font_request(slot).symbol_set =
+					ljii_default_symbol_word(0, orientation_);
+				selected_soft_font_id_[slot] = -1;
+				if (slot == active_font_slot_)
+					sync_active_font_state();
+			} else if (ival == 2) {
+				if (slot != 0) {
+					font_request(slot).symbol_set =
+						font_request(0).symbol_set;
+					selected_soft_font_id_[slot] = -1;
+					if (slot == active_font_slot_)
+						sync_active_font_state();
+				}
 			} else if (ival == 3) {
 				font_request(slot) = LjiiFontRequest{};
 				font_request(slot).secondary = (slot != 0);

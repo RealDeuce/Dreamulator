@@ -1400,6 +1400,64 @@ def main():
            ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
             raise AssertionError("fractional final-@ selector rounded")
 
+        final_at_primary_0 = write(tmp / "final-at-primary-0.pcl",
+                                   ESC + b"(0@" + b"#\\^~" + FF)
+        explicit_primary_0e = write(tmp / "explicit-primary-0e.pcl",
+                                    ESC + b"(0E" + b"#\\^~" + FF)
+        final_at_secondary_1 = write(tmp / "final-at-secondary-1.pcl",
+                                     ESC + b")1@" + b"\x0e" +
+                                     b"#\\^~" + FF)
+        explicit_secondary_0e = write(tmp / "explicit-secondary-0e.pcl",
+                                      ESC + b")0E" + b"\x0e" +
+                                      b"#\\^~" + FF)
+        final_at_secondary_2 = write(tmp / "final-at-secondary-2.pcl",
+                                     ESC + b"(2U" + ESC + b")2@" +
+                                     b"\x0e" + b"$^`~" + FF)
+        explicit_secondary_2u = write(tmp / "explicit-secondary-2u.pcl",
+                                      ESC + b")2U" + b"\x0e" +
+                                      b"$^`~" + FF)
+        final_at_primary_2 = write(tmp / "final-at-primary-2.pcl",
+                                   ESC + b"(1E" + ESC + b"(2@" +
+                                   b"#\\^~" + FF)
+        explicit_primary_1e = write(tmp / "explicit-primary-1e.pcl",
+                                    ESC + b"(1E" + b"#\\^~" + FF)
+        final_at_primary_0_pdf = tmp / "final-at-primary-0.pdf"
+        explicit_primary_0e_pdf = tmp / "explicit-primary-0e.pdf"
+        final_at_secondary_1_pdf = tmp / "final-at-secondary-1.pdf"
+        explicit_secondary_0e_pdf = tmp / "explicit-secondary-0e.pdf"
+        final_at_secondary_2_pdf = tmp / "final-at-secondary-2.pdf"
+        explicit_secondary_2u_pdf = tmp / "explicit-secondary-2u.pdf"
+        final_at_primary_2_pdf = tmp / "final-at-primary-2.pdf"
+        explicit_primary_1e_pdf = tmp / "explicit-primary-1e.pdf"
+        render(dreamprint, final_at_primary_0, final_at_primary_0_pdf)
+        render(dreamprint, explicit_primary_0e, explicit_primary_0e_pdf)
+        render(dreamprint, final_at_secondary_1, final_at_secondary_1_pdf)
+        render(dreamprint, explicit_secondary_0e, explicit_secondary_0e_pdf)
+        render(dreamprint, final_at_secondary_2, final_at_secondary_2_pdf)
+        render(dreamprint, explicit_secondary_2u, explicit_secondary_2u_pdf)
+        render(dreamprint, final_at_primary_2, final_at_primary_2_pdf)
+        render(dreamprint, explicit_primary_1e, explicit_primary_1e_pdf)
+        if ppm_sha256(final_at_primary_0_pdf, tmp / "final-at-primary-0",
+                      dpi=150) != \
+           ppm_sha256(explicit_primary_0e_pdf, tmp / "explicit-primary-0e",
+                      dpi=150):
+            raise AssertionError("final-@0 did not use the primary default-symbol word")
+        if ppm_sha256(final_at_secondary_1_pdf,
+                      tmp / "final-at-secondary-1", dpi=150) != \
+           ppm_sha256(explicit_secondary_0e_pdf,
+                      tmp / "explicit-secondary-0e", dpi=150):
+            raise AssertionError("secondary final-@1 did not use the primary default-symbol word")
+        if ppm_sha256(final_at_secondary_2_pdf,
+                      tmp / "final-at-secondary-2", dpi=150) != \
+           ppm_sha256(explicit_secondary_2u_pdf,
+                      tmp / "explicit-secondary-2u", dpi=150):
+            raise AssertionError("secondary final-@2 did not copy the primary requested word")
+        if ppm_sha256(final_at_primary_2_pdf, tmp / "final-at-primary-2",
+                      dpi=150) != \
+           ppm_sha256(explicit_primary_1e_pdf, tmp / "explicit-primary-1e",
+                      dpi=150):
+            raise AssertionError("primary final-@2 did not preserve the requested word")
+
         font_id_bold = write(tmp / "font-id-bold.pcl",
                              ESC + b"(7X" + b"Stroke sample" + FF)
         font_id_bold_fractional = write(tmp / "font-id-bold-fractional.pcl",
