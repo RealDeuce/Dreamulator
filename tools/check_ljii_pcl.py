@@ -2147,12 +2147,30 @@ def main():
             ESC + b"&f0X" + ESC + b"&a72V" + b"!" +
             ESC + b"&f1X" +
             ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_chained_cursor = write(
+            tmp / "overlay-chained-cursor.pcl",
+            ESC + b"&f134Y" +
+            ESC + b"&f0X" + ESC + b"&a2c+1R" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_chained_margin = write(
+            tmp / "overlay-chained-margin.pcl",
+            ESC + b"&f135Y" +
+            ESC + b"&f0X" + ESC + b"&a6l9M" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
         overlay_mixed_control_pdf = tmp / "overlay-mixed-control.pdf"
         overlay_cursor_pdf = tmp / "overlay-cursor.pdf"
         overlay_vertical_pdf = tmp / "overlay-vertical.pdf"
+        overlay_chained_cursor_pdf = tmp / "overlay-chained-cursor.pdf"
+        overlay_chained_margin_pdf = tmp / "overlay-chained-margin.pdf"
         render(dreamprint, overlay_mixed_control, overlay_mixed_control_pdf)
         render(dreamprint, overlay_cursor, overlay_cursor_pdf)
         render(dreamprint, overlay_vertical, overlay_vertical_pdf)
+        render(dreamprint, overlay_chained_cursor,
+               overlay_chained_cursor_pdf)
+        render(dreamprint, overlay_chained_margin,
+               overlay_chained_margin_pdf)
         if pdftotext(overlay_mixed_control_pdf).count("!") < 2:
             raise AssertionError("mixed-control overlay did not replay CR mode")
 
@@ -2171,22 +2189,71 @@ def main():
             ESC + b"*b2W" + bytes([0xc3, 0x3c]) +
             ESC + b"&f1X" +
             ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_multi_raster = write(
+            tmp / "overlay-multi-raster.pcl",
+            ESC + b"&f136Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*b2W" + bytes([0xf0, 0x0f]) +
+            ESC + b"*b2W" + bytes([0x0f, 0xf0]) +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_span_plain = write(
+            tmp / "overlay-span-plain.pcl",
+            ESC + b"&f137Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + FF)
+        overlay_span_flush = write(
+            tmp / "overlay-span-flush.pcl",
+            ESC + b"&f138Y" +
+            ESC + b"&f0X" + ESC + b"&a6L" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + FF)
         overlay_text_only_pdf = tmp / "overlay-text-only.pdf"
         overlay_raster_pdf = tmp / "overlay-raster.pdf"
+        overlay_multi_raster_pdf = tmp / "overlay-multi-raster.pdf"
+        overlay_span_plain_pdf = tmp / "overlay-span-plain.pdf"
+        overlay_span_flush_pdf = tmp / "overlay-span-flush.pdf"
         render(dreamprint, overlay_text_only, overlay_text_only_pdf)
         render(dreamprint, overlay_raster, overlay_raster_pdf)
+        render(dreamprint, overlay_multi_raster, overlay_multi_raster_pdf)
+        render(dreamprint, overlay_span_plain, overlay_span_plain_pdf)
+        render(dreamprint, overlay_span_flush, overlay_span_flush_pdf)
         text_only_box = ppm_bbox(overlay_text_only_pdf,
                                  tmp / "overlay-text-only", dpi=300)
         cursor_box = ppm_bbox(overlay_cursor_pdf,
                               tmp / "overlay-cursor", dpi=300)
         vertical_box = ppm_bbox(overlay_vertical_pdf,
                                 tmp / "overlay-vertical", dpi=300)
+        chained_cursor_box = ppm_bbox(overlay_chained_cursor_pdf,
+                                      tmp / "overlay-chained-cursor",
+                                      dpi=300)
+        chained_margin_box = ppm_bbox(overlay_chained_margin_pdf,
+                                      tmp / "overlay-chained-margin",
+                                      dpi=300)
+        span_plain_box = ppm_bbox(overlay_span_plain_pdf,
+                                  tmp / "overlay-span-plain", dpi=300)
+        span_flush_box = ppm_bbox(overlay_span_flush_pdf,
+                                  tmp / "overlay-span-flush", dpi=300)
         if text_only_box is None or cursor_box is None or \
            cursor_box[0] >= text_only_box[0]:
             raise AssertionError("cursor-position overlay did not move glyph")
         if text_only_box is None or vertical_box is None or \
            vertical_box[1] >= text_only_box[1]:
             raise AssertionError("vertical-decipoint overlay did not move glyph")
+        if text_only_box is None or chained_cursor_box is None or \
+           chained_cursor_box[0] >= text_only_box[0] or \
+           chained_cursor_box[3] <= text_only_box[3]:
+            raise AssertionError("chained cursor-position overlay did not move glyph")
+        if text_only_box is None or chained_margin_box is None or \
+           chained_margin_box[0] >= text_only_box[0] or \
+           chained_margin_box[3] <= text_only_box[3]:
+            raise AssertionError("chained margin overlay did not move glyph")
+        if span_plain_box is None or span_flush_box is None or \
+           span_flush_box[0] <= span_plain_box[0]:
+            raise AssertionError("span-flush overlay did not apply left margin")
         if ppm_nonwhite(overlay_transparent_pdf,
                         tmp / "overlay-transparent", dpi=300) <= \
            ppm_nonwhite(overlay_text_only_pdf,
@@ -2200,6 +2267,11 @@ def main():
            ppm_nonwhite(overlay_text_only_pdf,
                         tmp / "overlay-text-only", dpi=300):
             raise AssertionError("raster overlay payload did not add pixels")
+        if ppm_nonwhite(overlay_multi_raster_pdf,
+                        tmp / "overlay-multi-raster", dpi=300) <= \
+           ppm_nonwhite(overlay_raster_pdf, tmp / "overlay-raster",
+                        dpi=300):
+            raise AssertionError("multi-row raster overlay did not add pixels")
 
     print("ok: LaserJet II PCL regression checks passed")
 
