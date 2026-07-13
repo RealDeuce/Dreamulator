@@ -28,7 +28,7 @@ Implemented font and pitch modes covered by the samples:
 - Epson LQ-500: draft Roman, LQ Roman, LQ Sans Serif; 10 cpi, 12 cpi,
   15 cpi, condensed, proportional
 - HP LaserJet II attributes: 10 cpi, 12 cpi, line-printer pitch, bold,
-  italic, and underline
+  style-selection requests, and underline
 - HP LaserJet II smoke sample: PCL4 text, underline, cursor positioning,
   rectangle/rule graphics, raster rows, transparent print data, page size, and
   orientation

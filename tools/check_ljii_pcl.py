@@ -177,6 +177,8 @@ def main():
         ):
             if needle not in text:
                 raise AssertionError(f"sample text missing {needle!r}")
+        if text.count("The quick brown fox jumps 0123456789") < 36:
+            raise AssertionError("sample matrix lost complete selectable text rows")
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 

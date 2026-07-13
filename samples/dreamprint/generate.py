@@ -601,17 +601,19 @@ def build_ljii_text_attributes() -> bytes:
         for underline in ("off", "fixed", "floating"):
             for style_request in (False, True):
                 for bold in (False, True):
-                    out += ljii_plain()
-                    out += ljii_font(pitch_mode, style_request, bold)
-                    out += ljii_underline(underline)
                     attrs = [title]
                     attrs.append("style-1 request" if style_request else
                                  "style-0 request")
                     attrs.append("stroke-3B" if bold else "stroke-0B")
                     if underline != "off":
-                        attrs.append(underline + "-underline")
-                    out += (" / ".join(attrs) + ": ").encode("ascii")
+                        attrs.append(underline + " underline")
+                    out += ljii_plain()
+                    out += (" / ".join(attrs) + "\r\n").encode("ascii")
+                    out += ljii_font(pitch_mode, style_request, bold)
+                    out += ljii_underline(underline)
                     out += sample_text() + b"\r\n"
+                    out += ljii_plain()
+                    out += b"\r\n"
         out += b"\r\n"
 
     out += ljii_plain()
