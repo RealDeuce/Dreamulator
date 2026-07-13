@@ -1068,6 +1068,24 @@ def main():
         if "F24" not in pdftotext(perf_text_short_pdf):
             raise AssertionError("text length overflow lost selectable text")
 
+        half_feed_text = bytearray()
+        for i in range(20):
+            half_feed_text += f"H{i:02d}".encode("ascii") + ESC + b"=\r"
+        half_feed_default = write(tmp / "half-feed-default.pcl",
+                                  ESC + b"&l1L" +
+                                  bytes(half_feed_text) + FF)
+        half_feed_short = write(tmp / "half-feed-short.pcl",
+                                ESC + b"&l1L" + ESC + b"&l4F" +
+                                bytes(half_feed_text) + FF)
+        half_feed_default_pdf = tmp / "half-feed-default.pdf"
+        half_feed_short_pdf = tmp / "half-feed-short.pdf"
+        render(dreamprint, half_feed_default, half_feed_default_pdf)
+        render(dreamprint, half_feed_short, half_feed_short_pdf)
+        if pdf_pages(half_feed_short_pdf) <= pdf_pages(half_feed_default_pdf):
+            raise AssertionError("half-line feed did not honor perforation overflow")
+        if "H19" not in pdftotext(half_feed_short_pdf):
+            raise AssertionError("half-line feed overflow lost selectable text")
+
         lpi_positive = write(tmp / "lpi-positive.pcl",
                              ESC + b"&l8D" + b"A\nB" + FF)
         lpi_negative = write(tmp / "lpi-negative.pcl",

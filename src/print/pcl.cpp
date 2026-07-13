@@ -458,6 +458,7 @@ private:
 	LjiiFontRequest &active_font_request();
 	const LjiiFontRequest &active_font_request() const;
 	void sync_active_font_state();
+	bool ljii_perforation_overflow_check();
 	void ljii_line_feed();
 	void set_page_size(int code);
 	void set_orientation(int orientation);
@@ -797,8 +798,7 @@ void PclPrinter::process_escape(uint8_t b)
 		new_page_if_needed();
 		st_.y_pos += st_.line_spacing_in * 0.5f;
 		clear_pending_cursor_y();
-		if (st_.y_pos >= st_.page_height_in)
-			publish_current_page();
+		ljii_perforation_overflow_check();
 		restart_underline_span();
 		state_ = State::Normal;
 		return;
@@ -2343,6 +2343,16 @@ void PclPrinter::sync_active_font_state()
 	st_.bold = (req.stroke >= 3);
 }
 
+bool PclPrinter::ljii_perforation_overflow_check()
+{
+	if (st_.perf_skip_lines <= 0 || vfc_limit_in_ <= 0.0f)
+		return false;
+	if (st_.y_pos <= vfc_limit_in_)
+		return false;
+	publish_current_page();
+	return true;
+}
+
 void PclPrinter::ljii_line_feed()
 {
 	flush_underline_span();
@@ -2353,10 +2363,10 @@ void PclPrinter::ljii_line_feed()
 	st_.y_pos += st_.line_spacing_in;
 	float bottom = st_.page_height_in - 0.5f;
 	if (st_.perf_skip_lines > 0) {
-		bottom = vfc_limit_in_;
-	}
-	if (bottom > 0.0f && st_.y_pos > bottom)
+		ljii_perforation_overflow_check();
+	} else if (bottom > 0.0f && st_.y_pos > bottom) {
 		publish_current_page();
+	}
 
 	advance_line_direction();
 	finish_printed_line();
