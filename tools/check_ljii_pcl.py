@@ -1583,17 +1583,41 @@ def main():
         vfc_negative = write(tmp / "vfc-negative.pcl",
                              ESC + b"&l-4W" + b"\x00\x00\x00\x02" +
                              b"!" + FF)
+        vfc_fractional = write(tmp / "vfc-fractional.pcl",
+                               ESC + b"&l4.9W" + b"\x00\x00\x00\x02" +
+                               ESC + b"&l2V" + b"!" + FF)
+        vfc_integer = write(tmp / "vfc-integer.pcl",
+                            ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                            ESC + b"&l2V" + b"!" + FF)
         vfc_lower_negative = write(tmp / "vfc-lower-negative.pcl",
                                    ESC + b"&l-4w4W" + b"\x00\x00\x00\x02" +
                                    b"!" + FF)
+        vfc_lower_fractional = write(
+            tmp / "vfc-lower-fractional.pcl",
+            ESC + b"&l4.9w4W" + b"\x00\x00\x00\x02" +
+            ESC + b"&l2V" + b"!" + FF)
         vfc_negative_pdf = tmp / "vfc-negative.pdf"
+        vfc_fractional_pdf = tmp / "vfc-fractional.pdf"
+        vfc_integer_pdf = tmp / "vfc-integer.pdf"
         vfc_lower_negative_pdf = tmp / "vfc-lower-negative.pdf"
+        vfc_lower_fractional_pdf = tmp / "vfc-lower-fractional.pdf"
         render(dreamprint, vfc_negative, vfc_negative_pdf)
+        render(dreamprint, vfc_fractional, vfc_fractional_pdf)
+        render(dreamprint, vfc_integer, vfc_integer_pdf)
         render(dreamprint, vfc_lower_negative, vfc_lower_negative_pdf)
+        render(dreamprint, vfc_lower_fractional, vfc_lower_fractional_pdf)
         if pdftotext(vfc_negative_pdf).strip() != "!":
             raise AssertionError("negative VFC count leaked payload")
+        if ppm_sha256(vfc_fractional_pdf, tmp / "vfc-fractional",
+                      dpi=150) != \
+           ppm_sha256(vfc_integer_pdf, tmp / "vfc-integer", dpi=150):
+            raise AssertionError("fractional VFC count rounded")
         if pdftotext(vfc_lower_negative_pdf).strip() != "!":
             raise AssertionError("lowercase negative VFC count leaked payload")
+        if ppm_sha256(vfc_lower_fractional_pdf,
+                      tmp / "vfc-lower-fractional", dpi=150) != \
+           ppm_sha256(vfc_integer_pdf, tmp / "vfc-integer", dpi=150):
+            raise AssertionError("lowercase fractional VFC count rounded")
 
         vfc_jump_positive = write(tmp / "vfc-jump-positive.pcl",
                                   ESC + b"&l4W" + b"\x00\x00\x00\x02" +
@@ -1601,15 +1625,25 @@ def main():
         vfc_jump_negative = write(tmp / "vfc-jump-negative.pcl",
                                   ESC + b"&l4W" + b"\x00\x00\x00\x02" +
                                   ESC + b"&l-2V" + b"!" + FF)
+        vfc_jump_fractional = write(tmp / "vfc-jump-fractional.pcl",
+                                    ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                                    ESC + b"&l2.9V" + b"!" + FF)
         vfc_jump_positive_pdf = tmp / "vfc-jump-positive.pdf"
         vfc_jump_negative_pdf = tmp / "vfc-jump-negative.pdf"
+        vfc_jump_fractional_pdf = tmp / "vfc-jump-fractional.pdf"
         render(dreamprint, vfc_jump_positive, vfc_jump_positive_pdf)
         render(dreamprint, vfc_jump_negative, vfc_jump_negative_pdf)
+        render(dreamprint, vfc_jump_fractional, vfc_jump_fractional_pdf)
         if ppm_sha256(vfc_jump_positive_pdf, tmp / "vfc-jump-positive",
                       dpi=150) != \
            ppm_sha256(vfc_jump_negative_pdf, tmp / "vfc-jump-negative",
                       dpi=150):
             raise AssertionError("negative VFC channel selector did not match positive")
+        if ppm_sha256(vfc_jump_positive_pdf, tmp / "vfc-jump-positive",
+                      dpi=150) != \
+           ppm_sha256(vfc_jump_fractional_pdf,
+                      tmp / "vfc-jump-fractional", dpi=150):
+            raise AssertionError("fractional VFC channel selector rounded")
 
         vfc_limit_lines = bytearray()
         for i in range(6):

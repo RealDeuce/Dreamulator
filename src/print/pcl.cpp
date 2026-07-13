@@ -938,11 +938,10 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			state_ = State::Normal;
 		param_relative_ = false;
 	} else if (b >= 'a' && b <= 'z') {
-		int lower_value = static_cast<int>(std::lround(value));
 		if (group_ == '*' && subgroup_ == 'b' && b == 'w') {
 			pending_raster_count_ = pcl_integer_word(value);
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
-			pending_vfc_count_ = std::abs(lower_value);
+			pending_vfc_count_ = pcl_integer_word(value);
 		} else if (b == 'w' &&
 		           !(((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
 			pending_drain_count_ = pcl_integer_word(value);
@@ -1053,17 +1052,19 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'V':
-			vfc_channel_jump(std::abs(ival));
+			vfc_channel_jump(pcl_integer_word(value));
 			break;
 		case 'W':
 			if (pending_vfc_count_ >= 0) {
 				ival = pending_vfc_count_;
 				pending_vfc_count_ = -1;
+			} else {
+				ival = pcl_integer_word(value);
 			}
 			if (ival == 0)
 				rebuild_default_vfc_table();
 			else
-				begin_payload(State::VfcData, std::abs(ival));
+				begin_payload(State::VfcData, ival);
 			break;
 		case 'X':
 			ival = pcl_integer_word(value);
