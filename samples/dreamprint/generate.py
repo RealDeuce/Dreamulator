@@ -599,13 +599,14 @@ def build_ljii_text_attributes() -> bytes:
     ]
     for title, pitch_mode in pitch_rows:
         for underline in ("off", "fixed", "floating"):
-            for italic in (False, True):
+            for style_request in (False, True):
                 for bold in (False, True):
                     out += ljii_plain()
-                    out += ljii_font(pitch_mode, italic, bold)
+                    out += ljii_font(pitch_mode, style_request, bold)
                     out += ljii_underline(underline)
                     attrs = [title]
-                    attrs.append("italic-request" if italic else "upright-request")
+                    attrs.append("style-1 request" if style_request else
+                                 "style-0 request")
                     attrs.append("stroke-3B" if bold else "stroke-0B")
                     if underline != "off":
                         attrs.append(underline + "-underline")

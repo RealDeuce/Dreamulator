@@ -880,16 +880,16 @@ def main():
             raise AssertionError("fractional page-size selector rounded")
 
         upright = write(tmp / "upright.pcl",
-                        ESC + b"(s0p10h0s0b3TItalic sample" + FF)
-        italic = write(tmp / "italic.pcl",
-                       ESC + b"(s0p10h1s0b3TItalic sample" + FF)
+                        ESC + b"(s0p10h0s0b3TStyle sample" + FF)
+        style_request = write(tmp / "style-request.pcl",
+                              ESC + b"(s0p10h1s0b3TStyle sample" + FF)
         upright_pdf = tmp / "upright.pdf"
-        italic_pdf = tmp / "italic.pdf"
+        style_request_pdf = tmp / "style-request.pdf"
         render(dreamprint, upright, upright_pdf)
-        render(dreamprint, italic, italic_pdf)
-        if ppm_sha256(upright_pdf, tmp / "upright", dpi=150) == \
-           ppm_sha256(italic_pdf, tmp / "italic", dpi=150):
-            raise AssertionError("italic font request did not affect pixels")
+        render(dreamprint, style_request, style_request_pdf)
+        if ppm_sha256(upright_pdf, tmp / "upright", dpi=150) != \
+           ppm_sha256(style_request_pdf, tmp / "style-request", dpi=150):
+            raise AssertionError("style request synthesized non-ROM glyph pixels")
 
         medium = write(tmp / "medium.pcl",
                        ESC + b"(s0p10h12v0s0b3TStroke sample" + FF)
