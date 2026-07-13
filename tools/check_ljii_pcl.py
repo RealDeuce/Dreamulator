@@ -775,15 +775,24 @@ def main():
                                 ESC + b"(2S" + b"@#[]" + FF)
         symbol_negative = write(tmp / "symbol-negative.pcl",
                                 ESC + b"(-2S" + b"@#[]" + FF)
+        symbol_fractional = write(tmp / "symbol-fractional.pcl",
+                                  ESC + b"(2.9S" + b"@#[]" + FF)
         symbol_positive_pdf = tmp / "symbol-positive.pdf"
         symbol_negative_pdf = tmp / "symbol-negative.pdf"
+        symbol_fractional_pdf = tmp / "symbol-fractional.pdf"
         render(dreamprint, symbol_positive, symbol_positive_pdf)
         render(dreamprint, symbol_negative, symbol_negative_pdf)
+        render(dreamprint, symbol_fractional, symbol_fractional_pdf)
         if ppm_sha256(symbol_positive_pdf, tmp / "symbol-positive",
                       dpi=150) != \
            ppm_sha256(symbol_negative_pdf, tmp / "symbol-negative",
                       dpi=150):
             raise AssertionError("negative symbol-set parameter was not absolute")
+        if ppm_sha256(symbol_positive_pdf, tmp / "symbol-positive",
+                      dpi=150) != \
+           ppm_sha256(symbol_fractional_pdf, tmp / "symbol-fractional",
+                      dpi=150):
+            raise AssertionError("fractional symbol-set parameter rounded")
 
         cursor_stack_clamp = write(tmp / "cursor-stack-clamp.pcl",
                                    ESC + b"&a65R" +
@@ -914,16 +923,22 @@ def main():
         default_font = write(tmp / "default-font.pcl",
                              ESC + b"(s0p10h12v0s3b3T" +
                              ESC + b"(3@" + b"Stroke sample" + FF)
+        default_font_fractional = write(tmp / "default-font-fractional.pcl",
+                                        ESC + b"(s0p10h12v0s3b3T" +
+                                        ESC + b"(3.9@" +
+                                        b"Stroke sample" + FF)
         explicit_medium = write(tmp / "explicit-medium.pcl",
                                 ESC + b"(s0p10h12v0s0b3T" +
                                 b"Stroke sample" + FF)
         invalid_default_pdf = tmp / "invalid-default.pdf"
         explicit_bold_pdf = tmp / "explicit-bold.pdf"
         default_font_pdf = tmp / "default-font.pdf"
+        default_font_fractional_pdf = tmp / "default-font-fractional.pdf"
         explicit_medium_pdf = tmp / "explicit-medium.pdf"
         render(dreamprint, invalid_default, invalid_default_pdf)
         render(dreamprint, explicit_bold, explicit_bold_pdf)
         render(dreamprint, default_font, default_font_pdf)
+        render(dreamprint, default_font_fractional, default_font_fractional_pdf)
         render(dreamprint, explicit_medium, explicit_medium_pdf)
         if ppm_sha256(invalid_default_pdf, tmp / "invalid-default",
                       dpi=150) != \
@@ -932,14 +947,28 @@ def main():
         if ppm_sha256(default_font_pdf, tmp / "default-font", dpi=150) != \
            ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
             raise AssertionError("final-3@ did not reset to default font")
+        if ppm_sha256(default_font_fractional_pdf,
+                      tmp / "default-font-fractional", dpi=150) != \
+           ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
+            raise AssertionError("fractional final-@ selector rounded")
 
         font_id_bold = write(tmp / "font-id-bold.pcl",
                              ESC + b"(7X" + b"Stroke sample" + FF)
+        font_id_bold_fractional = write(tmp / "font-id-bold-fractional.pcl",
+                                        ESC + b"(7.9X" +
+                                        b"Stroke sample" + FF)
         font_id_bold_pdf = tmp / "font-id-bold.pdf"
+        font_id_bold_fractional_pdf = tmp / "font-id-bold-fractional.pdf"
         render(dreamprint, font_id_bold, font_id_bold_pdf)
+        render(dreamprint, font_id_bold_fractional,
+               font_id_bold_fractional_pdf)
         if ppm_sha256(font_id_bold_pdf, tmp / "font-id-bold", dpi=150) != \
            ppm_sha256(explicit_bold_pdf, tmp / "explicit-bold", dpi=150):
             raise AssertionError("built-in primary font ID 7 did not select bold Courier")
+        if ppm_sha256(font_id_bold_fractional_pdf,
+                      tmp / "font-id-bold-fractional", dpi=150) != \
+           ppm_sha256(explicit_bold_pdf, tmp / "explicit-bold", dpi=150):
+            raise AssertionError("fractional final-X font ID rounded")
 
         secondary_line = write(tmp / "secondary-line.pcl",
                                ESC + b")8X" + b"\x0e" +

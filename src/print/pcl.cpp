@@ -1255,7 +1255,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if ((group == '(' || group == ')') && subgroup == 0) {
 		int slot = group == ')' ? 1 : 0;
 		if (term == '@') {
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival <= 2) {
 				font_request(slot).symbol_set = slot == 0
 					? kSymbolRoman8 : 0x000e;
@@ -1272,7 +1272,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 					sync_active_font_state();
 			}
 		} else if (term == 'X') {
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			auto it = soft_fonts_.find(ival);
 			if (it != soft_fonts_.end() && it->second.active) {
 				selected_soft_font_id_[slot] = ival;
@@ -1285,7 +1285,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 					sync_active_font_state();
 			}
 		} else if (term > '@' && term <= '^') {
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival <= 0x07ff) {
 				font_request(slot).symbol_set = pcl_symbol_value(ival, term);
 				selected_soft_font_id_[slot] = -1;
