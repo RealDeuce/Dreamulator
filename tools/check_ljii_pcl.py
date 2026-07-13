@@ -2520,6 +2520,33 @@ def main():
                       tmp / "macro-id-expected", dpi=300):
             raise AssertionError("macro replay did not execute macro-id payload")
 
+        macro_reset_definition = write(
+            tmp / "macro-reset-definition.pcl",
+            ESC + b"&f417Y" +
+            ESC + b"&f0X" + b"A" + ESC + b"E" +
+            ESC + b"&f1X" +
+            ESC + b"&f417Y" + ESC + b"&f2X" +
+            b"!" + FF)
+        macro_reset_definition_expected = write(
+            tmp / "macro-reset-definition-expected.pcl",
+            ESC + b"&f417Y" +
+            ESC + b"&f0X" + b"A" + ESC + b"&f1X" +
+            ESC + b"E" +
+            ESC + b"&f417Y" + ESC + b"&f2X" +
+            b"!" + FF)
+        macro_reset_definition_pdf = tmp / "macro-reset-definition.pdf"
+        macro_reset_definition_expected_pdf = \
+            tmp / "macro-reset-definition-expected.pdf"
+        render(dreamprint, macro_reset_definition, macro_reset_definition_pdf)
+        render(dreamprint, macro_reset_definition_expected,
+               macro_reset_definition_expected_pdf)
+        if ppm_sha256(macro_reset_definition_pdf,
+                      tmp / "macro-reset-definition", dpi=300) != \
+           ppm_sha256(macro_reset_definition_expected_pdf,
+                      tmp / "macro-reset-definition-expected", dpi=300):
+            raise AssertionError(
+                "ESC E did not reset as an active macro-definition exception")
+
         macro_nested = write(tmp / "macro-nested.pcl",
                              ESC + b"&f500Y" +
                              ESC + b"&f0X" + b"N" +

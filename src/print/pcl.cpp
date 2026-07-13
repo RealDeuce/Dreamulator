@@ -432,6 +432,7 @@ private:
 	};
 
 	void reset_ljii_state();
+	void software_reset();
 	void process_normal(uint8_t b);
 	void process_control(uint8_t b);
 	void process_printable(uint8_t b);
@@ -675,6 +676,15 @@ void PclPrinter::reset_ljii_state()
 	rebuild_default_vfc_table();
 }
 
+void PclPrinter::software_reset()
+{
+	publish_current_page();
+	PrinterConfig cfg = cfg_;
+	reset_printer_state(cfg);
+	reset_ljii_state();
+	state_ = State::Normal;
+}
+
 void PclPrinter::parse_byte(uint8_t b)
 {
 	if (defining_macro_ && !replaying_macro_ && capture_macro_definition_byte(b))
@@ -835,11 +845,7 @@ void PclPrinter::process_printable(uint8_t b)
 void PclPrinter::process_escape(uint8_t b)
 {
 	if (b == 'E') {
-		publish_current_page();
-		PrinterConfig cfg = cfg_;
-		reset_printer_state(cfg);
-		reset_ljii_state();
-		state_ = State::Normal;
+		software_reset();
 		return;
 	}
 	if (b == 'Y') {
@@ -2721,6 +2727,13 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 
 	macro_stop_buf_.push_back(b);
 	size_t len = macro_stop_buf_.size();
+	if (len == 2 && macro_stop_buf_[0] == 0x1B && b == 'E') {
+		if (macros_[macro_id_].bytes.size() >= 2)
+			macros_[macro_id_].bytes.resize(macros_[macro_id_].bytes.size() - 2);
+		macro_stop_buf_.clear();
+		software_reset();
+		return true;
+	}
 	if (len == 2 && b != '&') {
 		macro_stop_buf_.clear();
 		return true;
