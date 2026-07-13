@@ -886,16 +886,24 @@ def main():
                        ESC + b"(s0p10h12v0s0b3TStroke sample" + FF)
         bold = write(tmp / "bold.pcl",
                      ESC + b"(s0p10h12v0s3b3TStroke sample" + FF)
+        bold_fractional = write(tmp / "bold-fractional.pcl",
+                                ESC + b"(s0p10h12v0s3.9b3TStroke sample" +
+                                FF)
         medium_pdf = tmp / "medium.pdf"
         bold_pdf = tmp / "bold.pdf"
+        bold_fractional_pdf = tmp / "bold-fractional.pdf"
         render(dreamprint, medium, medium_pdf)
         render(dreamprint, bold, bold_pdf)
+        render(dreamprint, bold_fractional, bold_fractional_pdf)
         if ppm_sha256(medium_pdf, tmp / "medium", dpi=150) == \
            ppm_sha256(bold_pdf, tmp / "bold", dpi=150):
             raise AssertionError("bold stroke request selected medium glyph pixels")
         if ppm_nonwhite(bold_pdf, tmp / "bold", dpi=150) <= \
            ppm_nonwhite(medium_pdf, tmp / "medium", dpi=150):
             raise AssertionError("bold stroke request did not increase ink")
+        if ppm_sha256(bold_pdf, tmp / "bold", dpi=150) != \
+           ppm_sha256(bold_fractional_pdf, tmp / "bold-fractional", dpi=150):
+            raise AssertionError("fractional stroke request rounded")
 
         invalid_default = write(tmp / "invalid-default.pcl",
                                 ESC + b"(s0p10h12v0s3b3T" +
@@ -955,12 +963,32 @@ def main():
             tmp / "typeface-low-priority.pcl",
             ESC + b"(s0p10h12v0s0b0T" + b"Stroke sample" + FF,
         )
+        spacing_fractional = write(
+            tmp / "spacing-fractional.pcl",
+            ESC + b"(s0.9p10h12v0s0b3T" + b"Stroke sample" + FF,
+        )
+        typeface_fractional = write(
+            tmp / "typeface-fractional.pcl",
+            ESC + b"(s0p10h12v0s0b3.9T" + b"Stroke sample" + FF,
+        )
         typeface_low_priority_pdf = tmp / "typeface-low-priority.pdf"
+        spacing_fractional_pdf = tmp / "spacing-fractional.pdf"
+        typeface_fractional_pdf = tmp / "typeface-fractional.pdf"
         render(dreamprint, typeface_low_priority, typeface_low_priority_pdf)
+        render(dreamprint, spacing_fractional, spacing_fractional_pdf)
+        render(dreamprint, typeface_fractional, typeface_fractional_pdf)
         if ppm_sha256(typeface_low_priority_pdf,
                       tmp / "typeface-low-priority", dpi=150) != \
            ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
             raise AssertionError("typeface request overrode higher-priority resident font filters")
+        if ppm_sha256(spacing_fractional_pdf, tmp / "spacing-fractional",
+                      dpi=150) != \
+           ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
+            raise AssertionError("fractional spacing request rounded")
+        if ppm_sha256(typeface_fractional_pdf, tmp / "typeface-fractional",
+                      dpi=150) != \
+           ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
+            raise AssertionError("fractional typeface request rounded")
 
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
@@ -970,20 +998,27 @@ def main():
                                ESC + b"(s1S" + b"Italic sample" + FF)
         style_negative = write(tmp / "style-negative.pcl",
                                ESC + b"(s-1S" + b"Italic sample" + FF)
+        style_fractional = write(tmp / "style-fractional.pcl",
+                                 ESC + b"(s1.9S" + b"Italic sample" + FF)
         pitch_positive_pdf = tmp / "pitch-positive.pdf"
         pitch_negative_pdf = tmp / "pitch-negative.pdf"
         style_positive_pdf = tmp / "style-positive.pdf"
         style_negative_pdf = tmp / "style-negative.pdf"
+        style_fractional_pdf = tmp / "style-fractional.pdf"
         render(dreamprint, pitch_positive, pitch_positive_pdf)
         render(dreamprint, pitch_negative, pitch_negative_pdf)
         render(dreamprint, style_positive, style_positive_pdf)
         render(dreamprint, style_negative, style_negative_pdf)
+        render(dreamprint, style_fractional, style_fractional_pdf)
         if ppm_sha256(pitch_positive_pdf, tmp / "pitch-positive", dpi=150) != \
            ppm_sha256(pitch_negative_pdf, tmp / "pitch-negative", dpi=150):
             raise AssertionError("negative pitch request did not match positive pitch")
         if ppm_sha256(style_positive_pdf, tmp / "style-positive", dpi=150) != \
            ppm_sha256(style_negative_pdf, tmp / "style-negative", dpi=150):
             raise AssertionError("negative style request did not match positive style")
+        if ppm_sha256(style_positive_pdf, tmp / "style-positive", dpi=150) != \
+           ppm_sha256(style_fractional_pdf, tmp / "style-fractional", dpi=150):
+            raise AssertionError("fractional style request rounded")
 
         underline_fixed = write(tmp / "underline-fixed.pcl",
                                 ESC + b"&d0D" + b"A\tB" +

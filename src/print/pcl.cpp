@@ -1215,22 +1215,23 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		LjiiFontRequest &req = font_request(slot);
 		switch (term) {
 		case 'B':
-			req.stroke = std::max(-7, std::min(7, ival));
+			req.stroke = std::max(-7, std::min(7,
+			                                   pcl_signed_integer_word(value)));
 			break;
 		case 'H':
 			value = std::abs(value);
 			req.pitch = (int)std::lround(std::min(655.0, value) * 100.0);
 			break;
 		case 'P':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival < 2)
 				req.spacing = ival;
 			break;
 		case 'S':
-			req.style = std::min(255, std::abs(ival));
+			req.style = std::min(255, pcl_integer_word(value));
 			break;
 		case 'T':
-			req.typeface = std::min(255, std::abs(ival));
+			req.typeface = std::min(255, pcl_integer_word(value));
 			break;
 		case 'V':
 			value = std::abs(value);
