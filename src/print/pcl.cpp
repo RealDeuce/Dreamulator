@@ -1405,6 +1405,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival <= 0x07ff) {
 				font_request(slot).symbol_set = pcl_symbol_value(ival, term);
 				selected_soft_font_id_[slot] = -1;
+				if (slot == active_font_slot_)
+					sync_active_font_state();
 			}
 		}
 	} else if (group == '&' && subgroup == 'p') {

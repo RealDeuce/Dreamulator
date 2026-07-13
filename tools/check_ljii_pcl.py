@@ -603,6 +603,17 @@ def main():
            (default_pair_box[2] - default_pair_box[0]):
             raise AssertionError("HMI did not reduce printable advance")
 
+        hmi_symbol_refresh = write(tmp / "hmi-symbol-refresh.pcl",
+                                   ESC + b"&k6H" + ESC + b"(8U" +
+                                   b"!!" + FF)
+        hmi_symbol_refresh_pdf = tmp / "hmi-symbol-refresh.pdf"
+        render(dreamprint, hmi_symbol_refresh, hmi_symbol_refresh_pdf)
+        if ppm_sha256(hmi_default_pair_pdf, tmp / "hmi-default-pair-again",
+                      dpi=150) != \
+           ppm_sha256(hmi_symbol_refresh_pdf, tmp / "hmi-symbol-refresh",
+                      dpi=150):
+            raise AssertionError("symbol-set designation did not refresh HMI")
+
         hmi_probe_rule = ESC + b"*c10a10b0P"
         hmi_default_column = write(tmp / "hmi-default-column.pcl",
                                    ESC + b"&a1C" + hmi_probe_rule + FF)
