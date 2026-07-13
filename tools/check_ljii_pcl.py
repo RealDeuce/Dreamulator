@@ -199,6 +199,24 @@ def main():
            ppm_sha256(explicit_spaces_pdf, tmp / "explicit-spaces", dpi=150):
             raise AssertionError("transparent controls did not advance as spaces")
 
+        transparent_nonroman = write(tmp / "transparent-nonroman.pcl",
+                                     ESC + b"(0N" + ESC + b"&p3X" +
+                                     b"!\x80!" + FF)
+        nonroman_spaces = write(tmp / "nonroman-spaces.pcl",
+                                ESC + b"(0N" + b"! !" + FF)
+        transparent_nonroman_pdf = tmp / "transparent-nonroman.pdf"
+        nonroman_spaces_pdf = tmp / "nonroman-spaces.pdf"
+        render(dreamprint, transparent_nonroman, transparent_nonroman_pdf)
+        render(dreamprint, nonroman_spaces, nonroman_spaces_pdf)
+        if ppm_sha256(transparent_nonroman_pdf, tmp / "transparent-nonroman",
+                      dpi=150) == \
+           ppm_sha256(nonroman_spaces_pdf, tmp / "nonroman-spaces", dpi=150):
+            raise AssertionError("non-Roman transparent controls stayed fixed-space")
+        transparent_nonroman_text = "".join(
+            pdftotext(transparent_nonroman_pdf).split())
+        if transparent_nonroman_text.count("!") < 2:
+            raise AssertionError("non-Roman transparent controls lost surrounding text")
+
         transparent_probe_x = write(tmp / "transparent-probe-x.pcl",
                                     ESC + b"&p3X" + b"A\x1aXB" + FF)
         transparent_probe_del = write(tmp / "transparent-probe-del.pcl",

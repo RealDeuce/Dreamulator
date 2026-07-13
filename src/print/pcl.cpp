@@ -418,6 +418,7 @@ private:
 	void process_display_byte(uint8_t b);
 	void emit_display_value(uint8_t b);
 	void advance_fixed_space();
+	bool control_filter_routes_printable() const;
 	void process_parameter_byte(uint8_t b);
 	void apply_param(char group, char subgroup, double value, char term);
 	void begin_payload(State state, int count);
@@ -853,7 +854,8 @@ void PclPrinter::process_display_byte(uint8_t b)
 
 void PclPrinter::emit_display_value(uint8_t b)
 {
-	if (b < 0x20 || (b >= 0x80 && b <= 0x9f))
+	bool filtered = b < 0x20 || (b >= 0x80 && b <= 0x9f);
+	if (filtered && !control_filter_routes_printable())
 		advance_fixed_space();
 	else
 		process_printable(b);
@@ -865,6 +867,12 @@ void PclPrinter::emit_display_value(uint8_t b)
 		return;
 	}
 	display_escape_pending_ = (b == 0x1b);
+}
+
+bool PclPrinter::control_filter_routes_printable() const
+{
+	const LjiiFontRequest &req = active_font_request();
+	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
 }
 
 void PclPrinter::advance_fixed_space()
@@ -1508,7 +1516,8 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 
 void PclPrinter::emit_transparent_byte(uint8_t b)
 {
-	if (b < 0x20 || (b >= 0x80 && b <= 0x9f))
+	bool filtered = b < 0x20 || (b >= 0x80 && b <= 0x9f);
+	if (filtered && !control_filter_routes_printable())
 		advance_fixed_space();
 	else
 		process_printable(b);
@@ -2330,6 +2339,11 @@ void PclPrinter::ljii_carriage_return()
 uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
 {
 	int symbol_set = active_font_request().symbol_set;
+	if (control_filter_routes_printable() && b >= 0x80 && b <= 0x9f) {
+		if (symbol_set == 0x000e)
+			return (uint8_t)(b - 0x21);
+		return (uint8_t)(b - 1);
+	}
 	if (symbol_set == kSymbolRoman8 || symbol_set == 0)
 		return b;
 	return symbol_glyph_byte(symbol_set, b);
