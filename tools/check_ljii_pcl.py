@@ -2019,6 +2019,28 @@ def main():
         if "N" not in pdftotext(macro_nested_pdf):
             raise AssertionError("nested macro execute did not replay payload")
 
+        macro_replay_guard = write(
+            tmp / "macro-replay-guard.pcl",
+            ESC + b"&f902Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f901Y" +
+            ESC + b"&f0X" +
+            ESC + b"&f902Y" +
+            ESC + b"&f4X" +
+            b"A" +
+            ESC + b"&f1X" +
+            ESC + b"&f901Y" +
+            ESC + b"&f2X" +
+            b"Live" + FF)
+        macro_replay_guard_pdf = tmp / "macro-replay-guard.pdf"
+        render(dreamprint, macro_replay_guard, macro_replay_guard_pdf)
+        replay_guard_text = pdftotext(macro_replay_guard_pdf)
+        if "A" not in replay_guard_text or "Live" not in replay_guard_text:
+            raise AssertionError("macro replay guard test lost base output")
+        if "!" in replay_guard_text:
+            raise AssertionError("macro replay selector armed overlay")
+
         macro_negative = write(tmp / "macro-negative.pcl",
                                ESC + b"&f-321Y" +
                                ESC + b"&f0X" + b"!" +

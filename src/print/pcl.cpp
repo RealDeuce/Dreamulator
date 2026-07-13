@@ -1331,6 +1331,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'X':
 			ival = pcl_integer_word(value);
+			if (replaying_macro_ && ival != 2 && ival != 3)
+				break;
 			if (ival == 0) {
 				defining_macro_ = true;
 				macros_[macro_id_].bytes.clear();
