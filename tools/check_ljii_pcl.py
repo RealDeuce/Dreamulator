@@ -289,18 +289,43 @@ def main():
                                     ESC + b"&z2W" + b"A\x1aXB!" + FF)
         generic_drain_lower = write(tmp / "generic-drain-lower.pcl",
                                     ESC + b"&z2w3WABC!" + FF)
+        generic_drain_fractional = write(
+            tmp / "generic-drain-fractional.pcl",
+            ESC + b"&z2.9W" + b"AB" + ESC + b"&a20C" + b"!" + FF)
+        generic_drain_integer = write(
+            tmp / "generic-drain-integer.pcl",
+            ESC + b"&z2W" + b"AB" + ESC + b"&a20C" + b"!" + FF)
+        generic_drain_lower_fractional = write(
+            tmp / "generic-drain-lower-fractional.pcl",
+            ESC + b"&z2.9w3WABC!" + FF)
         generic_drain_pdf = tmp / "generic-drain.pdf"
         generic_drain_probe_pdf = tmp / "generic-drain-probe.pdf"
         generic_drain_lower_pdf = tmp / "generic-drain-lower.pdf"
+        generic_drain_fractional_pdf = tmp / "generic-drain-fractional.pdf"
+        generic_drain_integer_pdf = tmp / "generic-drain-integer.pdf"
+        generic_drain_lower_fractional_pdf = \
+            tmp / "generic-drain-lower-fractional.pdf"
         render(dreamprint, generic_drain, generic_drain_pdf)
         render(dreamprint, generic_drain_probe, generic_drain_probe_pdf)
         render(dreamprint, generic_drain_lower, generic_drain_lower_pdf)
+        render(dreamprint, generic_drain_fractional,
+               generic_drain_fractional_pdf)
+        render(dreamprint, generic_drain_integer, generic_drain_integer_pdf)
+        render(dreamprint, generic_drain_lower_fractional,
+               generic_drain_lower_fractional_pdf)
         if pdftotext(generic_drain_pdf).strip() != "!":
             raise AssertionError("generic unsupported W payload leaked text")
         if pdftotext(generic_drain_probe_pdf).strip() != "B!":
             raise AssertionError("generic unsupported W payload control drain was wrong")
         if pdftotext(generic_drain_lower_pdf).strip() != "C!":
             raise AssertionError("generic lowercase w drain count was not preserved")
+        if ppm_sha256(generic_drain_fractional_pdf,
+                      tmp / "generic-drain-fractional", dpi=150) != \
+           ppm_sha256(generic_drain_integer_pdf,
+                      tmp / "generic-drain-integer", dpi=150):
+            raise AssertionError("generic unsupported W fractional count rounded")
+        if pdftotext(generic_drain_lower_fractional_pdf).strip() != "C!":
+            raise AssertionError("generic lowercase w fractional count rounded")
 
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",

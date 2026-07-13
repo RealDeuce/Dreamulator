@@ -927,8 +927,10 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			if (pending_drain_count_ >= 0) {
 				ival = pending_drain_count_;
 				pending_drain_count_ = -1;
+			} else {
+				ival = pcl_integer_word(value);
 			}
-			begin_payload(State::DrainData, std::abs(ival));
+			begin_payload(State::DrainData, ival);
 		} else {
 			apply_param(group_, subgroup_, value, static_cast<char>(b));
 		}
@@ -943,7 +945,7 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			pending_vfc_count_ = std::abs(lower_value);
 		} else if (b == 'w' &&
 		           !(((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
-			pending_drain_count_ = std::abs(lower_value);
+			pending_drain_count_ = pcl_integer_word(value);
 		} else {
 			apply_param(group_, subgroup_, value,
 			            static_cast<char>(std::toupper(b)));
