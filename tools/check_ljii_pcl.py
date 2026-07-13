@@ -451,6 +451,19 @@ def main():
                       dpi=150):
             raise AssertionError("negative symbol-set parameter was not absolute")
 
+        cursor_stack_clamp = write(tmp / "cursor-stack-clamp.pcl",
+                                   ESC + b"&a65R" +
+                                   ESC + b"&f0S" +
+                                   ESC + b"&l20P" +
+                                   ESC + b"&f1S" + b"!" + FF)
+        cursor_stack_clamp_pdf = tmp / "cursor-stack-clamp.pdf"
+        render(dreamprint, cursor_stack_clamp, cursor_stack_clamp_pdf)
+        if ppm_bbox(cursor_stack_clamp_pdf, tmp / "cursor-stack-clamp",
+                    dpi=72) is None:
+            raise AssertionError("cursor stack pop did not clamp to page extent")
+        if "!" not in pdftotext(cursor_stack_clamp_pdf):
+            raise AssertionError("cursor stack clamp lost selectable text")
+
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)
         same_orientation_pdf = tmp / "same-orientation.pdf"
