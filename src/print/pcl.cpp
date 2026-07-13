@@ -362,6 +362,7 @@ private:
 		float hmi_in = 1.0f / 10.0f;
 		float vmi_in = 1.0f / 6.0f;
 		float text_length_in = 10.0f;
+		bool text_length_custom = false;
 		LjiiFontRequest font_req[2];
 		int active_font_slot = 0;
 		std::vector<uint16_t> vfc_table;
@@ -491,6 +492,7 @@ private:
 	float hmi_in_ = 1.0f / 10.0f;
 	float vmi_in_ = 1.0f / 6.0f;
 	float text_length_in_ = 10.0f;
+	bool text_length_custom_ = false;
 	LjiiFontRequest font_req_[2];
 	int active_font_slot_ = 0;
 	std::vector<uint16_t> vfc_table_;
@@ -570,6 +572,7 @@ void PclPrinter::reset_ljii_state()
 	hmi_in_ = 1.0f / 10.0f;
 	vmi_in_ = 1.0f / 6.0f;
 	text_length_in_ = 10.0f;
+	text_length_custom_ = false;
 	font_req_[0] = LjiiFontRequest{};
 	font_req_[1] = LjiiFontRequest{};
 	font_req_[1].secondary = true;
@@ -936,12 +939,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'F':
 			value = std::abs(value);
-			if (value > 0.0)
+			if (value > 0.0) {
 				text_length_in_ = std::max(0.0f, (float)value * vmi_in_);
-			else
+				text_length_custom_ = true;
+			} else {
 				text_length_in_ = std::max(0.0f, st_.page_height_in -
 				                                  st_.top_margin_in -
 				                                  st_.line_spacing_in);
+				text_length_custom_ = false;
+			}
 			update_vfc_bounds();
 			rebuild_default_vfc_table();
 			break;
@@ -2290,10 +2296,13 @@ void PclPrinter::ljii_line_feed()
 	page_dirty_ = true;
 
 	st_.y_pos += st_.line_spacing_in;
-	float bottom = st_.perf_skip_lines > 0
-		? st_.page_height_in -
-		  static_cast<float>(st_.perf_skip_lines) * st_.line_spacing_in
-		: st_.page_height_in - 0.5f;
+	float bottom = st_.page_height_in - 0.5f;
+	if (st_.perf_skip_lines > 0) {
+		bottom = st_.page_height_in -
+		         static_cast<float>(st_.perf_skip_lines) * st_.line_spacing_in;
+		if (text_length_custom_)
+			bottom = st_.top_margin_in + text_length_in_;
+	}
 	if (st_.y_pos >= bottom)
 		publish_current_page();
 
@@ -2343,6 +2352,7 @@ void PclPrinter::apply_page_geometry()
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
+	text_length_custom_ = false;
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
@@ -2358,6 +2368,7 @@ void PclPrinter::set_page_length(float length_in)
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
+	text_length_custom_ = false;
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
@@ -2449,6 +2460,7 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.hmi_in = hmi_in_;
 	env.vmi_in = vmi_in_;
 	env.text_length_in = text_length_in_;
+	env.text_length_custom = text_length_custom_;
 	env.font_req[0] = font_req_[0];
 	env.font_req[1] = font_req_[1];
 	env.active_font_slot = active_font_slot_;
@@ -2490,6 +2502,7 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	hmi_in_ = env.hmi_in;
 	vmi_in_ = env.vmi_in;
 	text_length_in_ = env.text_length_in;
+	text_length_custom_ = env.text_length_custom;
 	font_req_[0] = env.font_req[0];
 	font_req_[1] = env.font_req[1];
 	active_font_slot_ = env.active_font_slot;

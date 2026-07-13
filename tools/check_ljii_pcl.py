@@ -1037,6 +1037,24 @@ def main():
         if pdf_pages(text_length_negative_pdf) != pdf_pages(text_length_positive_pdf):
             raise AssertionError("negative text length did not match positive value")
 
+        perf_text_length_lines = bytearray()
+        for i in range(25):
+            perf_text_length_lines += f"F{i:02d}\n".encode("ascii")
+        perf_text_default = write(tmp / "perf-text-default.pcl",
+                                  ESC + b"&l1L" +
+                                  bytes(perf_text_length_lines) + FF)
+        perf_text_short = write(tmp / "perf-text-short.pcl",
+                                ESC + b"&l1L" + ESC + b"&l10F" +
+                                bytes(perf_text_length_lines) + FF)
+        perf_text_default_pdf = tmp / "perf-text-default.pdf"
+        perf_text_short_pdf = tmp / "perf-text-short.pdf"
+        render(dreamprint, perf_text_default, perf_text_default_pdf)
+        render(dreamprint, perf_text_short, perf_text_short_pdf)
+        if pdf_pages(perf_text_short_pdf) <= pdf_pages(perf_text_default_pdf):
+            raise AssertionError("text length did not constrain perforation overflow")
+        if "F24" not in pdftotext(perf_text_short_pdf):
+            raise AssertionError("text length overflow lost selectable text")
+
         lpi_positive = write(tmp / "lpi-positive.pcl",
                              ESC + b"&l8D" + b"A\nB" + FF)
         lpi_negative = write(tmp / "lpi-negative.pcl",
