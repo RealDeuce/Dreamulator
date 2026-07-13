@@ -452,6 +452,10 @@ private:
 		int id = 0;
 		bool active = false;
 		bool permanent = false;
+		bool has_request_metrics = false;
+		bool has_pitch_metric = false;
+		bool has_height_metric = false;
+		bool has_stroke_metric = false;
 		bool continuation_active = false;
 		uint8_t continuation_char = 0;
 		size_t continuation_offset = 0;
@@ -461,6 +465,10 @@ private:
 		uint16_t resource_first = 0;
 		uint16_t resource_last = 0x7f;
 		int symbol_set = kSymbolRoman8;
+		int spacing = 0;
+		int pitch = 1000;
+		int height = 1200;
+		int stroke = 0;
 		std::map<uint8_t, SoftGlyph> glyphs;
 	};
 
@@ -499,6 +507,7 @@ private:
 	SoftFont *selected_soft_font();
 	const SoftFont *selected_soft_font() const;
 	void delete_soft_font(int id);
+	void refresh_soft_font_request(const SoftFont &font);
 	void apply_download_payload(const std::vector<uint8_t> &payload);
 	void draw_soft_glyph_pixels(const SoftGlyph &glyph);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
@@ -1689,6 +1698,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				auto it = soft_fonts_.find(soft_font_id_);
 				if (it != soft_fonts_.end())
 					it->second.permanent = true;
+			} else if (ival == 6) {
+				auto it = soft_fonts_.find(soft_font_id_);
+				if (it != soft_fonts_.end())
+					refresh_soft_font_request(it->second);
 			}
 			break;
 		case 'G':
@@ -2196,6 +2209,27 @@ void PclPrinter::delete_soft_font(int id)
 			selected = -1;
 }
 
+void PclPrinter::refresh_soft_font_request(const SoftFont &font)
+{
+	if (!font.active || !font.has_request_metrics)
+		return;
+	for (int slot = 0; slot < 2; slot++) {
+		if (selected_soft_font_id_[slot] != font.id)
+			continue;
+		LjiiFontRequest &req = font_request(slot);
+		req.symbol_set = font.symbol_set;
+		req.spacing = font.spacing;
+		if (font.has_pitch_metric)
+			req.pitch = font.pitch;
+		if (font.has_height_metric)
+			req.height = font.height;
+		if (font.has_stroke_metric)
+			req.stroke = font.stroke;
+		if (slot == active_font_slot_)
+			sync_active_font_state();
+	}
+}
+
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 {
 	SoftFont &font = current_soft_font();
@@ -2257,16 +2291,26 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.symbol_set = be16_at(payload, 14);
 		if (font.symbol_set == 0)
 			font.symbol_set = kSymbolRoman8;
+		font.has_request_metrics = true;
+		font.spacing = payload[13] ? 1 : 0;
+		uint16_t pitch = be16_at(payload, 16);
+		uint16_t height = be16_at(payload, 18);
+		if (pitch > 0) {
+			font.pitch = std::min<int>(pitch, 0x41a0);
+			font.has_pitch_metric = true;
+		}
+		if (height > 0) {
+			font.height = std::min<int>(height, 0x2aaa);
+			font.has_height_metric = true;
+		}
 		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
 			LjiiFontRequest &req = font_request(download_font_slot_);
 			req.symbol_set = font.symbol_set;
-			req.spacing = payload[13] ? 1 : 0;
-			uint16_t pitch = be16_at(payload, 16);
-			uint16_t height = be16_at(payload, 18);
-			if (pitch > 0)
-				req.pitch = std::min<int>(pitch, 0x41a0);
-			if (height > 0)
-				req.height = std::min<int>(height, 0x2aaa);
+			req.spacing = font.spacing;
+			if (font.has_pitch_metric)
+				req.pitch = font.pitch;
+			if (font.has_height_metric)
+				req.height = font.height;
 		}
 		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
 			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
@@ -2281,21 +2325,35 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			if (symbol != 0)
 				font.symbol_set = symbol;
 		}
+		font.has_request_metrics = true;
+		if (payload.size() > 0x21)
+			font.spacing = payload[0x21] ? 1 : 0;
+		if (payload.size() > 0x31) {
+			font.stroke = (int)(int8_t)payload[0x30];
+			font.has_stroke_metric = true;
+		}
+		if (payload.size() > 0x2a) {
+			int pitch = ((int)payload[0x24] << 8) | payload[0x25];
+			int height = ((int)payload[0x28] << 8) | payload[0x29];
+			if (pitch > 0) {
+				font.pitch = std::min<int>(pitch, 0x41a0);
+				font.has_pitch_metric = true;
+			}
+			if (height > 0) {
+				font.height = std::min<int>(height, 0x2aaa);
+				font.has_height_metric = true;
+			}
+		}
 		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
 			LjiiFontRequest &req = font_request(download_font_slot_);
 			req.symbol_set = font.symbol_set;
-			if (payload.size() > 0x21)
-				req.spacing = payload[0x21] ? 1 : 0;
-			if (payload.size() > 0x31)
-				req.stroke = (int)(int8_t)payload[0x30];
-			if (payload.size() > 0x2a) {
-				int pitch = ((int)payload[0x24] << 8) | payload[0x25];
-				int height = ((int)payload[0x28] << 8) | payload[0x29];
-				if (pitch > 0)
-					req.pitch = std::min<int>(pitch, 0x41a0);
-				if (height > 0)
-					req.height = std::min<int>(height, 0x2aaa);
-			}
+			req.spacing = font.spacing;
+			if (font.has_stroke_metric)
+				req.stroke = font.stroke;
+			if (font.has_pitch_metric)
+				req.pitch = font.pitch;
+			if (font.has_height_metric)
+				req.height = font.height;
 		}
 		return;
 	}

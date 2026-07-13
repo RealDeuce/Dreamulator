@@ -1785,10 +1785,23 @@ def main():
             ESC + b"*c65E" +
             ESC + b"(s3W" + soft_metric_glyph +
             b"AA" + FF)
+        soft_metric_housekeeping = write(
+            tmp / "soft-metric-housekeeping.pcl",
+            ESC + b"*c4661D" +
+            ESC + b"(s64W" + soft_metric_payload +
+            ESC + b"(4661X" +
+            ESC + b"(s20H" +
+            ESC + b"*c6F" +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + soft_metric_glyph +
+            b"AA" + FF)
         soft_metric_download_pdf = tmp / "soft-metric-download.pdf"
         soft_metric_resync_pdf = tmp / "soft-metric-resync.pdf"
+        soft_metric_housekeeping_pdf = tmp / "soft-metric-housekeeping.pdf"
         render(dreamprint, soft_metric_download, soft_metric_download_pdf)
         render(dreamprint, soft_metric_resync, soft_metric_resync_pdf)
+        render(dreamprint, soft_metric_housekeeping,
+               soft_metric_housekeeping_pdf)
         if "AA" not in pdftotext(soft_metric_download_pdf):
             raise AssertionError(
                 "downloaded font metric stream text did not extract")
@@ -1801,6 +1814,12 @@ def main():
                       tmp / "soft-metric-resync", dpi=150):
             raise AssertionError(
                 "downloaded font payload metrics did not refresh active HMI")
+        if ppm_sha256(soft_metric_download_pdf,
+                      tmp / "soft-metric-download", dpi=150) != \
+           ppm_sha256(soft_metric_housekeeping_pdf,
+                      tmp / "soft-metric-housekeeping", dpi=150):
+            raise AssertionError(
+                "downloaded font housekeeping did not refresh active HMI")
 
         soft_descriptor_oversized = bytearray(64)
         soft_descriptor_capped = bytearray(64)
