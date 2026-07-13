@@ -435,12 +435,15 @@ def main():
                                    b"A" + FF)
         vmi_over_limit = write(tmp / "vmi-over-limit.pcl",
                                ESC + b"&l337C" + ESC + b"&a1R" + b"A" + FF)
+        vmi_zero = write(tmp / "vmi-zero.pcl", ESC + b"&l0C" + b"A" + FF)
         vmi_default_row_pdf = tmp / "vmi-default-row.pdf"
         vmi_fractional_max_pdf = tmp / "vmi-fractional-max.pdf"
         vmi_over_limit_pdf = tmp / "vmi-over-limit.pdf"
+        vmi_zero_pdf = tmp / "vmi-zero.pdf"
         render(dreamprint, vmi_default_row, vmi_default_row_pdf)
         render(dreamprint, vmi_fractional_max, vmi_fractional_max_pdf)
         render(dreamprint, vmi_over_limit, vmi_over_limit_pdf)
+        render(dreamprint, vmi_zero, vmi_zero_pdf)
         if ppm_sha256(vmi_default_row_pdf, tmp / "vmi-default-row",
                       dpi=150) != \
            ppm_sha256(vmi_over_limit_pdf, tmp / "vmi-over-limit", dpi=150):
@@ -457,6 +460,13 @@ def main():
         if vmi_default_box is None or vmi_fractional_box is None or \
            vmi_fractional_box[1] <= vmi_default_box[1] + 500:
             raise AssertionError("VMI fractional maximum command was not accepted")
+        default_first_line_box = ppm_bbox(default_first_line_pdf,
+                                          tmp / "default-first-line-box",
+                                          dpi=300)
+        vmi_zero_box = ppm_bbox(vmi_zero_pdf, tmp / "vmi-zero", dpi=300)
+        if default_first_line_box is None or vmi_zero_box is None or \
+           default_first_line_box[1] - vmi_zero_box[1] < 25:
+            raise AssertionError("zero VMI did not refresh pending cursor y")
 
         hmi_positive = write(tmp / "hmi-positive.pcl",
                              ESC + b"&k6H" + b"!!" + FF)
@@ -567,10 +577,18 @@ def main():
         render(dreamprint, vmi_zero_base, vmi_zero_base_pdf)
         render(dreamprint, vmi_zero_ignored, vmi_zero_ignored_pdf)
         if ppm_sha256(vmi_zero_base_pdf, tmp / "vmi-zero-base",
-                      dpi=150) != \
+                      dpi=150) == \
            ppm_sha256(vmi_zero_ignored_pdf, tmp / "vmi-zero-ignored",
                       dpi=150):
-            raise AssertionError("zero VMI changed existing line spacing")
+            raise AssertionError("zero VMI did not affect LF line spacing")
+        vmi_zero_base_box = ppm_bbox(vmi_zero_base_pdf,
+                                     tmp / "vmi-zero-base-box", dpi=300)
+        vmi_zero_ignored_box = ppm_bbox(vmi_zero_ignored_pdf,
+                                        tmp / "vmi-zero-ignored-box",
+                                        dpi=300)
+        if vmi_zero_base_box is None or vmi_zero_ignored_box is None or \
+           vmi_zero_ignored_box[3] >= vmi_zero_base_box[3] - 20:
+            raise AssertionError("zero VMI LF did not collapse line advance")
 
         top_margin_default = write(tmp / "top-margin-default.pcl", b"A" + FF)
         top_margin_invalid = write(tmp / "top-margin-invalid.pcl",
