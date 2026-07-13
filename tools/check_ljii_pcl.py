@@ -238,6 +238,14 @@ def main():
         if "\xc0" not in pdftotext(high_mask_pdf):
             raise AssertionError("high printable byte lost selectable source text")
 
+        roman8_black_square = write(tmp / "roman8-black-square.pcl",
+                                    b"A\xfcB" + FF)
+        roman8_black_square_pdf = tmp / "roman8-black-square.pdf"
+        render(dreamprint, roman8_black_square, roman8_black_square_pdf)
+        if "A\u25a0B" not in "".join(
+                pdftotext(roman8_black_square_pdf).split()):
+            raise AssertionError("Roman-8 black square lost selectable source text")
+
         transparent_fixed = write(tmp / "transparent-fixed.pcl",
                                   ESC + b"&p4X" + b"!\x05\x85!" + FF)
         explicit_spaces = write(tmp / "explicit-spaces.pcl", b"!  !" + FF)

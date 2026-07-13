@@ -122,6 +122,19 @@ static void pdf_escape(char *out, size_t out_sz, uint16_t codepoint)
 	}
 }
 
+static std::string actual_text_hex(const std::vector<TextGlyph> &text,
+                                   size_t first, size_t last)
+{
+	static constexpr char hex[] = "0123456789ABCDEF";
+	std::string out = "FEFF";
+	for (size_t i = first; i < last; i++) {
+		uint16_t cp = text[i].codepoint;
+		for (int shift = 12; shift >= 0; shift -= 4)
+			out += hex[(cp >> shift) & 0x0f];
+	}
+	return out;
+}
+
 void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
                          const std::vector<TextGlyph> &text)
 {
@@ -177,8 +190,12 @@ void PdfWriter::add_page(const PageBitmap &bmp, [[maybe_unused]] int dpi,
 				run += esc;
 				j++;
 			}
+			content += "/Span << /ActualText <";
+			content += actual_text_hex(text, i, j);
+			content += "> >> BDC\n";
 			run += ") Tj\n";
 			content += run;
+			content += "EMC\n";
 			i = j;
 		}
 		content += "ET\n";
