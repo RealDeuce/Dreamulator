@@ -327,6 +327,31 @@ def main():
                       dpi=150):
             raise AssertionError("default first-line cursor did not use 18/25 VMI")
 
+        vmi_default_row = write(tmp / "vmi-default-row.pcl",
+                                ESC + b"&a1R" + b"A" + FF)
+        vmi_fractional_max = write(tmp / "vmi-fractional-max.pcl",
+                                   ESC + b"&l336.5C" + ESC + b"&a1R" +
+                                   b"A" + FF)
+        vmi_over_limit = write(tmp / "vmi-over-limit.pcl",
+                               ESC + b"&l337C" + ESC + b"&a1R" + b"A" + FF)
+        vmi_default_row_pdf = tmp / "vmi-default-row.pdf"
+        vmi_fractional_max_pdf = tmp / "vmi-fractional-max.pdf"
+        vmi_over_limit_pdf = tmp / "vmi-over-limit.pdf"
+        render(dreamprint, vmi_default_row, vmi_default_row_pdf)
+        render(dreamprint, vmi_fractional_max, vmi_fractional_max_pdf)
+        render(dreamprint, vmi_over_limit, vmi_over_limit_pdf)
+        if ppm_sha256(vmi_default_row_pdf, tmp / "vmi-default-row",
+                      dpi=150) != \
+           ppm_sha256(vmi_over_limit_pdf, tmp / "vmi-over-limit", dpi=150):
+            raise AssertionError("VMI integer over-limit command was not rejected")
+        vmi_default_box = ppm_bbox(vmi_default_row_pdf,
+                                   tmp / "vmi-default-row", dpi=150)
+        vmi_fractional_box = ppm_bbox(vmi_fractional_max_pdf,
+                                      tmp / "vmi-fractional-max", dpi=150)
+        if vmi_default_box is None or vmi_fractional_box is None or \
+           vmi_fractional_box[1] <= vmi_default_box[1] + 500:
+            raise AssertionError("VMI fractional maximum command was not accepted")
+
         hmi_positive = write(tmp / "hmi-positive.pcl",
                              ESC + b"&k6H" + b"!!" + FF)
         hmi_negative = write(tmp / "hmi-negative.pcl",
@@ -366,6 +391,33 @@ def main():
            (narrow_pair_box[2] - narrow_pair_box[0]) >= \
            (default_pair_box[2] - default_pair_box[0]):
             raise AssertionError("HMI did not reduce printable advance")
+
+        hmi_probe_rule = ESC + b"*c10a10b0P"
+        hmi_default_column = write(tmp / "hmi-default-column.pcl",
+                                   ESC + b"&a1C" + hmi_probe_rule + FF)
+        hmi_fractional_max = write(tmp / "hmi-fractional-max.pcl",
+                                   ESC + b"&k840.5H" + ESC + b"&a1C" +
+                                   hmi_probe_rule + FF)
+        hmi_over_limit = write(tmp / "hmi-over-limit.pcl",
+                               ESC + b"&k841H" + ESC + b"&a1C" +
+                               hmi_probe_rule + FF)
+        hmi_default_column_pdf = tmp / "hmi-default-column.pdf"
+        hmi_fractional_max_pdf = tmp / "hmi-fractional-max.pdf"
+        hmi_over_limit_pdf = tmp / "hmi-over-limit.pdf"
+        render(dreamprint, hmi_default_column, hmi_default_column_pdf)
+        render(dreamprint, hmi_fractional_max, hmi_fractional_max_pdf)
+        render(dreamprint, hmi_over_limit, hmi_over_limit_pdf)
+        if ppm_sha256(hmi_default_column_pdf, tmp / "hmi-default-column",
+                      dpi=300) != \
+           ppm_sha256(hmi_over_limit_pdf, tmp / "hmi-over-limit", dpi=300):
+            raise AssertionError("HMI integer over-limit command was not rejected")
+        default_column_box = ppm_bbox(hmi_default_column_pdf,
+                                      tmp / "hmi-default-column", dpi=300)
+        fractional_max_box = ppm_bbox(hmi_fractional_max_pdf,
+                                      tmp / "hmi-fractional-max", dpi=300)
+        if fractional_max_box is None or default_column_box is None or \
+           fractional_max_box[0] <= default_column_box[0] + 1000:
+            raise AssertionError("HMI fractional maximum command was not accepted")
 
         pitch_mode_positive = write(tmp / "pitch-mode-positive.pcl",
                                     ESC + b"&k2S" + b"Pitch mode" + FF)

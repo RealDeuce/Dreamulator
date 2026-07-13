@@ -81,6 +81,11 @@ float dots_to_in(int dots)
 	return (float)dots / kDotsPerIn;
 }
 
+int pcl_integer_word(double value)
+{
+	return (int)std::floor(std::abs(value) + 0.000001);
+}
+
 uint16_t roman8_to_unicode(uint8_t ch)
 {
 	static constexpr uint16_t table[256] = {
@@ -957,7 +962,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'A': set_page_size(std::abs(ival)); break;
 		case 'C':
 			value = std::abs(value);
-			if (value > 0.0 && value <= 336.0) {
+			if (value > 0.0 && pcl_integer_word(value) <= 0x150) {
 				vmi_in_ = (float)value / 48.0f;
 				st_.line_spacing_in = vmi_in_;
 				refresh_pending_cursor_y();
@@ -1163,7 +1168,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'H':
 			value = std::abs(value);
-			if (value <= 840.0) {
+			if (pcl_integer_word(value) <= 0x348) {
 				hmi_in_ = (float)value / 120.0f;
 				if (hmi_in_ > 0.0f)
 					st_.pitch_cpi = 1.0f / hmi_in_;
