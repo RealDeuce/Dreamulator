@@ -305,6 +305,29 @@ def main():
            (default_pair_box[2] - default_pair_box[0]):
             raise AssertionError("HMI did not reduce printable advance")
 
+        pitch_mode_positive = write(tmp / "pitch-mode-positive.pcl",
+                                    ESC + b"&k2S" + b"Pitch mode" + FF)
+        pitch_mode_negative = write(tmp / "pitch-mode-negative.pcl",
+                                    ESC + b"&k-2S" + b"Pitch mode" + FF)
+        pitch_mode_invalid = write(tmp / "pitch-mode-invalid.pcl",
+                                   ESC + b"&k6H" + ESC + b"&k1S" + b"!" + FF)
+        pitch_mode_positive_pdf = tmp / "pitch-mode-positive.pdf"
+        pitch_mode_negative_pdf = tmp / "pitch-mode-negative.pdf"
+        pitch_mode_invalid_pdf = tmp / "pitch-mode-invalid.pdf"
+        render(dreamprint, pitch_mode_positive, pitch_mode_positive_pdf)
+        render(dreamprint, pitch_mode_negative, pitch_mode_negative_pdf)
+        render(dreamprint, pitch_mode_invalid, pitch_mode_invalid_pdf)
+        if ppm_sha256(pitch_mode_positive_pdf, tmp / "pitch-mode-positive",
+                      dpi=150) != \
+           ppm_sha256(pitch_mode_negative_pdf, tmp / "pitch-mode-negative",
+                      dpi=150):
+            raise AssertionError("negative pitch-mode selector was not absolute")
+        if ppm_sha256(hmi_default_glyph_pdf, tmp / "hmi-default-glyph",
+                      dpi=300) != \
+           ppm_sha256(pitch_mode_invalid_pdf, tmp / "pitch-mode-invalid",
+                      dpi=300):
+            raise AssertionError("invalid pitch-mode selector changed font pitch")
+
         left_margin_positive = write(tmp / "left-margin-positive.pcl",
                                      ESC + b"&a6L" + b"!" + FF)
         left_margin_negative = write(tmp / "left-margin-negative.pcl",

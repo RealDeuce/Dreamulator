@@ -1099,12 +1099,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'S':
+			ival = std::abs(ival);
 			if (ival == 0) {
 				st_.pitch_cpi = 10.0f;
 			} else if (ival == 2) {
 				st_.pitch_cpi = 16.66f;
 			} else if (ival == 4) {
 				st_.pitch_cpi = 12.0f;
+			} else {
+				break;
 			}
 			active_font_request().pitch =
 				(int)std::lround(st_.pitch_cpi * 100.0f);
