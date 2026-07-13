@@ -843,8 +843,8 @@ void PclPrinter::process_escape(uint8_t b)
 	}
 	if (b == '9') {
 		flush_underline_span();
-		st_.left_margin_in = logical_x0_in_;
-		st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+		st_.left_margin_in = 0.0f;
+		st_.right_margin_in = st_.page_width_in;
 		restart_underline_span();
 		state_ = State::Normal;
 		return;

@@ -689,6 +689,23 @@ def main():
                       dpi=150):
             raise AssertionError("ESC 9 moved current x before a consumer")
 
+        margin_reset_cr_default = write(tmp / "margin-reset-cr-default.pcl",
+                                        b"\r!" + FF)
+        margin_reset_cr_esc9 = write(tmp / "margin-reset-cr-esc9.pcl",
+                                     ESC + b"9\r!" + FF)
+        margin_reset_cr_default_pdf = tmp / "margin-reset-cr-default.pdf"
+        margin_reset_cr_esc9_pdf = tmp / "margin-reset-cr-esc9.pdf"
+        render(dreamprint, margin_reset_cr_default,
+               margin_reset_cr_default_pdf)
+        render(dreamprint, margin_reset_cr_esc9, margin_reset_cr_esc9_pdf)
+        default_box = ppm_bbox(margin_reset_cr_default_pdf,
+                               tmp / "margin-reset-cr-default", dpi=300)
+        reset_box = ppm_bbox(margin_reset_cr_esc9_pdf,
+                             tmp / "margin-reset-cr-esc9", dpi=300)
+        if default_box is None or reset_box is None or \
+           default_box[0] - reset_box[0] < 40:
+            raise AssertionError("ESC 9 CR did not reset to page-left margin")
+
         cursor_pop_positive = write(tmp / "cursor-pop-positive.pcl",
                                     ESC + b"&a20C" + ESC + b"&f0S" +
                                     ESC + b"&a30C" + ESC + b"&f1S" +
