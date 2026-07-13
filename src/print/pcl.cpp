@@ -638,9 +638,9 @@ void PclPrinter::reset_ljii_state()
 	underline_span_selector_ = 0;
 	underline_selector_ = 0;
 	pending_cursor_y_ = true;
-	raster_resolution_ = 300;
-	raster_mode_ = 0;
-	raster_scale_ = 1;
+	raster_resolution_ = 75;
+	raster_mode_ = 3;
+	raster_scale_ = 4;
 	raster_active_ = false;
 	raster_x_in_ = 0.0f;
 	raster_y_in_ = 0.0f;

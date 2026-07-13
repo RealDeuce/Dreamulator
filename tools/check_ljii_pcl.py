@@ -2011,6 +2011,41 @@ def main():
            ppm_sha256(raster_150_pdf, tmp / "raster-150-again", dpi=300):
             raise AssertionError("151 dpi raster still matched 150 dpi mode")
 
+        raster_default_mode = write(tmp / "raster-default-mode.pcl",
+                                    ESC + b"*r0A" +
+                                    ESC + b"*b2W" +
+                                    bytes([0xf0, 0x0f]) + FF)
+        raster_explicit_75 = write(tmp / "raster-explicit-75.pcl",
+                                   ESC + b"*t75R" +
+                                   ESC + b"*r0A" +
+                                   ESC + b"*b2W" +
+                                   bytes([0xf0, 0x0f]) + FF)
+        raster_reset_mode = write(tmp / "raster-reset-mode.pcl",
+                                  ESC + b"*t300R" + ESC + b"E" +
+                                  ESC + b"*r0A" +
+                                  ESC + b"*b2W" +
+                                  bytes([0xf0, 0x0f]) + FF)
+        raster_default_mode_pdf = tmp / "raster-default-mode.pdf"
+        raster_explicit_75_pdf = tmp / "raster-explicit-75.pdf"
+        raster_reset_mode_pdf = tmp / "raster-reset-mode.pdf"
+        render(dreamprint, raster_default_mode, raster_default_mode_pdf)
+        render(dreamprint, raster_explicit_75, raster_explicit_75_pdf)
+        render(dreamprint, raster_reset_mode, raster_reset_mode_pdf)
+        if ppm_sha256(raster_default_mode_pdf,
+                      tmp / "raster-default-mode", dpi=300) != \
+           ppm_sha256(raster_explicit_75_pdf,
+                      tmp / "raster-explicit-75", dpi=300):
+            raise AssertionError("default raster mode did not match 75 dpi mode")
+        if ppm_sha256(raster_reset_mode_pdf,
+                      tmp / "raster-reset-mode", dpi=300) != \
+           ppm_sha256(raster_explicit_75_pdf,
+                      tmp / "raster-explicit-75-again", dpi=300):
+            raise AssertionError("ESC E did not reset raster mode")
+        if ppm_sha256(raster_default_mode_pdf,
+                      tmp / "raster-default-mode-again", dpi=300) == \
+           ppm_sha256(raster_300_pdf, tmp / "raster-300-again", dpi=300):
+            raise AssertionError("default raster mode still matched 300 dpi mode")
+
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
         for _ in range(30):
