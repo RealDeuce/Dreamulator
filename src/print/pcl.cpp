@@ -175,6 +175,11 @@ int ljii_default_symbol_word(int slot, int orientation)
 	return (orientation & 1) ? 0x0155 : 0x0005;
 }
 
+int ljii_default_font_symbol_word()
+{
+	return 0x000e;
+}
+
 struct SymbolPatch {
 	int symbol;
 	uint8_t dst;
@@ -1443,8 +1448,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			} else if (ival == 3) {
 				font_request(slot) = LjiiFontRequest{};
 				font_request(slot).secondary = (slot != 0);
-				font_request(slot).symbol_set = slot == 0
-					? kSymbolRoman8 : 0x000e;
+				font_request(slot).symbol_set =
+					ljii_default_font_symbol_word();
 				selected_soft_font_id_[slot] = -1;
 				if (slot == active_font_slot_)
 					sync_active_font_state();
