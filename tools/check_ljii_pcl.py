@@ -277,6 +277,34 @@ def main():
            ppm_sha256(hmi_negative_pdf, tmp / "hmi-negative", dpi=150):
             raise AssertionError("negative HMI value did not match positive value")
 
+        hmi_default_glyph = write(tmp / "hmi-default-glyph.pcl", b"!" + FF)
+        hmi_narrow_glyph = write(tmp / "hmi-narrow-glyph.pcl",
+                                 ESC + b"&k6H" + b"!" + FF)
+        hmi_default_pair = write(tmp / "hmi-default-pair.pcl", b"!!" + FF)
+        hmi_narrow_pair = write(tmp / "hmi-narrow-pair.pcl",
+                                ESC + b"&k6H" + b"!!" + FF)
+        hmi_default_glyph_pdf = tmp / "hmi-default-glyph.pdf"
+        hmi_narrow_glyph_pdf = tmp / "hmi-narrow-glyph.pdf"
+        hmi_default_pair_pdf = tmp / "hmi-default-pair.pdf"
+        hmi_narrow_pair_pdf = tmp / "hmi-narrow-pair.pdf"
+        render(dreamprint, hmi_default_glyph, hmi_default_glyph_pdf)
+        render(dreamprint, hmi_narrow_glyph, hmi_narrow_glyph_pdf)
+        render(dreamprint, hmi_default_pair, hmi_default_pair_pdf)
+        render(dreamprint, hmi_narrow_pair, hmi_narrow_pair_pdf)
+        if ppm_sha256(hmi_default_glyph_pdf, tmp / "hmi-default-glyph",
+                      dpi=300) != \
+           ppm_sha256(hmi_narrow_glyph_pdf, tmp / "hmi-narrow-glyph",
+                      dpi=300):
+            raise AssertionError("HMI changed selected glyph pixels")
+        default_pair_box = ppm_bbox(hmi_default_pair_pdf,
+                                    tmp / "hmi-default-pair", dpi=300)
+        narrow_pair_box = ppm_bbox(hmi_narrow_pair_pdf,
+                                   tmp / "hmi-narrow-pair", dpi=300)
+        if default_pair_box is None or narrow_pair_box is None or \
+           (narrow_pair_box[2] - narrow_pair_box[0]) >= \
+           (default_pair_box[2] - default_pair_box[0]):
+            raise AssertionError("HMI did not reduce printable advance")
+
         left_margin_positive = write(tmp / "left-margin-positive.pcl",
                                      ESC + b"&a6L" + b"!" + FF)
         left_margin_negative = write(tmp / "left-margin-negative.pcl",

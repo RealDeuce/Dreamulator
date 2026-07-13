@@ -839,9 +839,7 @@ void PclPrinter::emit_display_value(uint8_t b)
 
 void PclPrinter::advance_fixed_space()
 {
-	const LjiiFontRequest &req = active_font_request();
-	float pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
-	float char_w_in = 1.0f / pitch_cpi;
+	float char_w_in = hmi_in_;
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
 			return;
@@ -997,9 +995,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'C':
 			flush_underline_span();
 			if (current_param_relative_)
-				st_.x_pos += (float)value / st_.pitch_cpi;
+				st_.x_pos += (float)value * hmi_in_;
 			else
-				st_.x_pos = logical_x0_in_ + (float)value / st_.pitch_cpi;
+				st_.x_pos = logical_x0_in_ + (float)value * hmi_in_;
 			st_.x_pos = std::max(logical_x0_in_,
 			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
 			clear_pending_cursor_y();
@@ -1020,7 +1018,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			flush_underline_span();
 			value = std::abs(value);
 			st_.left_margin_in = logical_x0_in_ +
-			                     std::max(0.0f, (float)value / st_.pitch_cpi);
+			                     std::max(0.0f, (float)value * hmi_in_);
 			st_.x_pos = std::max(st_.x_pos, st_.left_margin_in);
 			clear_pending_cursor_y();
 			restart_underline_span();
@@ -1030,7 +1028,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			value = std::abs(value);
 			st_.right_margin_in = std::max(st_.left_margin_in,
 			                               logical_x0_in_ +
-			                               ((float)value + 1.0f) / st_.pitch_cpi);
+			                               ((float)value + 1.0f) * hmi_in_);
 			st_.right_margin_in = std::min(st_.right_margin_in,
 			                               logical_x0_in_ + logical_w_in_);
 			if (st_.x_pos > st_.right_margin_in)
@@ -1094,11 +1092,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'H':
 			value = std::abs(value);
-			if (value > 0.0 && value <= 840.0) {
+			if (value <= 840.0) {
 				hmi_in_ = (float)value / 120.0f;
-				st_.pitch_cpi = 1.0f / hmi_in_;
-				active_font_request().pitch =
-					(int)std::lround(st_.pitch_cpi * 100.0f);
+				if (hmi_in_ > 0.0f)
+					st_.pitch_cpi = 1.0f / hmi_in_;
 			}
 			break;
 		case 'S':
@@ -2028,8 +2025,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 bool PclPrinter::render_ljii_text(uint8_t b)
 {
 	const LjiiFontRequest &req = active_font_request();
-	float pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
-	float char_w_in = 1.0f / pitch_cpi;
+	float char_w_in = hmi_in_;
 	if (b == 0x20) {
 		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 			if (!wrap_enabled_)
