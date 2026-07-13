@@ -301,6 +301,14 @@ int rule_selector_for_fill_command(int mode, int fill_pattern, int orientation)
 	return 7 + fill_pattern;
 }
 
+float ljii_rect_decipoints_to_in(double value)
+{
+	if (value <= 0.0)
+		return 0.0f;
+	int subunits = (int)std::ceil(value * 5.0 - 0.000001) + 11;
+	return (float)subunits / (12.0f * kDotsPerIn);
+}
+
 bool looks_like_ljii_font_resource_header(const std::vector<uint8_t> &payload)
 {
 	if (payload.size() < 8)
@@ -1533,7 +1541,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			fill_pattern_ = pcl_integer_word(value);
 			break;
 		case 'H':
-			rect_w_in_ = std::max(0.0f, (float)value / 720.0f);
+			rect_w_in_ = ljii_rect_decipoints_to_in(value);
 			break;
 		case 'P': {
 			int selector = rule_selector_for_fill_command(pcl_integer_word(value),
@@ -1545,7 +1553,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		}
 		case 'V':
-			rect_h_in_ = std::max(0.0f, (float)value / 720.0f);
+			rect_h_in_ = ljii_rect_decipoints_to_in(value);
 			break;
 		default:
 			break;

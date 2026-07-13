@@ -1691,6 +1691,18 @@ def main():
                                     ESC + b"*c64a64b0P" +
                                     ESC + b"*p100Y" +
                                     ESC + b"*c10.9a10.9b0P" + FF)
+        rule_decipoint_bias = write(tmp / "rule-decipoint-bias.pcl",
+                                    ESC + b"*c72H" + ESC + b"*c72V" +
+                                    ESC + b"*c0P" + FF)
+        rule_decipoint_bias_expected = write(
+            tmp / "rule-decipoint-bias-expected.pcl",
+            ESC + b"*c31a31b0P" + FF)
+        rule_decipoint_fraction = write(tmp / "rule-decipoint-fraction.pcl",
+                                        ESC + b"*c72H" + ESC + b"*c1.5V" +
+                                        ESC + b"*c0P" + FF)
+        rule_decipoint_fraction_expected = write(
+            tmp / "rule-decipoint-fraction-expected.pcl",
+            ESC + b"*c31a2b0P" + FF)
         rule_gray = write(tmp / "rule-gray.pcl",
                           ESC + b"*c64a64b50g2P" + FF)
         rule_gray_integer_id = write(tmp / "rule-gray-integer-id.pcl",
@@ -1729,6 +1741,12 @@ def main():
         rule_solid_pdf = tmp / "rule-solid.pdf"
         rule_dot_integer_pdf = tmp / "rule-dot-integer.pdf"
         rule_dot_fractional_pdf = tmp / "rule-dot-fractional.pdf"
+        rule_decipoint_bias_pdf = tmp / "rule-decipoint-bias.pdf"
+        rule_decipoint_bias_expected_pdf = \
+            tmp / "rule-decipoint-bias-expected.pdf"
+        rule_decipoint_fraction_pdf = tmp / "rule-decipoint-fraction.pdf"
+        rule_decipoint_fraction_expected_pdf = \
+            tmp / "rule-decipoint-fraction-expected.pdf"
         rule_gray_pdf = tmp / "rule-gray.pdf"
         rule_gray_integer_id_pdf = tmp / "rule-gray-integer-id.pdf"
         rule_gray_fractional_id_pdf = tmp / "rule-gray-fractional-id.pdf"
@@ -1745,6 +1763,13 @@ def main():
         render(dreamprint, rule_solid, rule_solid_pdf)
         render(dreamprint, rule_dot_integer, rule_dot_integer_pdf)
         render(dreamprint, rule_dot_fractional, rule_dot_fractional_pdf)
+        render(dreamprint, rule_decipoint_bias, rule_decipoint_bias_pdf)
+        render(dreamprint, rule_decipoint_bias_expected,
+               rule_decipoint_bias_expected_pdf)
+        render(dreamprint, rule_decipoint_fraction,
+               rule_decipoint_fraction_pdf)
+        render(dreamprint, rule_decipoint_fraction_expected,
+               rule_decipoint_fraction_expected_pdf)
         render(dreamprint, rule_gray, rule_gray_pdf)
         render(dreamprint, rule_gray_integer_id, rule_gray_integer_id_pdf)
         render(dreamprint, rule_gray_fractional_id,
@@ -1779,6 +1804,16 @@ def main():
            ppm_sha256(rule_dot_integer_pdf,
                       tmp / "rule-dot-integer", dpi=300):
             raise AssertionError("rectangle dot size used fractional word")
+        if ppm_sha256(rule_decipoint_bias_pdf,
+                      tmp / "rule-decipoint-bias", dpi=300) != \
+           ppm_sha256(rule_decipoint_bias_expected_pdf,
+                      tmp / "rule-decipoint-bias-expected", dpi=300):
+            raise AssertionError("rectangle decipoint size missed ROM bias")
+        if ppm_sha256(rule_decipoint_fraction_pdf,
+                      tmp / "rule-decipoint-fraction", dpi=300) != \
+           ppm_sha256(rule_decipoint_fraction_expected_pdf,
+                      tmp / "rule-decipoint-fraction-expected", dpi=300):
+            raise AssertionError("rectangle decipoint size did not round up")
         if ppm_sha256(rule_gray_fractional_id_pdf,
                       tmp / "rule-gray-fractional-id", dpi=300) != \
            ppm_sha256(rule_gray_integer_id_pdf,
