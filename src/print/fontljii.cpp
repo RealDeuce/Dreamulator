@@ -34999,8 +34999,11 @@ uint32_t select_ljii_context(const LjiiFontRequest &request)
 	uint32_t spacing = filter_ljii_records(mask, [&request](const auto &r) {
 		return r.spacing == request.spacing;
 	});
-	if (spacing) mask = spacing;
-	mask = nearest_pitch_mask(mask, request.pitch);
+	if (request.spacing == 1) {
+		if (spacing) mask = spacing;
+	} else if (spacing) {
+		mask = nearest_pitch_mask(spacing, request.pitch);
+	}
 	mask = nearest_height_mask(mask, request.height);
 	uint32_t style = filter_ljii_records(mask, [&request](const auto &r) {
 		return r.style == request.style;

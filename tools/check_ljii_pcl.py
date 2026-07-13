@@ -1467,6 +1467,41 @@ def main():
            ppm_sha256(explicit_medium_pdf, tmp / "explicit-medium", dpi=150):
             raise AssertionError("fractional typeface request rounded")
 
+        prop_pitch_10 = write(
+            tmp / "prop-pitch-10.pcl",
+            ESC + b"(s1p10h12v0s0b3T" + b"i" + FF,
+        )
+        prop_pitch_line = write(
+            tmp / "prop-pitch-line.pcl",
+            ESC + b"(s1p16.66h12v0s0b3T" + b"i" + FF,
+        )
+        fixed_pitch_10 = write(
+            tmp / "fixed-pitch-10.pcl",
+            ESC + b"(s0p10h12v0s0b3T" + b"i" + FF,
+        )
+        fixed_pitch_line = write(
+            tmp / "fixed-pitch-line.pcl",
+            ESC + b"(s0p16.66h12v0s0b3T" + b"i" + FF,
+        )
+        prop_pitch_10_pdf = tmp / "prop-pitch-10.pdf"
+        prop_pitch_line_pdf = tmp / "prop-pitch-line.pdf"
+        fixed_pitch_10_pdf = tmp / "fixed-pitch-10.pdf"
+        fixed_pitch_line_pdf = tmp / "fixed-pitch-line.pdf"
+        render(dreamprint, prop_pitch_10, prop_pitch_10_pdf)
+        render(dreamprint, prop_pitch_line, prop_pitch_line_pdf)
+        render(dreamprint, fixed_pitch_10, fixed_pitch_10_pdf)
+        render(dreamprint, fixed_pitch_line, fixed_pitch_line_pdf)
+        if ppm_sha256(prop_pitch_10_pdf, tmp / "prop-pitch-10",
+                      dpi=150) != \
+           ppm_sha256(prop_pitch_line_pdf, tmp / "prop-pitch-line",
+                      dpi=150):
+            raise AssertionError("proportional spacing miss applied pitch filtering")
+        if ppm_sha256(fixed_pitch_10_pdf, tmp / "fixed-pitch-10",
+                      dpi=150) == \
+           ppm_sha256(fixed_pitch_line_pdf, tmp / "fixed-pitch-line",
+                      dpi=150):
+            raise AssertionError("fixed spacing match skipped pitch filtering")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",
