@@ -439,6 +439,7 @@ private:
 	void process_escape(uint8_t b);
 	void process_display_byte(uint8_t b);
 	void emit_display_value(uint8_t b);
+	bool payload_control_normal_branch();
 	void advance_fixed_space();
 	bool control_filter_routes_printable() const;
 	bool selected_context_routes_parser_printable() const;
@@ -514,6 +515,7 @@ private:
 	bool current_param_relative_ = false;
 	int payload_remaining_ = 0;
 	bool payload_control_pending_ = false;
+	int payload_control_counter_ = 0;
 	bool download_payload_control_seen_ = false;
 	bool display_escape_pending_ = false;
 	bool display_control_pending_ = false;
@@ -603,6 +605,7 @@ void PclPrinter::reset_ljii_state()
 	current_param_relative_ = false;
 	payload_remaining_ = 0;
 	payload_control_pending_ = false;
+	payload_control_counter_ = 0;
 	download_payload_control_seen_ = false;
 	display_escape_pending_ = false;
 	display_control_pending_ = false;
@@ -766,7 +769,8 @@ void PclPrinter::parse_byte(uint8_t b)
 			if (selected_context_routes_parser_printable())
 				process_printable(0x1a);
 		} else if (b == 0x58) {
-			process_printable(0x7f);
+			if (!payload_control_normal_branch())
+				process_printable(0x7f);
 		}
 		state_ = State::Normal;
 		return;
@@ -916,7 +920,12 @@ void PclPrinter::process_display_byte(uint8_t b)
 {
 	if (display_control_pending_) {
 		display_control_pending_ = false;
-		emit_display_value(b == 0x58 ? 0x7f : b);
+		if (b == 0x58) {
+			payload_control_normal_branch();
+			emit_display_value(0x7f);
+		} else {
+			emit_display_value(b);
+		}
 		return;
 	}
 	if (b == 0x1a) {
@@ -953,6 +962,16 @@ bool PclPrinter::selected_context_routes_parser_printable() const
 {
 	const LjiiFontRequest &req = active_font_request();
 	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
+}
+
+bool PclPrinter::payload_control_normal_branch()
+{
+	new_page_if_needed();
+	if (++payload_control_counter_ <= 0xff)
+		return false;
+	payload_control_counter_ = 0;
+	publish_current_page();
+	return true;
 }
 
 void PclPrinter::advance_fixed_space()
@@ -1641,7 +1660,12 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 	if (payload_state_ == State::TransparentData) {
 		if (payload_control_pending_) {
 			payload_control_pending_ = false;
-			emit_transparent_byte(b == 0x58 ? 0x7f : b);
+			if (b == 0x58) {
+				payload_control_normal_branch();
+				emit_transparent_byte(0x7f);
+			} else {
+				emit_transparent_byte(b);
+			}
 		} else if (b == 0x1a) {
 			payload_control_pending_ = true;
 			return;

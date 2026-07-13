@@ -998,6 +998,38 @@ def main():
                       tmp / "control-z-nested-nonroman-expected", dpi=150):
             raise AssertionError("non-Roman nested Control-Z did not route")
 
+        control_z_255 = write(
+            tmp / "control-z-255.pcl",
+            b"A" + (bytes([0x1a, 0x58]) * 255) + b"B" + FF)
+        control_z_256 = write(
+            tmp / "control-z-256.pcl",
+            b"A" + (bytes([0x1a, 0x58]) * 256) + b"B" + FF)
+        transparent_control_256 = write(
+            tmp / "transparent-control-256.pcl",
+            b"A" + ESC + b"&p256X" +
+            (bytes([0x1a, 0x58]) * 256) + b"B" + FF)
+        display_control_256 = write(
+            tmp / "display-control-256.pcl",
+            b"A" + ESC + b"Y" +
+            (bytes([0x1a, 0x58]) * 256) + ESC + b"ZB" + FF)
+        control_z_255_pdf = tmp / "control-z-255.pdf"
+        control_z_256_pdf = tmp / "control-z-256.pdf"
+        transparent_control_256_pdf = tmp / "transparent-control-256.pdf"
+        display_control_256_pdf = tmp / "display-control-256.pdf"
+        render(dreamprint, control_z_255, control_z_255_pdf)
+        render(dreamprint, control_z_256, control_z_256_pdf)
+        render(dreamprint, transparent_control_256,
+               transparent_control_256_pdf)
+        render(dreamprint, display_control_256, display_control_256_pdf)
+        if pdf_pages(control_z_255_pdf) != 1:
+            raise AssertionError("payload-control counter overflowed before 256")
+        if pdf_pages(control_z_256_pdf) != 2:
+            raise AssertionError("normal payload-control overflow did not publish")
+        if pdf_pages(transparent_control_256_pdf) != 2:
+            raise AssertionError("transparent payload-control overflow did not publish")
+        if pdf_pages(display_control_256_pdf) != 2:
+            raise AssertionError("display payload-control overflow did not publish")
+
         raster_query = write(tmp / "raster-query.pcl",
                              ESC + b"*r1K" + b"QAB" + FF)
         model_query = write(tmp / "model-query.pcl",
