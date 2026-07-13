@@ -877,6 +877,7 @@ bool PclPrinter::control_filter_routes_printable() const
 
 void PclPrinter::advance_fixed_space()
 {
+	refresh_pending_cursor_y();
 	float char_w_in = hmi_in_;
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
@@ -2153,6 +2154,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 
 bool PclPrinter::render_ljii_text(uint8_t b)
 {
+	refresh_pending_cursor_y();
 	const LjiiFontRequest &req = active_font_request();
 	float char_w_in = hmi_in_;
 	if (b == 0x20) {

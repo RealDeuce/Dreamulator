@@ -295,6 +295,19 @@ def main():
            ppm_sha256(default_position_pdf, tmp / "default-position", dpi=150):
             raise AssertionError("absolute horizontal position did not move pixels")
 
+        default_first_line = write(tmp / "default-first-line.pcl", b"A" + FF)
+        explicit_first_line = write(tmp / "explicit-first-line.pcl",
+                                    ESC + b"*p36Y" + b"A" + FF)
+        default_first_line_pdf = tmp / "default-first-line.pdf"
+        explicit_first_line_pdf = tmp / "explicit-first-line.pdf"
+        render(dreamprint, default_first_line, default_first_line_pdf)
+        render(dreamprint, explicit_first_line, explicit_first_line_pdf)
+        if ppm_sha256(default_first_line_pdf, tmp / "default-first-line",
+                      dpi=150) != \
+           ppm_sha256(explicit_first_line_pdf, tmp / "explicit-first-line",
+                      dpi=150):
+            raise AssertionError("default first-line cursor did not use 18/25 VMI")
+
         hmi_positive = write(tmp / "hmi-positive.pcl",
                              ESC + b"&k6H" + b"!!" + FF)
         hmi_negative = write(tmp / "hmi-negative.pcl",
