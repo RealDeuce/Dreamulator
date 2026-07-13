@@ -538,6 +538,7 @@ private:
 	int pending_vfc_count_ = -1;
 	int pending_raster_count_ = -1;
 	int pending_drain_count_ = -1;
+	int pending_download_count_ = -1;
 	bool underline_span_active_ = false;
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
@@ -624,6 +625,7 @@ void PclPrinter::reset_ljii_state()
 	pending_vfc_count_ = -1;
 	pending_raster_count_ = -1;
 	pending_drain_count_ = -1;
+	pending_download_count_ = -1;
 	underline_span_active_ = false;
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
@@ -981,6 +983,9 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			return;
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
 			pending_vfc_count_ = pcl_integer_word(value);
+		} else if ((group_ == '(' || group_ == ')') &&
+		           subgroup_ == 's' && b == 'w') {
+			pending_download_count_ = pcl_integer_word(value);
 		} else if (b == 'w' &&
 		           !(((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
 			pending_drain_count_ = pcl_integer_word(value);
@@ -1278,7 +1283,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'W':
 			download_font_slot_ = slot;
-			ival = pcl_integer_word(value);
+			if (pending_download_count_ >= 0) {
+				ival = pending_download_count_;
+				pending_download_count_ = -1;
+			} else {
+				ival = pcl_integer_word(value);
+			}
 			if (ival == 0) {
 				payload_buf_.clear();
 				apply_download_payload(payload_buf_);

@@ -1406,12 +1406,22 @@ def main():
                                     "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
                                     "24 db 42 bd 66 99") +
                                 ESC + b"(4660X" + b")" + FF)
+        soft_lowercase_w = write(tmp / "soft-lowercase-w.pcl",
+                                 ESC + b"*c4660D" +
+                                 ESC + b"*c41E" +
+                                 ESC + b")s18w1W" +
+                                 bytes.fromhex(
+                                     "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                                     "24 db 42 bd 66 99") +
+                                 ESC + b"(4660X" + b")" + FF)
         soft_pdf = tmp / "soft.pdf"
         soft_negative_pdf = tmp / "soft-negative.pdf"
         soft_fractional_pdf = tmp / "soft-fractional.pdf"
+        soft_lowercase_w_pdf = tmp / "soft-lowercase-w.pdf"
         render(dreamprint, soft, soft_pdf)
         render(dreamprint, soft_negative, soft_negative_pdf)
         render(dreamprint, soft_fractional, soft_fractional_pdf)
+        render(dreamprint, soft_lowercase_w, soft_lowercase_w_pdf)
         if ")" not in pdftotext(soft_pdf):
             raise AssertionError("downloaded glyph text did not extract")
         if ppm_nonwhite(soft_pdf, tmp / "soft") < 5:
@@ -1422,6 +1432,11 @@ def main():
         if ppm_sha256(soft_pdf, tmp / "soft", dpi=150) != \
            ppm_sha256(soft_fractional_pdf, tmp / "soft-fractional", dpi=150):
             raise AssertionError("fractional downloaded font id/code rounded")
+        if ppm_sha256(soft_pdf, tmp / "soft", dpi=150) != \
+           ppm_sha256(soft_lowercase_w_pdf, tmp / "soft-lowercase-w",
+                      dpi=150):
+            raise AssertionError(
+                "lowercase downloaded-font W record did not survive to uppercase W")
 
         payload_control_download = write(
             tmp / "payload-control-download.pcl",
