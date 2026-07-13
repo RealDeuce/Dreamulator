@@ -298,13 +298,27 @@ def main():
 
         dot_position = write(tmp / "dot-position.pcl",
                              ESC + b"*p300X" + b"A" + FF)
+        dot_position_fractional = write(tmp / "dot-position-fractional.pcl",
+                                        ESC + b"*p300.9X" + b"A" + FF)
+        dot_position_y = write(tmp / "dot-position-y.pcl",
+                               ESC + b"*p300Y" + b"A" + FF)
+        dot_position_y_fractional = write(tmp / "dot-position-y-fractional.pcl",
+                                          ESC + b"*p300.9Y" + b"A" + FF)
         column_position = write(tmp / "column-position.pcl",
                                 ESC + b"&a10C" + b"A" + FF)
         default_position = write(tmp / "default-position.pcl", b"A" + FF)
         dot_position_pdf = tmp / "dot-position.pdf"
+        dot_position_fractional_pdf = tmp / "dot-position-fractional.pdf"
+        dot_position_y_pdf = tmp / "dot-position-y.pdf"
+        dot_position_y_fractional_pdf = tmp / "dot-position-y-fractional.pdf"
         column_position_pdf = tmp / "column-position.pdf"
         default_position_pdf = tmp / "default-position.pdf"
         render(dreamprint, dot_position, dot_position_pdf)
+        render(dreamprint, dot_position_fractional,
+               dot_position_fractional_pdf)
+        render(dreamprint, dot_position_y, dot_position_y_pdf)
+        render(dreamprint, dot_position_y_fractional,
+               dot_position_y_fractional_pdf)
         render(dreamprint, column_position, column_position_pdf)
         render(dreamprint, default_position, default_position_pdf)
         if ppm_sha256(dot_position_pdf, tmp / "dot-position", dpi=150) != \
@@ -313,6 +327,14 @@ def main():
         if ppm_sha256(dot_position_pdf, tmp / "dot-position", dpi=150) == \
            ppm_sha256(default_position_pdf, tmp / "default-position", dpi=150):
             raise AssertionError("absolute horizontal position did not move pixels")
+        if ppm_sha256(dot_position_pdf, tmp / "dot-position", dpi=300) != \
+           ppm_sha256(dot_position_fractional_pdf,
+                      tmp / "dot-position-fractional", dpi=300):
+            raise AssertionError("horizontal dot position used fractional word")
+        if ppm_sha256(dot_position_y_pdf, tmp / "dot-position-y", dpi=300) != \
+           ppm_sha256(dot_position_y_fractional_pdf,
+                      tmp / "dot-position-y-fractional", dpi=300):
+            raise AssertionError("vertical dot position used fractional word")
 
         default_first_line = write(tmp / "default-first-line.pcl", b"A" + FF)
         explicit_first_line = write(tmp / "explicit-first-line.pcl",

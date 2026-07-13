@@ -86,6 +86,12 @@ int pcl_integer_word(double value)
 	return (int)std::floor(std::abs(value) + 0.000001);
 }
 
+int pcl_signed_integer_word(double value)
+{
+	int word = pcl_integer_word(value);
+	return value < 0.0 ? -word : word;
+}
+
 uint16_t roman8_to_unicode(uint8_t ch)
 {
 	static constexpr uint16_t table[256] = {
@@ -1358,27 +1364,33 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'p') {
 		switch (term) {
 		case 'X':
+		{
+			int word = pcl_signed_integer_word(value);
 			flush_underline_span();
 			if (current_param_relative_)
-				st_.x_pos += (float)value / kDotsPerIn;
+				st_.x_pos += (float)word / kDotsPerIn;
 			else
-				st_.x_pos = logical_x0_in_ + (float)value / kDotsPerIn;
+				st_.x_pos = logical_x0_in_ + (float)word / kDotsPerIn;
 			st_.x_pos = std::max(logical_x0_in_,
 			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
+		}
 		case 'Y':
+		{
+			int word = pcl_signed_integer_word(value);
 			flush_underline_span();
 			if (current_param_relative_)
-				st_.y_pos += (float)value / kDotsPerIn;
+				st_.y_pos += (float)word / kDotsPerIn;
 			else
-				st_.y_pos = st_.top_margin_in + (float)value / kDotsPerIn;
+				st_.y_pos = st_.top_margin_in + (float)word / kDotsPerIn;
 			st_.y_pos = std::max(logical_y0_in_,
 			                     std::min(st_.y_pos, st_.page_height_in));
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
+		}
 		default:
 			break;
 		}
