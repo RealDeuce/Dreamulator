@@ -1620,12 +1620,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 						ids.push_back(entry.first);
 				for (int id : ids)
 					delete_soft_font(id);
+				sync_active_font_state();
 			} else if (ival == 2) {
 				delete_soft_font(soft_font_id_);
+				sync_active_font_state();
 			} else if (ival == 3) {
 				auto it = soft_fonts_.find(soft_font_id_);
 				if (it != soft_fonts_.end())
 					it->second.glyphs.erase(soft_char_code_);
+				sync_active_font_state();
 			} else if (ival == 4) {
 				auto it = soft_fonts_.find(soft_font_id_);
 				if (it != soft_fonts_.end())

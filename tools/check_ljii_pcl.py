@@ -1788,6 +1788,40 @@ def main():
             raise AssertionError(
                 "downloaded descriptor pitch/height words were not capped")
 
+        soft_delete_refresh_header = bytearray(64)
+        soft_delete_refresh_header[0] = 0x00
+        soft_delete_refresh_header[1] = 0x01
+        soft_delete_refresh_header[8] = 0x03
+        soft_delete_refresh_header[11] = 0x01
+        soft_delete_refresh_header[16] = 0x07
+        soft_delete_refresh_header[17] = 0xd0
+        soft_delete_refresh_header[18] = 0x04
+        soft_delete_refresh_header[19] = 0xb0
+        soft_delete_refresh_prefix = (
+            ESC + b"*c4663D" +
+            ESC + b"(s64W" + bytes(soft_delete_refresh_header) +
+            ESC + b"*c0F")
+        soft_delete_refresh = write(
+            tmp / "soft-delete-refresh.pcl",
+            soft_delete_refresh_prefix + b"ii" + FF)
+        soft_delete_refresh_expected = write(
+            tmp / "soft-delete-refresh-expected.pcl",
+            soft_delete_refresh_prefix + b"\x0f" + b"ii" + FF)
+        soft_delete_refresh_pdf = tmp / "soft-delete-refresh.pdf"
+        soft_delete_refresh_expected_pdf = \
+            tmp / "soft-delete-refresh-expected.pdf"
+        render(dreamprint, soft_delete_refresh, soft_delete_refresh_pdf)
+        render(dreamprint, soft_delete_refresh_expected,
+               soft_delete_refresh_expected_pdf)
+        if "ii" not in pdftotext(soft_delete_refresh_pdf):
+            raise AssertionError("downloaded font delete refresh lost text")
+        if ppm_sha256(soft_delete_refresh_pdf,
+                      tmp / "soft-delete-refresh", dpi=300) != \
+           ppm_sha256(soft_delete_refresh_expected_pdf,
+                      tmp / "soft-delete-refresh-expected", dpi=300):
+            raise AssertionError(
+                "downloaded font delete did not refresh active metrics")
+
         soft_after_reset_permanent = write(
             tmp / "soft-after-reset-permanent.pcl",
             ESC + b"*c4660D" +
