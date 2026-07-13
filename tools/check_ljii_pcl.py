@@ -931,6 +931,66 @@ def main():
         if "".join(pdftotext(control_z_pdf).split()) != "AB":
             raise AssertionError("normal Control-Z X leaked printable text")
 
+        direct_del = write(tmp / "direct-del.pcl", b"A\x7fB" + FF)
+        transparent_del = write(tmp / "transparent-del.pcl",
+                                ESC + b"&p3X" + b"A\x7fB" + FF)
+        direct_c1_default = write(tmp / "direct-c1-default.pcl",
+                                  b"A\x85B" + FF)
+        direct_c1_default_expected = write(
+            tmp / "direct-c1-default-expected.pcl", b"AB" + FF)
+        direct_c1_nonroman = write(tmp / "direct-c1-nonroman.pcl",
+                                   ESC + b"(0N" + b"A\x85B" + FF)
+        direct_c1_nonroman_expected = write(
+            tmp / "direct-c1-nonroman-expected.pcl",
+            ESC + b"(0N" + b"AB" + FF)
+        control_z_nested_nonroman = write(
+            tmp / "control-z-nested-nonroman.pcl",
+            ESC + b"(0N" + b"A" + bytes([0x1a, 0x1a]) + b"B" + FF)
+        control_z_nested_nonroman_expected = write(
+            tmp / "control-z-nested-nonroman-expected.pcl",
+            ESC + b"(0N" + b"AB" + FF)
+        direct_del_pdf = tmp / "direct-del.pdf"
+        transparent_del_pdf = tmp / "transparent-del.pdf"
+        direct_c1_default_pdf = tmp / "direct-c1-default.pdf"
+        direct_c1_default_expected_pdf = \
+            tmp / "direct-c1-default-expected.pdf"
+        direct_c1_nonroman_pdf = tmp / "direct-c1-nonroman.pdf"
+        direct_c1_nonroman_expected_pdf = \
+            tmp / "direct-c1-nonroman-expected.pdf"
+        control_z_nested_nonroman_pdf = tmp / "control-z-nested-nonroman.pdf"
+        control_z_nested_nonroman_expected_pdf = \
+            tmp / "control-z-nested-nonroman-expected.pdf"
+        render(dreamprint, direct_del, direct_del_pdf)
+        render(dreamprint, transparent_del, transparent_del_pdf)
+        render(dreamprint, direct_c1_default, direct_c1_default_pdf)
+        render(dreamprint, direct_c1_default_expected,
+               direct_c1_default_expected_pdf)
+        render(dreamprint, direct_c1_nonroman, direct_c1_nonroman_pdf)
+        render(dreamprint, direct_c1_nonroman_expected,
+               direct_c1_nonroman_expected_pdf)
+        render(dreamprint, control_z_nested_nonroman,
+               control_z_nested_nonroman_pdf)
+        render(dreamprint, control_z_nested_nonroman_expected,
+               control_z_nested_nonroman_expected_pdf)
+        if ppm_sha256(direct_del_pdf, tmp / "direct-del", dpi=150) != \
+           ppm_sha256(transparent_del_pdf, tmp / "transparent-del", dpi=150):
+            raise AssertionError("direct DEL did not use printable fast path")
+        if ppm_sha256(direct_c1_default_pdf, tmp / "direct-c1-default",
+                      dpi=150) != \
+           ppm_sha256(direct_c1_default_expected_pdf,
+                      tmp / "direct-c1-default-expected", dpi=150):
+            raise AssertionError("default direct C1 byte bypassed parser gate")
+        if ppm_sha256(direct_c1_nonroman_pdf, tmp / "direct-c1-nonroman",
+                      dpi=150) == \
+           ppm_sha256(direct_c1_nonroman_expected_pdf,
+                      tmp / "direct-c1-nonroman-expected", dpi=150):
+            raise AssertionError("non-Roman direct C1 byte did not print")
+        if ppm_sha256(control_z_nested_nonroman_pdf,
+                      tmp / "control-z-nested-nonroman", dpi=150) == \
+           ppm_sha256(control_z_nested_nonroman_expected_pdf,
+                      tmp / "control-z-nested-nonroman-expected", dpi=150):
+            raise AssertionError("non-Roman nested Control-Z did not route")
+
         raster_query = write(tmp / "raster-query.pcl",
                              ESC + b"*r1K" + b"QAB" + FF)
         model_query = write(tmp / "model-query.pcl",

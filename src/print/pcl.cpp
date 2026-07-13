@@ -441,6 +441,7 @@ private:
 	void emit_display_value(uint8_t b);
 	void advance_fixed_space();
 	bool control_filter_routes_printable() const;
+	bool selected_context_routes_parser_printable() const;
 	void process_parameter_byte(uint8_t b);
 	void apply_param(char group, char subgroup, double value, char term);
 	void begin_payload(State state, int count);
@@ -762,7 +763,8 @@ void PclPrinter::parse_byte(uint8_t b)
 		return;
 	case State::ControlZ:
 		if (b == 0x1A) {
-			/* The default selected contexts leave nested Control-Z invisible. */
+			if (selected_context_routes_parser_printable())
+				process_printable(0x1a);
 		} else if (b == 0x58) {
 			/* Synthetic 0x100 route: consume the pair without printing X. */
 		}
@@ -784,10 +786,10 @@ void PclPrinter::process_normal(uint8_t b)
 		state_ = State::ControlZ;
 		return;
 	}
-	if (b < 0x20 || b == 0x7F)
-		process_control(b);
-	else
+	if ((b & 0x7f) >= 0x20)
 		process_printable(b);
+	else
+		process_control(b);
 }
 
 void PclPrinter::process_control(uint8_t b)
@@ -851,6 +853,8 @@ void PclPrinter::process_control(uint8_t b)
 		sync_active_font_state();
 		break;
 	default:
+		if (selected_context_routes_parser_printable())
+			process_printable(b);
 		break;
 	}
 }
@@ -940,6 +944,12 @@ void PclPrinter::emit_display_value(uint8_t b)
 }
 
 bool PclPrinter::control_filter_routes_printable() const
+{
+	const LjiiFontRequest &req = active_font_request();
+	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
+}
+
+bool PclPrinter::selected_context_routes_parser_printable() const
 {
 	const LjiiFontRequest &req = active_font_request();
 	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
