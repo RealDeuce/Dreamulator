@@ -781,8 +781,10 @@ void PclPrinter::process_control(uint8_t b)
 	}
 	case 0x09:
 	{
+		if (hmi_in_ <= 0.0f)
+			break;
 		float rel = std::max(0.0f, st_.x_pos - st_.left_margin_in);
-		float cols = rel / std::max(0.0001f, hmi_in_);
+		float cols = rel / hmi_in_;
 		float next = (std::floor(cols / 8.0f) + 1.0f) * 8.0f;
 		st_.x_pos = st_.left_margin_in + next * hmi_in_;
 		if (st_.x_pos > st_.right_margin_in)

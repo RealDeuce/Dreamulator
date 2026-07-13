@@ -535,6 +535,19 @@ def main():
            fractional_max_box[0] <= default_column_box[0] + 1000:
             raise AssertionError("HMI fractional maximum command was not accepted")
 
+        hmi_zero_plain = write(tmp / "hmi-zero-plain.pcl",
+                               ESC + b"&k0H" + b"!" + FF)
+        hmi_zero_tab = write(tmp / "hmi-zero-tab.pcl",
+                             ESC + b"&k0H\t!" + FF)
+        hmi_zero_plain_pdf = tmp / "hmi-zero-plain.pdf"
+        hmi_zero_tab_pdf = tmp / "hmi-zero-tab.pdf"
+        render(dreamprint, hmi_zero_plain, hmi_zero_plain_pdf)
+        render(dreamprint, hmi_zero_tab, hmi_zero_tab_pdf)
+        if ppm_sha256(hmi_zero_plain_pdf, tmp / "hmi-zero-plain",
+                      dpi=300) != \
+           ppm_sha256(hmi_zero_tab_pdf, tmp / "hmi-zero-tab", dpi=300):
+            raise AssertionError("zero HMI tab changed cursor position")
+
         pitch_mode_positive = write(tmp / "pitch-mode-positive.pcl",
                                     ESC + b"&k2S" + b"Pitch mode" + FF)
         pitch_mode_negative = write(tmp / "pitch-mode-negative.pcl",
