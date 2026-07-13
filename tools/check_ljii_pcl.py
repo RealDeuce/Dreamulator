@@ -2429,6 +2429,11 @@ def main():
                         dpi=300) <= 0:
             raise AssertionError("raster row clipped at text right margin")
 
+        raster_no_skip = write(tmp / "raster-no-skip.pcl",
+                               ESC + b"*t300R" +
+                               ESC + b"*r0A" +
+                               ESC + b"*b2W" +
+                               bytes([0xf0, 0x0f]) + FF)
         raster_skip_integer = write(tmp / "raster-skip-integer.pcl",
                                     ESC + b"*t300R" +
                                     ESC + b"*r0A" +
@@ -2452,25 +2457,32 @@ def main():
             ESC + b"*t300R" +
             ESC + b"*r0A" +
             ESC + b"*b1m2W!!" + FF)
+        raster_no_skip_pdf = tmp / "raster-no-skip.pdf"
         raster_skip_integer_pdf = tmp / "raster-skip-integer.pdf"
         raster_skip_fractional_pdf = tmp / "raster-skip-fractional.pdf"
         raster_skip_next_pdf = tmp / "raster-skip-next.pdf"
         raster_lower_m_no_chain_pdf = tmp / "raster-lower-m-no-chain.pdf"
+        render(dreamprint, raster_no_skip, raster_no_skip_pdf)
         render(dreamprint, raster_skip_integer, raster_skip_integer_pdf)
         render(dreamprint, raster_skip_fractional, raster_skip_fractional_pdf)
         render(dreamprint, raster_skip_next, raster_skip_next_pdf)
         render(dreamprint, raster_lower_m_no_chain,
                raster_lower_m_no_chain_pdf)
-        if ppm_sha256(raster_skip_integer_pdf,
-                      tmp / "raster-skip-integer", dpi=300) != \
+        if ppm_sha256(raster_no_skip_pdf,
+                      tmp / "raster-no-skip", dpi=300) != \
+           ppm_sha256(raster_skip_integer_pdf,
+                      tmp / "raster-skip-integer", dpi=300):
+            raise AssertionError("unsupported *bY changed raster row")
+        if ppm_sha256(raster_no_skip_pdf,
+                      tmp / "raster-no-skip-again", dpi=300) != \
            ppm_sha256(raster_skip_fractional_pdf,
                       tmp / "raster-skip-fractional", dpi=300):
-            raise AssertionError("fractional raster row offset rounded")
-        if ppm_sha256(raster_skip_integer_pdf,
-                      tmp / "raster-skip-integer-again", dpi=300) == \
+            raise AssertionError("unsupported fractional *bY changed raster row")
+        if ppm_sha256(raster_no_skip_pdf,
+                      tmp / "raster-no-skip-third", dpi=300) != \
            ppm_sha256(raster_skip_next_pdf,
                       tmp / "raster-skip-next", dpi=300):
-            raise AssertionError("raster row offset sensitivity check failed")
+            raise AssertionError("unsupported alternate *bY changed raster row")
         if "2W!!" not in pdftotext(raster_lower_m_no_chain_pdf):
             raise AssertionError("unsupported lowercase *b terminal chained into raster payload")
 

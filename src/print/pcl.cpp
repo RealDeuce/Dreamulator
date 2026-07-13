@@ -1644,9 +1644,6 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			begin_payload(State::RasterData, ival);
 			break;
-		case 'Y':
-			raster_row_ += std::max(0, pcl_integer_word(value)) * raster_scale_;
-			break;
 		default:
 			break;
 		}
