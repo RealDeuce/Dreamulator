@@ -443,6 +443,37 @@ def main():
                       dpi=150):
             raise AssertionError("negative right margin did not match positive value")
 
+        left_margin_invalid_base = write(tmp / "left-margin-invalid-base.pcl",
+                                         b"!" + FF)
+        left_margin_invalid = write(tmp / "left-margin-invalid.pcl",
+                                    ESC + b"&a100L" + b"!" + FF)
+        right_margin_invalid_base = write(
+            tmp / "right-margin-invalid-base.pcl",
+            ESC + b"&a6L" + ESC + b"&s1C" + b"!" + FF)
+        right_margin_invalid = write(
+            tmp / "right-margin-invalid.pcl",
+            ESC + b"&a6L" + ESC + b"&a1M" + ESC + b"&s1C" + b"!" + FF)
+        left_margin_invalid_base_pdf = tmp / "left-margin-invalid-base.pdf"
+        left_margin_invalid_pdf = tmp / "left-margin-invalid.pdf"
+        right_margin_invalid_base_pdf = tmp / "right-margin-invalid-base.pdf"
+        right_margin_invalid_pdf = tmp / "right-margin-invalid.pdf"
+        render(dreamprint, left_margin_invalid_base,
+               left_margin_invalid_base_pdf)
+        render(dreamprint, left_margin_invalid, left_margin_invalid_pdf)
+        render(dreamprint, right_margin_invalid_base,
+               right_margin_invalid_base_pdf)
+        render(dreamprint, right_margin_invalid, right_margin_invalid_pdf)
+        if ppm_sha256(left_margin_invalid_base_pdf,
+                      tmp / "left-margin-invalid-base", dpi=150) != \
+           ppm_sha256(left_margin_invalid_pdf, tmp / "left-margin-invalid",
+                      dpi=150):
+            raise AssertionError("invalid left margin changed placement")
+        if ppm_sha256(right_margin_invalid_base_pdf,
+                      tmp / "right-margin-invalid-base", dpi=150) != \
+           ppm_sha256(right_margin_invalid_pdf, tmp / "right-margin-invalid",
+                      dpi=150):
+            raise AssertionError("invalid right margin changed placement")
+
         margin_reset_plain = write(tmp / "margin-reset-plain.pcl",
                                    ESC + b"&a20C" + b"!" + FF)
         margin_reset_esc9 = write(tmp / "margin-reset-esc9.pcl",

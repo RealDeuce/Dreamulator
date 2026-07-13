@@ -1065,27 +1065,35 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			restart_underline_span();
 			break;
 		case 'L':
-			flush_underline_span();
 			value = std::abs(value);
-			st_.left_margin_in = logical_x0_in_ +
-			                     std::max(0.0f, (float)value * hmi_in_);
+		{
+			float new_left = logical_x0_in_ +
+			                 std::max(0.0f, (float)value * hmi_in_);
+			if (new_left > st_.right_margin_in - hmi_in_ + 0.0001f)
+				break;
+			flush_underline_span();
+			st_.left_margin_in = new_left;
 			st_.x_pos = std::max(st_.x_pos, st_.left_margin_in);
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
+		}
 		case 'M':
-			flush_underline_span();
 			value = std::abs(value);
-			st_.right_margin_in = std::max(st_.left_margin_in,
-			                               logical_x0_in_ +
-			                               ((float)value + 1.0f) * hmi_in_);
-			st_.right_margin_in = std::min(st_.right_margin_in,
+		{
+			float new_right = logical_x0_in_ +
+			                  ((float)value + 1.0f) * hmi_in_;
+			if (new_right < st_.left_margin_in + hmi_in_ - 0.0001f)
+				break;
+			flush_underline_span();
+			st_.right_margin_in = std::min(new_right,
 			                               logical_x0_in_ + logical_w_in_);
 			if (st_.x_pos > st_.right_margin_in)
 				st_.x_pos = st_.right_margin_in;
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
+		}
 		case 'R':
 			flush_underline_span();
 			if (current_param_relative_)
