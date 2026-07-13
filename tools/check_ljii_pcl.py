@@ -794,6 +794,51 @@ def main():
                       dpi=150):
             raise AssertionError("fractional symbol-set parameter rounded")
 
+        symbol_patch_samples = (
+            (b"2U", ord("$"), 0xba),
+            (b"1E", ord("#"), 0xbb),
+            (b"0F", ord("#"), 0xbb),
+            (b"1F", ord("#"), 0xbb),
+            (b"0G", ord("#"), 0xbb),
+            (b"1G", ord("@"), 0xbd),
+            (b"0I", ord("#"), 0xbb),
+            (b"0K", ord("\\"), 0xbc),
+            (b"2K", ord("$"), 0xbc),
+            (b"3S", ord("$"), 0xba),
+            (b"0S", ord("$"), 0xba),
+            (b"1S", ord("["), 0xb8),
+            (b"2S", ord("#"), 0xbb),
+            (b"6S", ord("@"), 0xf2),
+            (b"4S", ord("@"), 0xbd),
+            (b"5S", ord("@"), 0xa8),
+            (b"0D", ord("["), 0xd3),
+            (b"1D", ord("#"), 0xbd),
+        )
+        symbol_patch_stream = bytearray()
+        symbol_patch_expected_stream = bytearray()
+        symbol_patch_text = []
+        for pcl, dst, src in symbol_patch_samples:
+            symbol_patch_stream += ESC + b"(" + pcl + bytes([dst]) + b"\n"
+            symbol_patch_expected_stream += \
+                ESC + b"(" + pcl + bytes([src]) + b"\n"
+            symbol_patch_text.append(chr(dst))
+        symbol_patch = write(tmp / "symbol-patch.pcl",
+                             bytes(symbol_patch_stream) + FF)
+        symbol_patch_expected = write(
+            tmp / "symbol-patch-expected.pcl",
+            bytes(symbol_patch_expected_stream) + FF)
+        symbol_patch_pdf = tmp / "symbol-patch.pdf"
+        symbol_patch_expected_pdf = tmp / "symbol-patch-expected.pdf"
+        render(dreamprint, symbol_patch, symbol_patch_pdf)
+        render(dreamprint, symbol_patch_expected, symbol_patch_expected_pdf)
+        if ppm_sha256(symbol_patch_pdf, tmp / "symbol-patch", dpi=150) != \
+           ppm_sha256(symbol_patch_expected_pdf,
+                      tmp / "symbol-patch-expected", dpi=150):
+            raise AssertionError("symbol patch table did not select ROM source glyphs")
+        if "".join(symbol_patch_text) not in \
+           "".join(pdftotext(symbol_patch_pdf).split()):
+            raise AssertionError("symbol patch stream lost selectable source text")
+
         cursor_stack_clamp = write(tmp / "cursor-stack-clamp.pcl",
                                    ESC + b"&a65R" +
                                    ESC + b"&f0S" +
