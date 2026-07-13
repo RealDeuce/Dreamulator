@@ -1721,8 +1721,11 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		draw_raster_row(payload_buf_);
 	else if (payload_state_ == State::VfcData)
 		apply_vfc_payload(payload_buf_);
-	else if (payload_state_ == State::DownloadData)
+	else if (payload_state_ == State::DownloadData) {
 		apply_download_payload(payload_buf_);
+		if (download_font_slot_ == active_font_slot_)
+			sync_active_font_state();
+	}
 
 	payload_buf_.clear();
 	payload_state_ = State::Normal;

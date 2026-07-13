@@ -1700,6 +1700,50 @@ def main():
             raise AssertionError(
                 "lowercase downloaded-font W record did not survive to uppercase W")
 
+        soft_metric_header = bytearray(64)
+        soft_metric_header[0] = 0x00
+        soft_metric_header[1] = 0x01
+        soft_metric_header[3] = 0x00
+        soft_metric_header[8] = 0x03
+        soft_metric_header[11] = 0x01
+        soft_metric_header[16] = 0x07
+        soft_metric_header[17] = 0xd0
+        soft_metric_header[18] = 0x04
+        soft_metric_header[19] = 0xb0
+        soft_metric_payload = bytes(soft_metric_header)
+        soft_metric_glyph = b"\xe0\xe0\xe0"
+        soft_metric_download = write(
+            tmp / "soft-metric-download.pcl",
+            ESC + b"*c4661D" +
+            ESC + b"(s64W" + soft_metric_payload +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + soft_metric_glyph +
+            b"AA" + FF)
+        soft_metric_resync = write(
+            tmp / "soft-metric-resync.pcl",
+            ESC + b"*c4661D" +
+            ESC + b"(s64W" + soft_metric_payload +
+            ESC + b"(s20H" +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + soft_metric_glyph +
+            b"AA" + FF)
+        soft_metric_download_pdf = tmp / "soft-metric-download.pdf"
+        soft_metric_resync_pdf = tmp / "soft-metric-resync.pdf"
+        render(dreamprint, soft_metric_download, soft_metric_download_pdf)
+        render(dreamprint, soft_metric_resync, soft_metric_resync_pdf)
+        if "AA" not in pdftotext(soft_metric_download_pdf):
+            raise AssertionError(
+                "downloaded font metric stream text did not extract")
+        if ppm_nonwhite(soft_metric_download_pdf,
+                        tmp / "soft-metric-download") < 5:
+            raise AssertionError("downloaded font metric stream looks blank")
+        if ppm_sha256(soft_metric_download_pdf,
+                      tmp / "soft-metric-download", dpi=150) != \
+           ppm_sha256(soft_metric_resync_pdf,
+                      tmp / "soft-metric-resync", dpi=150):
+            raise AssertionError(
+                "downloaded font payload metrics did not refresh active HMI")
+
         soft_after_reset_permanent = write(
             tmp / "soft-after-reset-permanent.pcl",
             ESC + b"*c4660D" +
