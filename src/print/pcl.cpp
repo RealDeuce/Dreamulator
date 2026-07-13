@@ -650,6 +650,7 @@ void PclPrinter::reset_ljii_state()
 	fill_pattern_ = 0;
 	copy_count_ = 1;
 	wrap_enabled_ = false;
+	st_.perf_skip_lines = 6;
 	macro_id_ = 0;
 	overlay_macro_id_ = 0;
 	defining_macro_ = false;

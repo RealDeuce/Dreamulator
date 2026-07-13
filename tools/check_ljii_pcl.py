@@ -2221,6 +2221,9 @@ def main():
         for i in range(60):
             perf_lines += f"P{i:02d}\r\n".encode("ascii")
         perf_tail = bytes(perf_lines) + b"Z" + FF
+        perf_default = write(tmp / "perf-default.pcl", perf_tail)
+        perf_reset = write(tmp / "perf-reset.pcl",
+                           ESC + b"&l0L" + ESC + b"E" + perf_tail)
         perf_enabled = write(tmp / "perf-enabled.pcl",
                              ESC + b"&l1L" + perf_tail)
         perf_preserved = write(tmp / "perf-preserved.pcl",
@@ -2232,14 +2235,22 @@ def main():
         perf_fractional = write(tmp / "perf-fractional.pcl",
                                 ESC + b"&l1L" + ESC + b"&l0.9L" +
                                 perf_tail)
+        perf_default_pdf = tmp / "perf-default.pdf"
+        perf_reset_pdf = tmp / "perf-reset.pdf"
         perf_enabled_pdf = tmp / "perf-enabled.pdf"
         perf_preserved_pdf = tmp / "perf-preserved.pdf"
         perf_disabled_pdf = tmp / "perf-disabled.pdf"
         perf_fractional_pdf = tmp / "perf-fractional.pdf"
+        render(dreamprint, perf_default, perf_default_pdf)
+        render(dreamprint, perf_reset, perf_reset_pdf)
         render(dreamprint, perf_enabled, perf_enabled_pdf)
         render(dreamprint, perf_preserved, perf_preserved_pdf)
         render(dreamprint, perf_disabled, perf_disabled_pdf)
         render(dreamprint, perf_fractional, perf_fractional_pdf)
+        if pdf_pages(perf_default_pdf) != pdf_pages(perf_enabled_pdf):
+            raise AssertionError("default perforation state was not enabled")
+        if pdf_pages(perf_reset_pdf) != pdf_pages(perf_enabled_pdf):
+            raise AssertionError("ESC E did not reset perforation state")
         if pdf_pages(perf_preserved_pdf) != pdf_pages(perf_enabled_pdf):
             raise AssertionError("invalid perforation selector did not preserve state")
         if pdf_pages(perf_disabled_pdf) == pdf_pages(perf_enabled_pdf):
