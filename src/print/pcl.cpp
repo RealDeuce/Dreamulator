@@ -61,7 +61,6 @@ PageGeometry pcl_page_geometry(int code, int orientation)
 bool pcl_page_size_selector_valid(int code)
 {
 	switch (code) {
-	case 0:
 	case 1:
 	case 2:
 	case 3:
@@ -2698,8 +2697,6 @@ void PclPrinter::set_page_size(int code)
 	if (!pcl_page_size_selector_valid(code))
 		return;
 	publish_current_page();
-	if (code == 0)
-		code = 2;
 	page_size_code_ = code;
 	apply_page_geometry();
 }

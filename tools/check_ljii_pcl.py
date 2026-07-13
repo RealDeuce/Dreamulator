@@ -1189,16 +1189,26 @@ def main():
         page_size_invalid = write(tmp / "page-size-invalid.pcl",
                                   ESC + b"&l3A" + ESC + b"&l999A" +
                                   b"!" + FF)
+        page_size_zero = write(tmp / "page-size-zero.pcl",
+                               ESC + b"&l3A" + ESC + b"&l0A" +
+                               b"!" + FF)
+        page_size_zero_after_text = write(tmp / "page-size-zero-after-text.pcl",
+                                          b"A" + ESC + b"&l0A" + b"B" + FF)
         page_size_positive_pdf = tmp / "page-size-positive.pdf"
         page_size_negative_pdf = tmp / "page-size-negative.pdf"
         page_size_fractional_pdf = tmp / "page-size-fractional.pdf"
         page_size_integer_pdf = tmp / "page-size-integer.pdf"
         page_size_invalid_pdf = tmp / "page-size-invalid.pdf"
+        page_size_zero_pdf = tmp / "page-size-zero.pdf"
+        page_size_zero_after_text_pdf = tmp / "page-size-zero-after-text.pdf"
         render(dreamprint, page_size_positive, page_size_positive_pdf)
         render(dreamprint, page_size_negative, page_size_negative_pdf)
         render(dreamprint, page_size_fractional, page_size_fractional_pdf)
         render(dreamprint, page_size_integer, page_size_integer_pdf)
         render(dreamprint, page_size_invalid, page_size_invalid_pdf)
+        render(dreamprint, page_size_zero, page_size_zero_pdf)
+        render(dreamprint, page_size_zero_after_text,
+               page_size_zero_after_text_pdf)
         if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
                       dpi=72) != \
            ppm_sha256(page_size_negative_pdf, tmp / "page-size-negative",
@@ -1209,6 +1219,14 @@ def main():
            ppm_sha256(page_size_invalid_pdf, tmp / "page-size-invalid",
                       dpi=72):
             raise AssertionError("invalid page-size selector did not preserve state")
+        if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
+                      dpi=72) != \
+           ppm_sha256(page_size_zero_pdf, tmp / "page-size-zero", dpi=72):
+            raise AssertionError("zero page-size selector did not preserve state")
+        if pdf_pages(page_size_zero_after_text_pdf) != 1:
+            raise AssertionError("zero page-size selector published current text")
+        if "AB" not in "".join(pdftotext(page_size_zero_after_text_pdf).split()):
+            raise AssertionError("zero page-size selector shifted text output")
         if ppm_sha256(page_size_fractional_pdf, tmp / "page-size-fractional",
                       dpi=72) != \
            ppm_sha256(page_size_integer_pdf, tmp / "page-size-integer",
