@@ -1093,6 +1093,11 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			state_ = State::Normal;
 			param_relative_ = false;
 			return;
+		} else if (group_ == '*' && subgroup_ == 'r' &&
+		           b != 'a' && b != 'b') {
+			state_ = State::Normal;
+			param_relative_ = false;
+			return;
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
 			pending_vfc_count_ = pcl_integer_word(value);
 		} else if ((group_ == '(' || group_ == ')') &&

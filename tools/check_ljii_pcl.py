@@ -1094,14 +1094,20 @@ def main():
 
         raster_query = write(tmp / "raster-query.pcl",
                              ESC + b"*r1K" + b"QAB" + FF)
+        raster_lower_k = write(tmp / "raster-lower-k.pcl",
+                               ESC + b"*r1k" + b"QAB" + FF)
         model_query = write(tmp / "model-query.pcl",
                             ESC + b"*s1^" + b"QAB" + FF)
         raster_query_pdf = tmp / "raster-query.pdf"
+        raster_lower_k_pdf = tmp / "raster-lower-k.pdf"
         model_query_pdf = tmp / "model-query.pdf"
         render(dreamprint, raster_query, raster_query_pdf)
+        render(dreamprint, raster_lower_k, raster_lower_k_pdf)
         render(dreamprint, model_query, model_query_pdf)
         if "".join(pdftotext(raster_query_pdf).split()) != "AB":
             raise AssertionError("raster query byte leaked printable text")
+        if "".join(pdftotext(raster_lower_k_pdf).split()) != "QAB":
+            raise AssertionError("unsupported lowercase *rK consumed query byte")
         if "".join(pdftotext(model_query_pdf).split()) != "AB":
             raise AssertionError("model query byte leaked printable text")
 
