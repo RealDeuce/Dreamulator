@@ -2475,26 +2475,50 @@ def main():
         if execute_cursor_pixels > 50 or execute_macro_pixels < 200:
             raise AssertionError("macro execute unexpectedly restored cursor")
 
-        macro_stack_ignored = write(
-            tmp / "macro-stack-ignored.pcl",
+        macro_stack_replayed = write(
+            tmp / "macro-stack-replayed.pcl",
             ESC + b"&f412Y" +
             ESC + b"&f0X" + ESC + b"&f0S" + ESC + b"*p300X" +
             ESC + b"&f1S" + b"!" + ESC + b"&f1X" +
             ESC + b"&f412Y" + ESC + b"&f2X" + FF)
-        macro_stack_expected = write(
+        macro_stack_replayed_expected = write(
             tmp / "macro-stack-expected.pcl",
-            ESC + b"&f413Y" +
-            ESC + b"&f0X" + ESC + b"*p300X" + b"!" + ESC + b"&f1X" +
-            ESC + b"&f413Y" + ESC + b"&f2X" + FF)
-        macro_stack_ignored_pdf = tmp / "macro-stack-ignored.pdf"
-        macro_stack_expected_pdf = tmp / "macro-stack-expected.pdf"
-        render(dreamprint, macro_stack_ignored, macro_stack_ignored_pdf)
-        render(dreamprint, macro_stack_expected, macro_stack_expected_pdf)
-        if ppm_sha256(macro_stack_ignored_pdf,
-                      tmp / "macro-stack-ignored", dpi=300) != \
-           ppm_sha256(macro_stack_expected_pdf,
+            ESC + b"&f0S" + ESC + b"*p300X" +
+            ESC + b"&f1S" + b"!" + FF)
+        macro_stack_replayed_pdf = tmp / "macro-stack-replayed.pdf"
+        macro_stack_replayed_expected_pdf = tmp / "macro-stack-expected.pdf"
+        render(dreamprint, macro_stack_replayed, macro_stack_replayed_pdf)
+        render(dreamprint, macro_stack_replayed_expected,
+               macro_stack_replayed_expected_pdf)
+        if ppm_sha256(macro_stack_replayed_pdf,
+                      tmp / "macro-stack-replayed", dpi=300) != \
+           ppm_sha256(macro_stack_replayed_expected_pdf,
                       tmp / "macro-stack-expected", dpi=300):
-            raise AssertionError("macro replay executed cursor stack payload")
+            raise AssertionError("macro replay did not execute cursor stack payload")
+
+        macro_id_replayed = write(
+            tmp / "macro-id-replayed.pcl",
+            ESC + b"&f414Y" +
+            ESC + b"&f0X" + ESC + b"&f415Y" + ESC + b"&f2X" +
+            ESC + b"&f1X" +
+            ESC + b"&f415Y" +
+            ESC + b"&f0X" + b"!" + ESC + b"&f1X" +
+            ESC + b"&f414Y" + ESC + b"&f2X" + FF)
+        macro_id_replayed_expected = write(
+            tmp / "macro-id-expected.pcl",
+            ESC + b"&f416Y" +
+            ESC + b"&f0X" + b"!" + ESC + b"&f1X" +
+            ESC + b"&f416Y" + ESC + b"&f2X" + FF)
+        macro_id_replayed_pdf = tmp / "macro-id-replayed.pdf"
+        macro_id_replayed_expected_pdf = tmp / "macro-id-expected.pdf"
+        render(dreamprint, macro_id_replayed, macro_id_replayed_pdf)
+        render(dreamprint, macro_id_replayed_expected,
+               macro_id_replayed_expected_pdf)
+        if ppm_sha256(macro_id_replayed_pdf,
+                      tmp / "macro-id-replayed", dpi=300) != \
+           ppm_sha256(macro_id_replayed_expected_pdf,
+                      tmp / "macro-id-expected", dpi=300):
+            raise AssertionError("macro replay did not execute macro-id payload")
 
         macro_nested = write(tmp / "macro-nested.pcl",
                              ESC + b"&f500Y" +
