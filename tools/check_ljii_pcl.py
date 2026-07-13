@@ -1124,6 +1124,29 @@ def main():
         if "V05" not in pdftotext(vfc_limit_custom_pdf):
             raise AssertionError("custom VFC overflow lost trailing text")
 
+        vfc_line63_table = (b"\x00\x00" * 63) + b"\x00\x02"
+        vfc_bottom_recovery = write(tmp / "vfc-bottom-recovery.pcl",
+                                    ESC + b"&l128W" + vfc_line63_table +
+                                    ESC + b"&a64R" +
+                                    ESC + b"&l2V" + b"!" + FF)
+        vfc_bottom_recovery_pdf = tmp / "vfc-bottom-recovery.pdf"
+        render(dreamprint, vfc_bottom_recovery, vfc_bottom_recovery_pdf)
+        bbox = ppm_bbox(vfc_bottom_recovery_pdf, tmp / "vfc-bottom-recovery",
+                        dpi=72)
+        if bbox is None or bbox[1] > 120:
+            raise AssertionError("VFC line-63 recovery did not return near top")
+
+        vfc_target_after_text = write(tmp / "vfc-target-after-text.pcl",
+                                      ESC + b"&l128W" + vfc_line63_table +
+                                      b"A" + ESC + b"&a58R" +
+                                      ESC + b"&l2V" + b"B" + FF)
+        vfc_target_after_text_pdf = tmp / "vfc-target-after-text.pdf"
+        render(dreamprint, vfc_target_after_text, vfc_target_after_text_pdf)
+        if pdf_pages(vfc_target_after_text_pdf) != 2:
+            raise AssertionError("VFC target-after-text did not publish old page")
+        if "AB" not in "".join(pdftotext(vfc_target_after_text_pdf).split()):
+            raise AssertionError("VFC target-after-text lost selectable text")
+
         vfc_probe_x = write(tmp / "vfc-probe-x.pcl",
                             ESC + b"&l4W" + b"\x1aX\x00\x00\x02" +
                             ESC + b"&l2V" + b"!" + FF)

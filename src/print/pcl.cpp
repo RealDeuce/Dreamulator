@@ -433,6 +433,7 @@ private:
 	void apply_vfc_payload(const std::vector<uint8_t> &payload);
 	void vfc_channel_jump(int selector);
 	float vfc_line_y(int line) const;
+	float vfc_bottom_recovery_y(int target_line) const;
 	SoftFont &current_soft_font();
 	SoftFont *selected_soft_font();
 	const SoftFont *selected_soft_font() const;
@@ -1727,12 +1728,20 @@ void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
 	}
 	text_length_in_ = std::max(0.0f, vfc_limit_in_ - st_.top_margin_in);
 	text_length_custom_ = true;
-	update_vfc_bounds();
 }
 
 float PclPrinter::vfc_line_y(int line) const
 {
-	return st_.top_margin_in + st_.line_spacing_in * (float)(line + 1);
+	return st_.top_margin_in +
+	       st_.line_spacing_in * ((float)line + 18.0f / 25.0f);
+}
+
+float PclPrinter::vfc_bottom_recovery_y(int target_line) const
+{
+	int last = std::max(0, std::min(127, vfc_last_line_));
+	return st_.top_margin_in +
+	       st_.line_spacing_in *
+	       ((float)(last - target_line + 1) - 18.0f / 25.0f);
 }
 
 void PclPrinter::vfc_channel_jump(int selector)
@@ -1761,6 +1770,7 @@ void PclPrinter::vfc_channel_jump(int selector)
 	flush_underline_span();
 
 	int last = std::max(0, std::min(127, vfc_last_line_));
+	int text_last = std::max(0, std::min(last, vfc_text_last_line_));
 	int target = -1;
 	bool wrapped = false;
 	for (int line = start; line <= last; line++) {
@@ -1780,16 +1790,28 @@ void PclPrinter::vfc_channel_jump(int selector)
 	}
 
 	if (target < 0) {
-		if (current >= 0 && current <= last && page_ && page_dirty_)
+		if (current >= 0 && current <= text_last && page_ && page_dirty_)
 			publish_current_page();
-		target = 0;
-		wrapped = true;
+		st_.x_pos = st_.left_margin_in;
+		st_.y_pos = (start > text_last + 1) ?
+		            vfc_bottom_recovery_y(last + 1) :
+		            vfc_line_y(0);
+		clear_pending_cursor_y();
+		restart_underline_span();
+		return;
 	}
 
-	if (wrapped && current >= 0 && current <= last && page_ && page_dirty_)
-		publish_current_page();
 	st_.x_pos = st_.left_margin_in;
-	st_.y_pos = vfc_line_y(target);
+	if (target > text_last) {
+		if (!wrapped && current >= 0 && current <= text_last &&
+		    page_ && page_dirty_)
+			publish_current_page();
+		st_.y_pos = vfc_bottom_recovery_y(target);
+	} else {
+		if (wrapped && current >= 0 && current <= last && page_ && page_dirty_)
+			publish_current_page();
+		st_.y_pos = vfc_line_y(target);
+	}
 	clear_pending_cursor_y();
 	restart_underline_span();
 }
