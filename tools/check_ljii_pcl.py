@@ -1724,6 +1724,18 @@ def main():
                       tmp / "raster-start-fractional", dpi=150):
             raise AssertionError("fractional raster start selector rounded")
 
+        raster_page_edge_payload = bytes([0] * 312 + [0xff])
+        raster_page_edge = write(tmp / "raster-page-edge.pcl",
+                                 ESC + b"*t300R" +
+                                 ESC + b"*r0A" +
+                                 ESC + b"*b313W" +
+                                 raster_page_edge_payload + FF)
+        raster_page_edge_pdf = tmp / "raster-page-edge.pdf"
+        render(dreamprint, raster_page_edge, raster_page_edge_pdf)
+        if ppm_nonwhite(raster_page_edge_pdf, tmp / "raster-page-edge",
+                        dpi=300) <= 0:
+            raise AssertionError("raster row clipped at text right margin")
+
         raster_skip_integer = write(tmp / "raster-skip-integer.pcl",
                                     ESC + b"*t300R" +
                                     ESC + b"*r0A" +

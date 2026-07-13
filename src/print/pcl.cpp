@@ -1682,7 +1682,7 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 
 	int start_x_dot = (int)std::floor(raster_x_in_ * kDotsPerIn);
 	int start_y_dot = (int)std::floor(raster_y_in_ * kDotsPerIn) + raster_row_;
-	int page_w_dot = (int)std::floor(st_.right_margin_in * kDotsPerIn);
+	int page_w_dot = (int)std::floor(st_.page_width_in * kDotsPerIn);
 	int page_h_dot = (int)std::floor(st_.page_height_in * kDotsPerIn);
 
 	if (raster_row_ < 0) {
