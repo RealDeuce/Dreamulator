@@ -474,6 +474,20 @@ def main():
                       dpi=150):
             raise AssertionError("negative line termination selector was not absolute")
 
+        line_term_default = write(tmp / "line-term-default.pcl",
+                                  ESC + b"&k0G" + b"A\rB" + FF)
+        line_term_invalid = write(tmp / "line-term-invalid.pcl",
+                                  ESC + b"&k4G" + b"A\rB" + FF)
+        line_term_default_pdf = tmp / "line-term-default.pdf"
+        line_term_invalid_pdf = tmp / "line-term-invalid.pdf"
+        render(dreamprint, line_term_default, line_term_default_pdf)
+        render(dreamprint, line_term_invalid, line_term_invalid_pdf)
+        if ppm_sha256(line_term_default_pdf, tmp / "line-term-default",
+                      dpi=150) != \
+           ppm_sha256(line_term_invalid_pdf, tmp / "line-term-invalid",
+                      dpi=150):
+            raise AssertionError("invalid line termination selector changed mode")
+
         wrap_positive = write(tmp / "wrap-positive.pcl",
                               b"X" + ESC + b"&s1C" + ESC + b"&a80C" +
                               b"A" + FF)

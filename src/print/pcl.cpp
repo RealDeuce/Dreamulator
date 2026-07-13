@@ -1138,7 +1138,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'k') {
 		switch (term) {
 		case 'G':
-			line_term_ = std::min(3, std::abs(ival));
+			ival = std::abs(ival);
+			if (ival <= 3)
+				line_term_ = ival;
 			break;
 		case 'H':
 			value = std::abs(value);
