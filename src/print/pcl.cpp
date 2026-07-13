@@ -766,7 +766,7 @@ void PclPrinter::parse_byte(uint8_t b)
 			if (selected_context_routes_parser_printable())
 				process_printable(0x1a);
 		} else if (b == 0x58) {
-			/* Synthetic 0x100 route: consume the pair without printing X. */
+			process_printable(0x7f);
 		}
 		state_ = State::Normal;
 		return;

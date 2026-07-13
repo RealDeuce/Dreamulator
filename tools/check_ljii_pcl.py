@@ -932,6 +932,8 @@ def main():
             raise AssertionError("normal Control-Z X leaked printable text")
 
         direct_del = write(tmp / "direct-del.pcl", b"A\x7fB" + FF)
+        control_z_del = write(tmp / "control-z-del.pcl",
+                              b"A" + bytes([0x1a, 0x58]) + b"B" + FF)
         transparent_del = write(tmp / "transparent-del.pcl",
                                 ESC + b"&p3X" + b"A\x7fB" + FF)
         direct_c1_default = write(tmp / "direct-c1-default.pcl",
@@ -950,6 +952,7 @@ def main():
             tmp / "control-z-nested-nonroman-expected.pcl",
             ESC + b"(0N" + b"AB" + FF)
         direct_del_pdf = tmp / "direct-del.pdf"
+        control_z_del_pdf = tmp / "control-z-del.pdf"
         transparent_del_pdf = tmp / "transparent-del.pdf"
         direct_c1_default_pdf = tmp / "direct-c1-default.pdf"
         direct_c1_default_expected_pdf = \
@@ -961,6 +964,7 @@ def main():
         control_z_nested_nonroman_expected_pdf = \
             tmp / "control-z-nested-nonroman-expected.pdf"
         render(dreamprint, direct_del, direct_del_pdf)
+        render(dreamprint, control_z_del, control_z_del_pdf)
         render(dreamprint, transparent_del, transparent_del_pdf)
         render(dreamprint, direct_c1_default, direct_c1_default_pdf)
         render(dreamprint, direct_c1_default_expected,
@@ -972,6 +976,9 @@ def main():
                control_z_nested_nonroman_pdf)
         render(dreamprint, control_z_nested_nonroman_expected,
                control_z_nested_nonroman_expected_pdf)
+        if ppm_sha256(direct_del_pdf, tmp / "direct-del", dpi=150) != \
+           ppm_sha256(control_z_del_pdf, tmp / "control-z-del", dpi=150):
+            raise AssertionError("normal Control-Z X did not route synthetic DEL")
         if ppm_sha256(direct_del_pdf, tmp / "direct-del", dpi=150) != \
            ppm_sha256(transparent_del_pdf, tmp / "transparent-del", dpi=150):
             raise AssertionError("direct DEL did not use printable fast path")
