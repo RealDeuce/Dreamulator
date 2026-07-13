@@ -1223,6 +1223,12 @@ def main():
                                b"!" + FF)
         page_size_zero_after_text = write(tmp / "page-size-zero-after-text.pcl",
                                           b"A" + ESC + b"&l0A" + b"B" + FF)
+        page_size_missing = write(tmp / "page-size-missing.pcl",
+                                  ESC + b"&l3A" + ESC + b"&lA" +
+                                  b"!" + FF)
+        page_size_missing_after_text = write(
+            tmp / "page-size-missing-after-text.pcl",
+            b"A" + ESC + b"&lA" + b"B" + FF)
         page_size_positive_pdf = tmp / "page-size-positive.pdf"
         page_size_negative_pdf = tmp / "page-size-negative.pdf"
         page_size_fractional_pdf = tmp / "page-size-fractional.pdf"
@@ -1230,6 +1236,9 @@ def main():
         page_size_invalid_pdf = tmp / "page-size-invalid.pdf"
         page_size_zero_pdf = tmp / "page-size-zero.pdf"
         page_size_zero_after_text_pdf = tmp / "page-size-zero-after-text.pdf"
+        page_size_missing_pdf = tmp / "page-size-missing.pdf"
+        page_size_missing_after_text_pdf = \
+            tmp / "page-size-missing-after-text.pdf"
         render(dreamprint, page_size_positive, page_size_positive_pdf)
         render(dreamprint, page_size_negative, page_size_negative_pdf)
         render(dreamprint, page_size_fractional, page_size_fractional_pdf)
@@ -1238,6 +1247,9 @@ def main():
         render(dreamprint, page_size_zero, page_size_zero_pdf)
         render(dreamprint, page_size_zero_after_text,
                page_size_zero_after_text_pdf)
+        render(dreamprint, page_size_missing, page_size_missing_pdf)
+        render(dreamprint, page_size_missing_after_text,
+               page_size_missing_after_text_pdf)
         if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
                       dpi=72) != \
            ppm_sha256(page_size_negative_pdf, tmp / "page-size-negative",
@@ -1256,6 +1268,16 @@ def main():
             raise AssertionError("zero page-size selector published current text")
         if "AB" not in "".join(pdftotext(page_size_zero_after_text_pdf).split()):
             raise AssertionError("zero page-size selector shifted text output")
+        if ppm_sha256(page_size_missing_pdf, tmp / "page-size-missing",
+                      dpi=72) != \
+           ppm_sha256(page_size_integer_pdf, tmp / "page-size-integer",
+                      dpi=72):
+            raise AssertionError("missing page-size selector did not default")
+        if pdf_pages(page_size_missing_after_text_pdf) != 2:
+            raise AssertionError("missing page-size selector did not publish current text")
+        if "A" not in pdftotext(page_size_missing_after_text_pdf) or \
+           "B" not in pdftotext(page_size_missing_after_text_pdf):
+            raise AssertionError("missing page-size selector lost text output")
         if ppm_sha256(page_size_fractional_pdf, tmp / "page-size-fractional",
                       dpi=72) != \
            ppm_sha256(page_size_integer_pdf, tmp / "page-size-integer",

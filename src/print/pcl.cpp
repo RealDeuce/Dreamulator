@@ -512,6 +512,7 @@ private:
 	int param_pos_ = 0;
 	bool param_relative_ = false;
 	bool current_param_relative_ = false;
+	bool current_param_explicit_ = false;
 	int payload_remaining_ = 0;
 	bool payload_control_pending_ = false;
 	int payload_control_counter_ = 0;
@@ -602,6 +603,7 @@ void PclPrinter::reset_ljii_state()
 	param_buf_[0] = 0;
 	param_relative_ = false;
 	current_param_relative_ = false;
+	current_param_explicit_ = false;
 	payload_remaining_ = 0;
 	payload_control_pending_ = false;
 	payload_control_counter_ = 0;
@@ -1009,6 +1011,7 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 	}
 
 	param_buf_[param_pos_] = 0;
+	current_param_explicit_ = param_pos_ > 0;
 	double value = param_pos_ > 0 ? std::atof(param_buf_) : 0.0;
 	int ival = static_cast<int>(std::lround(value));
 	current_param_relative_ = param_relative_;
@@ -1069,7 +1072,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 
 	if (group == '&' && subgroup == 'l') {
 		switch (term) {
-		case 'A': set_page_size(pcl_integer_word(value)); break;
+		case 'A':
+			if (current_param_explicit_)
+				set_page_size(pcl_integer_word(value));
+			else
+				set_page_size(2);
+			break;
 		case 'C':
 			value = std::abs(value);
 			if (pcl_integer_word(value) <= 0x150) {
