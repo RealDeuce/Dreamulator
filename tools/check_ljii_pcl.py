@@ -1210,6 +1210,22 @@ def main():
            pdf_pages(orientation_positive_pdf):
             raise AssertionError("fractional orientation selector rounded")
 
+        orientation_hmi_base = write(tmp / "orientation-hmi-base.pcl",
+                                     ESC + b"&l1O" + b"!!" + FF)
+        orientation_hmi_refresh = write(tmp / "orientation-hmi-refresh.pcl",
+                                        ESC + b"&k6H" + ESC + b"&l1O" +
+                                        b"!!" + FF)
+        orientation_hmi_base_pdf = tmp / "orientation-hmi-base.pdf"
+        orientation_hmi_refresh_pdf = tmp / "orientation-hmi-refresh.pdf"
+        render(dreamprint, orientation_hmi_base, orientation_hmi_base_pdf)
+        render(dreamprint, orientation_hmi_refresh,
+               orientation_hmi_refresh_pdf)
+        if ppm_sha256(orientation_hmi_base_pdf,
+                      tmp / "orientation-hmi-base", dpi=150) != \
+           ppm_sha256(orientation_hmi_refresh_pdf,
+                      tmp / "orientation-hmi-refresh", dpi=150):
+            raise AssertionError("orientation change did not refresh HMI")
+
         copies_zero_ignored = write(tmp / "copies-zero-ignored.pcl",
                                     ESC + b"&l2X" + ESC + b"&l0X" +
                                     b"!" + FF)

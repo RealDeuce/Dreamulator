@@ -2736,6 +2736,7 @@ void PclPrinter::set_orientation(int orientation)
 	publish_current_page();
 	orientation_ = orientation;
 	apply_page_geometry();
+	sync_active_font_state();
 }
 
 void PclPrinter::apply_page_geometry()
