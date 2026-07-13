@@ -2216,6 +2216,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 
 	SoftGlyph glyph;
 	bool render_payload_control_glyph = false;
+	bool preserve_declared_glyph_shape = false;
 	if (download_payload_control_seen_ && payload.size() == 18 &&
 	    payload[0] == 0x00) {
 		glyph.width = 136;
@@ -2229,6 +2230,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
 		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
 		glyph.bitmap.assign(payload.begin() + 12, payload.end());
+		preserve_declared_glyph_shape = true;
 	} else if (payload.size() >= 6 && payload[4] == 0x0c &&
 	           payload[5] != 1 && payload[5] != 2) {
 		return;
@@ -2282,13 +2284,17 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.bitmap = std::move(interleaved);
 	}
 	if (glyph.bitmap.size() < expected && !glyph.bitmap.empty()) {
-		size_t rows = glyph.bitmap.size() / std::max<uint16_t>(1, glyph.span);
-		if (rows == 0) {
-			glyph.span = 1;
-			glyph.width = 8;
-			rows = glyph.bitmap.size();
+		if (preserve_declared_glyph_shape) {
+			glyph.bitmap.resize(expected, 0);
+		} else {
+			size_t rows = glyph.bitmap.size() / std::max<uint16_t>(1, glyph.span);
+			if (rows == 0) {
+				glyph.span = 1;
+				glyph.width = 8;
+				rows = glyph.bitmap.size();
+			}
+			glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
 		}
-		glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
 	}
 	font.glyphs[soft_char_code_] = std::move(glyph);
 	if (render_payload_control_glyph)

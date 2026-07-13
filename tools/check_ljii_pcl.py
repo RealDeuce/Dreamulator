@@ -1788,6 +1788,39 @@ def main():
             raise AssertionError(
                 "downloaded descriptor pitch/height words were not capped")
 
+        partial_descriptor_glyph = bytes.fromhex(
+            "00 00 00 00 0c 01 00 03 00 10 00 00 f0 0f aa 55")
+        padded_descriptor_glyph = partial_descriptor_glyph + b"\x00\x00"
+        soft_partial_descriptor = write(
+            tmp / "soft-partial-descriptor.pcl",
+            ESC + b"*c4664D" +
+            ESC + b"*c65E" +
+            ESC + b"(s16W" + partial_descriptor_glyph +
+            ESC + b"(4664X" +
+            b"A" + FF)
+        soft_padded_descriptor = write(
+            tmp / "soft-padded-descriptor.pcl",
+            ESC + b"*c4664D" +
+            ESC + b"*c65E" +
+            ESC + b"(s18W" + padded_descriptor_glyph +
+            ESC + b"(4664X" +
+            b"A" + FF)
+        soft_partial_descriptor_pdf = tmp / "soft-partial-descriptor.pdf"
+        soft_padded_descriptor_pdf = tmp / "soft-padded-descriptor.pdf"
+        render(dreamprint, soft_partial_descriptor,
+               soft_partial_descriptor_pdf)
+        render(dreamprint, soft_padded_descriptor,
+               soft_padded_descriptor_pdf)
+        if pdftotext(soft_partial_descriptor_pdf).strip() != "A":
+            raise AssertionError(
+                "partial descriptor glyph text did not extract")
+        if ppm_sha256(soft_partial_descriptor_pdf,
+                      tmp / "soft-partial-descriptor", dpi=300) != \
+           ppm_sha256(soft_padded_descriptor_pdf,
+                      tmp / "soft-padded-descriptor", dpi=300):
+            raise AssertionError(
+                "partial descriptor glyph shape was not zero-filled")
+
         soft_delete_refresh_header = bytearray(64)
         soft_delete_refresh_header[0] = 0x00
         soft_delete_refresh_header[1] = 0x01
