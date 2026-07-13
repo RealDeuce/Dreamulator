@@ -384,6 +384,21 @@ def main():
                       dpi=300):
             raise AssertionError("invalid pitch-mode selector changed font pitch")
 
+        vmi_zero_base = write(tmp / "vmi-zero-base.pcl",
+                              ESC + b"&l12D" + b"A\nB" + FF)
+        vmi_zero_ignored = write(tmp / "vmi-zero-ignored.pcl",
+                                 ESC + b"&l12D" + ESC + b"&l0C" +
+                                 b"A\nB" + FF)
+        vmi_zero_base_pdf = tmp / "vmi-zero-base.pdf"
+        vmi_zero_ignored_pdf = tmp / "vmi-zero-ignored.pdf"
+        render(dreamprint, vmi_zero_base, vmi_zero_base_pdf)
+        render(dreamprint, vmi_zero_ignored, vmi_zero_ignored_pdf)
+        if ppm_sha256(vmi_zero_base_pdf, tmp / "vmi-zero-base",
+                      dpi=150) != \
+           ppm_sha256(vmi_zero_ignored_pdf, tmp / "vmi-zero-ignored",
+                      dpi=150):
+            raise AssertionError("zero VMI changed existing line spacing")
+
         prop_prev_width = write(tmp / "prop-prev-width.pcl",
                                 ESC + b"(s1P" + b"Wi\bX" + FF)
         prop_hmi_backspace = write(tmp / "prop-hmi-backspace.pcl",

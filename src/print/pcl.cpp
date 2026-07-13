@@ -948,7 +948,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'A': set_page_size(std::abs(ival)); break;
 		case 'C':
 			value = std::abs(value);
-			if (value <= 336.0) {
+			if (value > 0.0 && value <= 336.0) {
 				vmi_in_ = (float)value / 48.0f;
 				st_.line_spacing_in = vmi_in_;
 				refresh_pending_cursor_y();
