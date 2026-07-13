@@ -1170,10 +1170,16 @@ def main():
 
         negative_download = write(tmp / "negative-download.pcl",
                                   ESC + b")s-2W" + b"ZZ" + b"!" + FF)
+        fractional_download = write(tmp / "fractional-download.pcl",
+                                    ESC + b")s2.9W" + b"ZZ" + b"!" + FF)
         negative_download_pdf = tmp / "negative-download.pdf"
+        fractional_download_pdf = tmp / "fractional-download.pdf"
         render(dreamprint, negative_download, negative_download_pdf)
+        render(dreamprint, fractional_download, fractional_download_pdf)
         if pdftotext(negative_download_pdf).strip() != "!":
             raise AssertionError("negative downloaded-font count leaked payload")
+        if pdftotext(fractional_download_pdf).strip() != "!":
+            raise AssertionError("fractional downloaded-font count rounded")
 
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +

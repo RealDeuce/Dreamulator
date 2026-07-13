@@ -1238,7 +1238,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'W':
 			download_font_slot_ = slot;
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				payload_buf_.clear();
 				apply_download_payload(payload_buf_);
