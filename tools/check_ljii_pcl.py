@@ -604,15 +604,26 @@ def main():
                                     ESC + b"&a20C" + ESC + b"&f0S" +
                                     ESC + b"&a30C" + ESC + b"&f-1S" +
                                     b"!" + FF)
+        cursor_pop_fractional = write(tmp / "cursor-pop-fractional.pcl",
+                                      ESC + b"&a20C" + ESC + b"&f0.9S" +
+                                      ESC + b"&a30C" + ESC + b"&f1.9S" +
+                                      b"!" + FF)
         cursor_pop_positive_pdf = tmp / "cursor-pop-positive.pdf"
         cursor_pop_negative_pdf = tmp / "cursor-pop-negative.pdf"
+        cursor_pop_fractional_pdf = tmp / "cursor-pop-fractional.pdf"
         render(dreamprint, cursor_pop_positive, cursor_pop_positive_pdf)
         render(dreamprint, cursor_pop_negative, cursor_pop_negative_pdf)
+        render(dreamprint, cursor_pop_fractional, cursor_pop_fractional_pdf)
         if ppm_sha256(cursor_pop_positive_pdf, tmp / "cursor-pop-positive",
                       dpi=150) != \
            ppm_sha256(cursor_pop_negative_pdf, tmp / "cursor-pop-negative",
                       dpi=150):
             raise AssertionError("negative cursor-stack selector did not pop")
+        if ppm_sha256(cursor_pop_positive_pdf, tmp / "cursor-pop-positive",
+                      dpi=150) != \
+           ppm_sha256(cursor_pop_fractional_pdf,
+                      tmp / "cursor-pop-fractional", dpi=150):
+            raise AssertionError("fractional cursor-stack selector rounded")
 
         line_term_positive = write(tmp / "line-term-positive.pcl",
                                    ESC + b"&k2G" + b"A\nB" + FF)
@@ -1565,14 +1576,23 @@ def main():
                            ESC + b"&f0X" + b"!\r" +
                            ESC + b"&f1X" +
                            ESC + b"&f3X" + FF)
+        macro_fractional = write(tmp / "macro-fractional.pcl",
+                                 ESC + b"&f700.9Y" +
+                                 ESC + b"&f0.9X" + b"!\r" +
+                                 ESC + b"&f1.9X" +
+                                 ESC + b"&f2.9X" + FF)
         macro_execute_pdf = tmp / "macro-execute.pdf"
         macro_call_pdf = tmp / "macro-call.pdf"
+        macro_fractional_pdf = tmp / "macro-fractional.pdf"
         render(dreamprint, macro_execute, macro_execute_pdf)
         render(dreamprint, macro_call, macro_call_pdf)
+        render(dreamprint, macro_fractional, macro_fractional_pdf)
         if "!" not in pdftotext(macro_execute_pdf):
             raise AssertionError("macro execute did not replay payload")
         if "!" not in pdftotext(macro_call_pdf):
             raise AssertionError("macro call did not replay payload")
+        if "!" not in pdftotext(macro_fractional_pdf):
+            raise AssertionError("fractional macro selector rounded")
 
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",

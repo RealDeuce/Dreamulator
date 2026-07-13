@@ -1301,7 +1301,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'f') {
 		switch (term) {
 		case 'S':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				if (cursor_stack_.size() < 20)
 					cursor_stack_.push_back({ st_.x_pos, st_.y_pos });
@@ -1324,10 +1324,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'Y':
-			macro_id_ = std::abs(ival);
+			macro_id_ = pcl_integer_word(value);
 			break;
 		case 'X':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				defining_macro_ = true;
 				macros_[macro_id_].bytes.clear();
@@ -2627,10 +2627,19 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 	}
 	if (len >= 4) {
 		if (b == 'X') {
+			size_t pos = 3;
+			bool negative = false;
+			if (pos + 1 < len &&
+			    (macro_stop_buf_[pos] == '-' || macro_stop_buf_[pos] == '+')) {
+				negative = macro_stop_buf_[pos] == '-';
+				pos++;
+			}
 			int value = 0;
 			bool have_digit = false;
-			for (size_t i = 3; i + 1 < len; i++) {
-				uint8_t ch = macro_stop_buf_[i];
+			for (; pos + 1 < len; pos++) {
+				uint8_t ch = macro_stop_buf_[pos];
+				if (ch == '.')
+					break;
 				if (ch < '0' || ch > '9') {
 					macro_stop_buf_.clear();
 					return true;
@@ -2638,14 +2647,29 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 				have_digit = true;
 				value = value * 10 + (ch - '0');
 			}
-			if (have_digit && value == 1) {
+			if (pos + 1 < len && macro_stop_buf_[pos] == '.') {
+				for (pos++; pos + 1 < len; pos++) {
+					uint8_t ch = macro_stop_buf_[pos];
+					if (ch < '0' || ch > '9') {
+						macro_stop_buf_.clear();
+						return true;
+					}
+				}
+			}
+			if (pos + 1 != len) {
+				macro_stop_buf_.clear();
+				return true;
+			}
+			if (negative)
+				value = -value;
+			if (have_digit && std::abs(value) == 1) {
 				macros_[macro_id_].bytes.resize(macro_command_start_);
 				defining_macro_ = false;
 			}
 			macro_stop_buf_.clear();
 			return true;
 		}
-		if (b < '0' || b > '9')
+		if (!((b >= '0' && b <= '9') || b == '.' || b == '-' || b == '+'))
 			macro_stop_buf_.clear();
 	}
 	return true;
