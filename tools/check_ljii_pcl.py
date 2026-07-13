@@ -1606,12 +1606,20 @@ def main():
                                  ESC + b"*b3Y" +
                                  ESC + b"*b2W" +
                                  bytes([0xf0, 0x0f]) + FF)
+        raster_lower_m_no_chain = write(
+            tmp / "raster-lower-m-no-chain.pcl",
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*b1m2W!!" + FF)
         raster_skip_integer_pdf = tmp / "raster-skip-integer.pdf"
         raster_skip_fractional_pdf = tmp / "raster-skip-fractional.pdf"
         raster_skip_next_pdf = tmp / "raster-skip-next.pdf"
+        raster_lower_m_no_chain_pdf = tmp / "raster-lower-m-no-chain.pdf"
         render(dreamprint, raster_skip_integer, raster_skip_integer_pdf)
         render(dreamprint, raster_skip_fractional, raster_skip_fractional_pdf)
         render(dreamprint, raster_skip_next, raster_skip_next_pdf)
+        render(dreamprint, raster_lower_m_no_chain,
+               raster_lower_m_no_chain_pdf)
         if ppm_sha256(raster_skip_integer_pdf,
                       tmp / "raster-skip-integer", dpi=300) != \
            ppm_sha256(raster_skip_fractional_pdf,
@@ -1622,6 +1630,8 @@ def main():
            ppm_sha256(raster_skip_next_pdf,
                       tmp / "raster-skip-next", dpi=300):
             raise AssertionError("raster row offset sensitivity check failed")
+        if "2W!!" not in pdftotext(raster_lower_m_no_chain_pdf):
+            raise AssertionError("unsupported lowercase *b terminal chained into raster payload")
 
         raster_150 = write(tmp / "raster-150.pcl",
                            ESC + b"*t150R" +
