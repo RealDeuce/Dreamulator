@@ -1722,6 +1722,10 @@ def main():
             tmp / "rule-landscape-pattern4.pcl",
             ESC + b"&l1O" + ESC + b"*p0X" + ESC + b"*p0Y" +
             ESC + b"*c16a16b4g3P" + FF)
+        rule_off_page_no_publish = write(
+            tmp / "rule-off-page-no-publish.pcl",
+            ESC + b"*p4000Y" + ESC + b"*c64a64b0P" +
+            ESC + b"&l1O" + b"!" + FF)
         rule_solid_pdf = tmp / "rule-solid.pdf"
         rule_dot_integer_pdf = tmp / "rule-dot-integer.pdf"
         rule_dot_fractional_pdf = tmp / "rule-dot-fractional.pdf"
@@ -1737,6 +1741,7 @@ def main():
         rule_landscape_pattern2_pdf = tmp / "rule-landscape-pattern2.pdf"
         rule_landscape_pattern3_pdf = tmp / "rule-landscape-pattern3.pdf"
         rule_landscape_pattern4_pdf = tmp / "rule-landscape-pattern4.pdf"
+        rule_off_page_no_publish_pdf = tmp / "rule-off-page-no-publish.pdf"
         render(dreamprint, rule_solid, rule_solid_pdf)
         render(dreamprint, rule_dot_integer, rule_dot_integer_pdf)
         render(dreamprint, rule_dot_fractional, rule_dot_fractional_pdf)
@@ -1757,6 +1762,8 @@ def main():
                rule_landscape_pattern3_pdf)
         render(dreamprint, rule_landscape_pattern4,
                rule_landscape_pattern4_pdf)
+        render(dreamprint, rule_off_page_no_publish,
+               rule_off_page_no_publish_pdf)
         solid_pixels = ppm_nonwhite(rule_solid_pdf, tmp / "rule-solid",
                                     dpi=300)
         gray_pixels = ppm_nonwhite(rule_gray_pdf, tmp / "rule-gray",
@@ -1815,6 +1822,8 @@ def main():
                           tmp / "rule-landscape-pattern4",
                           67, 50, dpi=300):
             raise AssertionError("landscape pattern 4 did not remap to selector 10")
+        if pdf_pages(rule_off_page_no_publish_pdf) != 1:
+            raise AssertionError("off-page rectangle dirtied an empty page")
 
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):

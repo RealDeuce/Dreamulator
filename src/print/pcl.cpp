@@ -1634,7 +1634,6 @@ void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
 	if (w_in <= 0.0f || h_in <= 0.0f || selector < 0 || selector > 13)
 		return;
 	new_page_if_needed();
-	page_dirty_ = true;
 
 	int dpi = prof_.render_dpi;
 	int x0 = (int)std::floor(x_in * (float)dpi);
@@ -1645,7 +1644,10 @@ void PclPrinter::draw_rule(float x_in, float y_in, float w_in, float h_in,
 	y0 = std::max(0, y0);
 	x1 = std::min(page_->width(), x1);
 	y1 = std::min(page_->height(), y1);
+	if (x1 <= x0 || y1 <= y0)
+		return;
 
+	page_dirty_ = true;
 	float pattern_scale = kDotsPerIn / (float)dpi;
 	for (int y = y0; y < y1; y++) {
 		int pattern_y = (int)std::floor((float)y * pattern_scale) & 15;
