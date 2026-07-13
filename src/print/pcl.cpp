@@ -386,6 +386,9 @@ private:
 		int selected_soft_font_id[2] = { -1, -1 };
 		int download_font_slot = 1;
 		std::vector<std::pair<float, float>> cursor_stack;
+		bool previous_width_pending = false;
+		float previous_text_width_in = 0.0f;
+		float previous_text_advance_in = 0.0f;
 	};
 
 	struct SoftGlyph {
@@ -441,6 +444,9 @@ private:
 	void apply_download_payload(const std::vector<uint8_t> &payload);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
+	float ljii_metric_width_in(uint8_t width, float fallback_in) const;
+	bool consume_previous_width_adjustment(float current_width_in);
+	void finish_text_advance(float width_in, float advance_in, bool had_pending);
 	void refresh_pending_cursor_y();
 	void clear_pending_cursor_y();
 	void start_underline_span();
@@ -542,6 +548,9 @@ private:
 	int download_font_slot_ = 1;
 	std::map<int, SoftFont> soft_fonts_;
 	std::vector<std::pair<float, float>> cursor_stack_;
+	bool previous_width_pending_ = false;
+	float previous_text_width_in_ = 0.0f;
+	float previous_text_advance_in_ = 0.0f;
 };
 
 void PclPrinter::apply_config(const PrinterConfig &cfg)
@@ -619,6 +628,9 @@ void PclPrinter::reset_ljii_state()
 	download_font_slot_ = 1;
 	soft_fonts_.clear();
 	cursor_stack_.clear();
+	previous_width_pending_ = false;
+	previous_text_width_in_ = hmi_in_;
+	previous_text_advance_in_ = hmi_in_;
 
 	st_.pitch_cpi = 10.0f;
 	st_.line_spacing_in = vmi_in_;
@@ -719,10 +731,20 @@ void PclPrinter::process_control(uint8_t b)
 	switch (b) {
 	case 0x08:
 		flush_underline_span();
-		st_.x_pos = std::max(st_.left_margin_in, st_.x_pos - hmi_in_);
+	{
+		float current_x = st_.x_pos;
+		float distance = st_.proportional ? previous_text_width_in_ : hmi_in_;
+		float candidate = current_x - distance;
+		if (current_x >= st_.left_margin_in && candidate < st_.left_margin_in)
+			candidate = st_.left_margin_in;
+		if (candidate < 0.0f)
+			candidate = 0.0f;
+		st_.x_pos = candidate;
+		previous_width_pending_ = true;
 		clear_pending_cursor_y();
 		restart_underline_span();
 		break;
+	}
 	case 0x09:
 	{
 		float rel = std::max(0.0f, st_.x_pos - st_.left_margin_in);
@@ -2031,6 +2053,35 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
 
+float PclPrinter::ljii_metric_width_in(uint8_t width, float fallback_in) const
+{
+	if (st_.proportional && width > 0)
+		return (float)width / kDotsPerIn;
+	return fallback_in;
+}
+
+bool PclPrinter::consume_previous_width_adjustment(float current_width_in)
+{
+	bool had_pending = previous_width_pending_;
+	if (had_pending && st_.proportional) {
+		float delta = (previous_text_width_in_ - current_width_in) * 0.5f;
+		st_.x_pos = std::max(0.0f, st_.x_pos + delta);
+	}
+	previous_width_pending_ = false;
+	return had_pending;
+}
+
+void PclPrinter::finish_text_advance(float width_in, float advance_in,
+                                     bool had_pending)
+{
+	st_.x_pos += advance_in;
+	if (!had_pending) {
+		previous_text_width_in_ = width_in;
+		previous_text_advance_in_ = advance_in;
+	}
+	clear_pending_cursor_y();
+}
+
 bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 {
 	SoftFont *font = selected_soft_font();
@@ -2039,6 +2090,13 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	auto it = font->glyphs.find(b);
 	if (it == font->glyphs.end())
 		return false;
+	const SoftGlyph &glyph = it->second;
+	float metric_width_in =
+		(st_.proportional && glyph.width > 0) ?
+		(float)std::min<uint16_t>(glyph.width, 0xff) / kDotsPerIn :
+		char_w_in;
+	bool had_pending = consume_previous_width_adjustment(metric_width_in);
+	char_w_in = metric_width_in;
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_)
@@ -2051,7 +2109,6 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	new_page_if_needed();
 	page_dirty_ = true;
 
-	const SoftGlyph &glyph = it->second;
 	int dpi = prof_.render_dpi;
 	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
 	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
@@ -2080,8 +2137,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 			char_w_in * 72.0f / 0.6f, sty
 		});
 	}
-	st_.x_pos += char_w_in;
-	clear_pending_cursor_y();
+	finish_text_advance(metric_width_in, char_w_in, had_pending);
 	mark_line_output(true);
 	return true;
 }
@@ -2091,6 +2147,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	const LjiiFontRequest &req = active_font_request();
 	float char_w_in = hmi_in_;
 	if (b == 0x20) {
+		bool had_pending = consume_previous_width_adjustment(char_w_in);
 		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 			if (!wrap_enabled_)
 				return true;
@@ -2116,8 +2173,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 				page_->set_pixel(x, y + 1, 0);
 			}
 		}
-		st_.x_pos += char_w_in;
-		clear_pending_cursor_y();
+		finish_text_advance(char_w_in, char_w_in, had_pending);
 		return true;
 	}
 
@@ -2129,6 +2185,8 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		return true;
 	uint32_t context = select_ljii_context(req);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
+	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
+	bool had_pending = consume_previous_width_adjustment(char_w_in);
 	if (!glyph.found || !glyph.data) {
 		start_underline_span();
 		uint16_t cp = text_unicode(b);
@@ -2141,8 +2199,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 				char_w_in * 72.0f / 0.6f, sty
 			});
 		}
-		st_.x_pos += char_w_in;
-		clear_pending_cursor_y();
+		finish_text_advance(char_w_in, char_w_in, had_pending);
 		mark_line_output(true);
 		return true;
 	}
@@ -2192,8 +2249,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			char_w_in * 72.0f / 0.6f, sty
 		});
 	}
-	st_.x_pos += char_w_in;
-	clear_pending_cursor_y();
+	finish_text_advance(char_w_in, char_w_in, had_pending);
 	mark_line_output(true);
 	return true;
 }
@@ -2222,6 +2278,7 @@ void PclPrinter::start_underline_span()
 
 void PclPrinter::flush_underline_span()
 {
+	previous_width_pending_ = false;
 	if (!underline_span_active_)
 		return;
 	draw_underline_range(underline_span_x0_in_, st_.x_pos,
@@ -2548,6 +2605,9 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.selected_soft_font_id[1] = selected_soft_font_id_[1];
 	env.download_font_slot = download_font_slot_;
 	env.cursor_stack = cursor_stack_;
+	env.previous_width_pending = previous_width_pending_;
+	env.previous_text_width_in = previous_text_width_in_;
+	env.previous_text_advance_in = previous_text_advance_in_;
 	return env;
 }
 
@@ -2591,6 +2651,9 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	selected_soft_font_id_[1] = env.selected_soft_font_id[1];
 	download_font_slot_ = env.download_font_slot;
 	cursor_stack_ = env.cursor_stack;
+	previous_width_pending_ = env.previous_width_pending;
+	previous_text_width_in_ = env.previous_text_width_in;
+	previous_text_advance_in_ = env.previous_text_advance_in;
 	restart_underline_span();
 }
 

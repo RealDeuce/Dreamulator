@@ -328,6 +328,23 @@ def main():
                       dpi=300):
             raise AssertionError("invalid pitch-mode selector changed font pitch")
 
+        prop_prev_width = write(tmp / "prop-prev-width.pcl",
+                                ESC + b"(s1P" + b"Wi\bX" + FF)
+        prop_hmi_backspace = write(tmp / "prop-hmi-backspace.pcl",
+                                   ESC + b"(s1P" + b"Wi" +
+                                   ESC + b"&a-72H" + b"X" + FF)
+        prop_prev_width_pdf = tmp / "prop-prev-width.pdf"
+        prop_hmi_backspace_pdf = tmp / "prop-hmi-backspace.pdf"
+        render(dreamprint, prop_prev_width, prop_prev_width_pdf)
+        render(dreamprint, prop_hmi_backspace, prop_hmi_backspace_pdf)
+        if ppm_sha256(prop_prev_width_pdf, tmp / "prop-prev-width",
+                      dpi=300) == \
+           ppm_sha256(prop_hmi_backspace_pdf, tmp / "prop-hmi-backspace",
+                      dpi=300):
+            raise AssertionError("proportional BS still matched HMI backspace")
+        if "WiX" not in "".join(pdftotext(prop_prev_width_pdf).split()):
+            raise AssertionError("proportional BS lost selectable text")
+
         left_margin_positive = write(tmp / "left-margin-positive.pcl",
                                      ESC + b"&a6L" + b"!" + FF)
         left_margin_negative = write(tmp / "left-margin-negative.pcl",
