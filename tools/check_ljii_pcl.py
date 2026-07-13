@@ -1019,6 +1019,27 @@ def main():
            ppm_sha256(raster_neg_150_pdf, tmp / "raster-neg-150", dpi=300):
             raise AssertionError("negative raster resolution did not match positive")
 
+        raster_151 = write(tmp / "raster-151.pcl",
+                           ESC + b"*t151R" +
+                           ESC + b"*r0A" +
+                           ESC + b"*b2W" +
+                           bytes([0xf0, 0x0f]) + FF)
+        raster_300 = write(tmp / "raster-300.pcl",
+                           ESC + b"*t300R" +
+                           ESC + b"*r0A" +
+                           ESC + b"*b2W" +
+                           bytes([0xf0, 0x0f]) + FF)
+        raster_151_pdf = tmp / "raster-151.pdf"
+        raster_300_pdf = tmp / "raster-300.pdf"
+        render(dreamprint, raster_151, raster_151_pdf)
+        render(dreamprint, raster_300, raster_300_pdf)
+        if ppm_sha256(raster_151_pdf, tmp / "raster-151", dpi=300) != \
+           ppm_sha256(raster_300_pdf, tmp / "raster-300", dpi=300):
+            raise AssertionError("151 dpi raster did not select mode 0")
+        if ppm_sha256(raster_151_pdf, tmp / "raster-151-again", dpi=300) == \
+           ppm_sha256(raster_150_pdf, tmp / "raster-150-again", dpi=300):
+            raise AssertionError("151 dpi raster still matched 150 dpi mode")
+
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
         for _ in range(30):

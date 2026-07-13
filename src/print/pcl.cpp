@@ -1692,13 +1692,13 @@ void PclPrinter::set_raster_resolution(int dpi)
 	if (raster_active_)
 		return;
 	raster_resolution_ = dpi;
-	if (dpi >= 300) {
+	if (dpi > 150) {
 		raster_mode_ = 0;
 		raster_scale_ = 1;
-	} else if (dpi >= 150) {
+	} else if (dpi > 100) {
 		raster_mode_ = 1;
 		raster_scale_ = 2;
-	} else if (dpi >= 100) {
+	} else if (dpi > 75) {
 		raster_mode_ = 2;
 		raster_scale_ = 3;
 	} else {
