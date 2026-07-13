@@ -1140,8 +1140,23 @@ def main():
 
         rule_solid = write(tmp / "rule-solid.pcl",
                            ESC + b"*c64a64b0P" + FF)
+        rule_dot_integer = write(tmp / "rule-dot-integer.pcl",
+                                 ESC + b"*c64a64b0P" +
+                                 ESC + b"*p100Y" +
+                                 ESC + b"*c10a10b0P" + FF)
+        rule_dot_fractional = write(tmp / "rule-dot-fractional.pcl",
+                                    ESC + b"*c64a64b0P" +
+                                    ESC + b"*p100Y" +
+                                    ESC + b"*c10.9a10.9b0P" + FF)
         rule_gray = write(tmp / "rule-gray.pcl",
                           ESC + b"*c64a64b50g2P" + FF)
+        rule_gray_integer_id = write(tmp / "rule-gray-integer-id.pcl",
+                                     ESC + b"*c64a64b2g2P" + FF)
+        rule_gray_fractional_id = write(tmp / "rule-gray-fractional-id.pcl",
+                                        ESC + b"*c64a64b2.9g2P" + FF)
+        rule_gray_fractional_selector = write(
+            tmp / "rule-gray-fractional-selector.pcl",
+            ESC + b"*c64a64b50g2.9P" + FF)
         rule_pattern = write(tmp / "rule-pattern.pcl",
                              ESC + b"*c64a64b2g3P" + FF)
         rule_neg_gray = write(tmp / "rule-neg-gray.pcl",
@@ -1149,12 +1164,25 @@ def main():
         rule_neg_pattern = write(tmp / "rule-neg-pattern.pcl",
                                  ESC + b"*c64a64b-2g-3P" + FF)
         rule_solid_pdf = tmp / "rule-solid.pdf"
+        rule_dot_integer_pdf = tmp / "rule-dot-integer.pdf"
+        rule_dot_fractional_pdf = tmp / "rule-dot-fractional.pdf"
         rule_gray_pdf = tmp / "rule-gray.pdf"
+        rule_gray_integer_id_pdf = tmp / "rule-gray-integer-id.pdf"
+        rule_gray_fractional_id_pdf = tmp / "rule-gray-fractional-id.pdf"
+        rule_gray_fractional_selector_pdf = \
+            tmp / "rule-gray-fractional-selector.pdf"
         rule_pattern_pdf = tmp / "rule-pattern.pdf"
         rule_neg_gray_pdf = tmp / "rule-neg-gray.pdf"
         rule_neg_pattern_pdf = tmp / "rule-neg-pattern.pdf"
         render(dreamprint, rule_solid, rule_solid_pdf)
+        render(dreamprint, rule_dot_integer, rule_dot_integer_pdf)
+        render(dreamprint, rule_dot_fractional, rule_dot_fractional_pdf)
         render(dreamprint, rule_gray, rule_gray_pdf)
+        render(dreamprint, rule_gray_integer_id, rule_gray_integer_id_pdf)
+        render(dreamprint, rule_gray_fractional_id,
+               rule_gray_fractional_id_pdf)
+        render(dreamprint, rule_gray_fractional_selector,
+               rule_gray_fractional_selector_pdf)
         render(dreamprint, rule_pattern, rule_pattern_pdf)
         render(dreamprint, rule_neg_gray, rule_neg_gray_pdf)
         render(dreamprint, rule_neg_pattern, rule_neg_pattern_pdf)
@@ -1168,6 +1196,20 @@ def main():
             raise AssertionError("rule percent fill did not use pattern mask")
         if not (0 < pattern_pixels < solid_pixels):
             raise AssertionError("rule hatch fill did not use pattern mask")
+        if ppm_sha256(rule_dot_fractional_pdf,
+                      tmp / "rule-dot-fractional", dpi=300) != \
+           ppm_sha256(rule_dot_integer_pdf,
+                      tmp / "rule-dot-integer", dpi=300):
+            raise AssertionError("rectangle dot size used fractional word")
+        if ppm_sha256(rule_gray_fractional_id_pdf,
+                      tmp / "rule-gray-fractional-id", dpi=300) != \
+           ppm_sha256(rule_gray_integer_id_pdf,
+                      tmp / "rule-gray-integer-id", dpi=300):
+            raise AssertionError("rectangle fill id used fractional word")
+        if ppm_sha256(rule_gray_fractional_selector_pdf,
+                      tmp / "rule-gray-fractional-selector", dpi=300) != \
+           ppm_sha256(rule_gray_pdf, tmp / "rule-gray", dpi=300):
+            raise AssertionError("rectangle fill selector used fractional word")
         if ppm_sha256(rule_neg_gray_pdf, tmp / "rule-neg-gray", dpi=300) != \
            ppm_sha256(rule_gray_pdf, tmp / "rule-gray", dpi=300):
             raise AssertionError("negative rule percent fill did not normalize")

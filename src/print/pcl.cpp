@@ -1446,11 +1446,19 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '*' && subgroup == 'c') {
 		switch (term) {
 		case 'A':
-			rect_w_in_ = std::max(0.0f, (float)value / kDotsPerIn);
+		{
+			int word = pcl_integer_word(value);
+			rect_w_in_ = (value > 0.0 && word > 0) ?
+			             (float)word / kDotsPerIn : 0.0f;
 			break;
+		}
 		case 'B':
-			rect_h_in_ = std::max(0.0f, (float)value / kDotsPerIn);
+		{
+			int word = pcl_integer_word(value);
+			rect_h_in_ = (value > 0.0 && word > 0) ?
+			             (float)word / kDotsPerIn : 0.0f;
 			break;
+		}
 		case 'D':
 			soft_font_id_ = std::min(0x7fff, std::abs(ival));
 			current_soft_font();
@@ -1483,13 +1491,14 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'G':
-			fill_pattern_ = std::abs(ival);
+			fill_pattern_ = pcl_integer_word(value);
 			break;
 		case 'H':
 			rect_w_in_ = std::max(0.0f, (float)value / 720.0f);
 			break;
 		case 'P': {
-			int selector = rule_selector_for_fill_command(std::abs(ival), fill_pattern_,
+			int selector = rule_selector_for_fill_command(pcl_integer_word(value),
+			                                              fill_pattern_,
 			                                              orientation_);
 			if (selector >= 0)
 				draw_rule(st_.x_pos, st_.y_pos, rect_w_in_, rect_h_in_,
