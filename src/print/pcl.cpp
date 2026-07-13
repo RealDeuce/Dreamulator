@@ -338,6 +338,7 @@ private:
 	enum class State {
 		Normal,
 		Esc,
+		EscQuestion,
 		SubGroup,
 		Parameterized,
 		RasterData,
@@ -678,6 +679,11 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::Esc:
 		process_escape(b);
 		return;
+	case State::EscQuestion:
+		state_ = State::Normal;
+		if (b != 0x11)
+			process_normal(b);
+		return;
 	case State::SubGroup:
 		if (b >= 0x60 && b <= 0x7E) {
 			subgroup_ = static_cast<char>(b);
@@ -847,6 +853,10 @@ void PclPrinter::process_escape(uint8_t b)
 	}
 	if (b == 'Z' || b == 'z') {
 		state_ = State::Normal;
+		return;
+	}
+	if (b == '?') {
+		state_ = State::EscQuestion;
 		return;
 	}
 	if (b >= 0x21 && b <= 0x2F) {

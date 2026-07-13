@@ -192,6 +192,19 @@ def main():
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
 
+        esc_question_swallow = write(tmp / "esc-question-swallow.pcl",
+                                     ESC + b"?\x11" + b"A" + FF)
+        esc_question_reparse = write(tmp / "esc-question-reparse.pcl",
+                                     ESC + b"?A" + b"!" + FF)
+        esc_question_swallow_pdf = tmp / "esc-question-swallow.pdf"
+        esc_question_reparse_pdf = tmp / "esc-question-reparse.pdf"
+        render(dreamprint, esc_question_swallow, esc_question_swallow_pdf)
+        render(dreamprint, esc_question_reparse, esc_question_reparse_pdf)
+        if "".join(pdftotext(esc_question_swallow_pdf).split()) != "A":
+            raise AssertionError("ESC ? 0x11 did not swallow only the status byte")
+        if "".join(pdftotext(esc_question_reparse_pdf).split()) != "A!":
+            raise AssertionError("ESC ? non-0x11 byte did not re-enter parser")
+
         high_mask = write(tmp / "high-mask.pcl", b"\xa1" + FF)
         high_mask_bang = write(tmp / "high-mask-bang.pcl",
                                b"\x0e!" + FF)
