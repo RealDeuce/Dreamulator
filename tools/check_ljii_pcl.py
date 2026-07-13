@@ -1137,6 +1137,15 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_negative_pdf).split()):
             raise AssertionError("negative page length lost text")
 
+        page_length_invalid = write(tmp / "page-length-invalid.pcl",
+                                    b"A" + ESC + b"&l999P" + b"B" + FF)
+        page_length_invalid_pdf = tmp / "page-length-invalid.pdf"
+        render(dreamprint, page_length_invalid, page_length_invalid_pdf)
+        if pdf_pages(page_length_invalid_pdf) != 1:
+            raise AssertionError("invalid page length published current page")
+        if "AB" not in "".join(pdftotext(page_length_invalid_pdf).split()):
+            raise AssertionError("invalid page length changed text output")
+
         vmi_positive = write(tmp / "vmi-positive.pcl",
                              ESC + b"&l6C" + b"A\nB" + FF)
         vmi_negative = write(tmp / "vmi-negative.pcl",

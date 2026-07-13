@@ -1012,8 +1012,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			value = std::abs(value);
 			ival = std::abs(ival);
 			if (value > 0.0) {
-				publish_current_page();
-				set_page_length(std::max(1.0f, (float)value * vmi_in_));
+				float length_in = (float)value * vmi_in_;
+				if (length_in <= physical_h_in_ + 0.0001f) {
+					publish_current_page();
+					set_page_length(length_in);
+				}
 			} else if (ival == 0) {
 				set_page_size(page_size_code_);
 			}
