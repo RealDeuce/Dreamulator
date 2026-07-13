@@ -594,10 +594,17 @@ def build_ljii_text_attributes() -> bytes:
     out += b"Resident font and text attribute matrix\r\n"
     pitch_rows = [
         ("10 cpi", "10cpi"),
-        ("12 cpi", "12cpi"),
+        ("12 cpi request", "12cpi"),
         ("16.66 cpi line-printer", "line-printer"),
     ]
-    for title, pitch_mode in pitch_rows:
+    for index, (title, pitch_mode) in enumerate(pitch_rows):
+        if index:
+            out += FF
+            out += ljii_plain()
+            out += b"LaserJet II text capability sample continued\r\n\r\n"
+        out += (title + " resident selection matrix\r\n").encode("ascii")
+        if pitch_mode == "12cpi":
+            out += b"ROM pitch fallback selects the nearest resident window above 12 cpi\r\n"
         for underline in ("off", "fixed", "floating"):
             for style_request in (False, True):
                 for bold in (False, True):
@@ -616,9 +623,13 @@ def build_ljii_text_attributes() -> bytes:
                     out += b"\r\n"
         out += b"\r\n"
 
+    out += FF
+    out += ljii_plain()
+    out += b"LaserJet II text capability sample continued\r\n\r\n"
+
     out += ljii_plain()
     out += pcl_param(b"&k", b"2S")
-    out += b"Compatibility pitch command ESC &k2S: "
+    out += b"Compatibility pitch command ESC &k2S (16.66 cpi): "
     out += sample_text() + b"\r\n\r\n"
 
     out += ljii_plain()

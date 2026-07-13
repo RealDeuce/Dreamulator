@@ -170,6 +170,11 @@ def main():
         text = pdftotext(sample_pdf)
         for needle in (
             "LaserJet II text capability sample",
+            "10 cpi resident selection matrix",
+            "12 cpi request resident selection matrix",
+            "ROM pitch fallback selects the nearest resident window above 12 cpi",
+            "16.66 cpi line-printer resident selection matrix",
+            "Compatibility pitch command ESC &k2S (16.66 cpi)",
             "# \\ ^ ~",
             "Transparent payload",
             "Downloaded glyph selected by font id",
@@ -177,6 +182,8 @@ def main():
         ):
             if needle not in text:
                 raise AssertionError(f"sample text missing {needle!r}")
+        if pdf_pages(sample_pdf) != 4:
+            raise AssertionError("sample pitch sections did not stay page-bounded")
         if text.count("The quick brown fox jumps 0123456789") < 36:
             raise AssertionError("sample matrix lost complete selectable text rows")
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
