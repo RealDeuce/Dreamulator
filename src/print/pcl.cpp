@@ -1346,8 +1346,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			} else if (ival == 3) {
 				replay_macro(macro_id_, MacroReplayMode::Call);
 			} else if (ival == 4) {
-				overlay_macro_id_ = macro_id_;
-				overlay_enabled_ = true;
+				auto it = macros_.find(macro_id_);
+				if (it != macros_.end() && !it->second.bytes.empty()) {
+					overlay_macro_id_ = macro_id_;
+					overlay_enabled_ = true;
+				} else {
+					overlay_enabled_ = false;
+				}
 			} else if (ival == 5) {
 				overlay_enabled_ = false;
 			} else if (ival == 6) {
@@ -1367,7 +1372,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				if (overlay_macro_id_ == macro_id_)
 					overlay_enabled_ = false;
 			} else if (ival == 9 || ival == 10) {
-				macros_[macro_id_].permanent = (ival == 10);
+				auto it = macros_.find(macro_id_);
+				if (it != macros_.end() && !it->second.bytes.empty())
+					it->second.permanent = (ival == 10);
 			}
 			break;
 		default:

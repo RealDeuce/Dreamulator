@@ -2040,6 +2040,20 @@ def main():
         if "Live!" not in pdftotext(overlay_pdf):
             raise AssertionError("macro overlay did not replay at publication")
 
+        overlay_missing_then_defined = write(
+            tmp / "overlay-missing-then-defined.pcl",
+            ESC + b"&f124Y" +
+            ESC + b"&f4X" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            b"Live" + FF)
+        overlay_missing_then_defined_pdf = \
+            tmp / "overlay-missing-then-defined.pdf"
+        render(dreamprint, overlay_missing_then_defined,
+               overlay_missing_then_defined_pdf)
+        if "!" in pdftotext(overlay_missing_then_defined_pdf):
+            raise AssertionError("missing overlay enable survived later definition")
+
     print("ok: LaserJet II PCL regression checks passed")
 
 
