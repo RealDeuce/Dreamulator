@@ -1183,22 +1183,50 @@ def main():
                                 ESC + b"*r0A" +
                                 ESC + b"*b-2W" +
                                 b"QZ" + b"!" + FF)
+        raster_fractional = write(tmp / "raster-fractional.pcl",
+                                  ESC + b"*t300R" +
+                                  ESC + b"*r0A" +
+                                  ESC + b"*b2.9W" +
+                                  b"QZ" + b"!" + FF)
         raster_negative_pdf = tmp / "raster-negative.pdf"
+        raster_fractional_pdf = tmp / "raster-fractional.pdf"
         render(dreamprint, raster_negative, raster_negative_pdf)
+        render(dreamprint, raster_fractional, raster_fractional_pdf)
         if pdftotext(raster_negative_pdf).strip() != "!":
             raise AssertionError("negative raster count leaked payload")
         if ppm_nonwhite(raster_negative_pdf, tmp / "raster-negative") < 5:
             raise AssertionError("negative raster payload did not render")
+        if pdftotext(raster_fractional_pdf).strip() != "!":
+            raise AssertionError("fractional raster count rounded")
+        if ppm_sha256(raster_fractional_pdf, tmp / "raster-fractional",
+                      dpi=150) != \
+           ppm_sha256(raster_negative_pdf, tmp / "raster-negative", dpi=150):
+            raise AssertionError("fractional raster count did not match integer word")
 
         raster_lower_negative = write(tmp / "raster-lower-negative.pcl",
                                       ESC + b"*t300R" +
                                       ESC + b"*r0A" +
                                       ESC + b"*b-2w2W" +
                                       b"QZ" + b"!" + FF)
+        raster_lower_fractional = write(tmp / "raster-lower-fractional.pcl",
+                                        ESC + b"*t300R" +
+                                        ESC + b"*r0A" +
+                                        ESC + b"*b2.9w2W" +
+                                        b"QZ" + b"!" + FF)
         raster_lower_negative_pdf = tmp / "raster-lower-negative.pdf"
+        raster_lower_fractional_pdf = tmp / "raster-lower-fractional.pdf"
         render(dreamprint, raster_lower_negative, raster_lower_negative_pdf)
+        render(dreamprint, raster_lower_fractional,
+               raster_lower_fractional_pdf)
         if pdftotext(raster_lower_negative_pdf).strip() != "!":
             raise AssertionError("lowercase negative raster count leaked payload")
+        if pdftotext(raster_lower_fractional_pdf).strip() != "!":
+            raise AssertionError("lowercase fractional raster count rounded")
+        if ppm_sha256(raster_lower_fractional_pdf,
+                      tmp / "raster-lower-fractional", dpi=150) != \
+           ppm_sha256(raster_lower_negative_pdf,
+                      tmp / "raster-lower-negative", dpi=150):
+            raise AssertionError("lowercase fractional raster count did not match integer word")
 
         raster_full = write(tmp / "raster-full.pcl",
                             ESC + b"*t300R" +
