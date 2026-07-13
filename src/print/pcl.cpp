@@ -470,6 +470,7 @@ private:
 	float underline_y_in(float y_in, int selector) const;
 	void ljii_carriage_return();
 	uint16_t text_unicode(uint8_t b) const;
+	uint8_t text_glyph_byte_for(const LjiiFontRequest &req, uint8_t b) const;
 	uint8_t text_glyph_byte(uint8_t b) const;
 	bool apply_builtin_font_id(int slot, int id);
 	LjiiFontRequest &font_request(int slot);
@@ -2275,10 +2276,16 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	if (render_soft_glyph(b, char_w_in))
 		return true;
 
-	uint8_t glyph_byte = text_glyph_byte(b);
+	const LjiiFontRequest *render_req = &req;
+	uint8_t source_byte = b;
+	if (active_font_slot_ == 0 && b >= 0x80 && !control_filter_routes_printable()) {
+		render_req = &font_request(1);
+		source_byte = (uint8_t)(b & 0x7f);
+	}
+	uint8_t glyph_byte = text_glyph_byte_for(*render_req, source_byte);
 	if (glyph_byte == 0)
 		return true;
-	uint32_t context = select_ljii_context(req);
+	uint32_t context = select_ljii_context(*render_req);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
 	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
 	bool had_pending = consume_previous_width_adjustment(char_w_in);
@@ -2421,19 +2428,25 @@ void PclPrinter::ljii_carriage_return()
 	restart_underline_span();
 }
 
-uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
+uint8_t PclPrinter::text_glyph_byte_for(const LjiiFontRequest &req, uint8_t b) const
 {
-	int symbol_set = active_font_request().symbol_set;
-	if (control_filter_routes_printable() && b >= 0x80 && b <= 0x9f) {
+	int symbol_set = req.symbol_set;
+	bool routes_printable = symbol_set != 0 && symbol_set != kSymbolRoman8;
+	if (routes_printable && b >= 0x80 && b <= 0x9f) {
 		if (symbol_set == 0x000e)
 			return (uint8_t)(b - 0x21);
 		return (uint8_t)(b - 1);
 	}
-	if (!control_filter_routes_printable() && b >= 0x80)
+	if (!routes_printable && b >= 0x80)
 		return (uint8_t)(b & 0x7f);
 	if (symbol_set == kSymbolRoman8 || symbol_set == 0)
 		return b;
 	return symbol_glyph_byte(symbol_set, b);
+}
+
+uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
+{
+	return text_glyph_byte_for(active_font_request(), b);
 }
 
 uint16_t PclPrinter::text_unicode(uint8_t b) const

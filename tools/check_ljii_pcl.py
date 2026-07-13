@@ -188,14 +188,31 @@ def main():
             raise AssertionError("display-functions embedded ESC became command")
 
         high_mask = write(tmp / "high-mask.pcl", b"\xa1" + FF)
-        high_mask_bang = write(tmp / "high-mask-bang.pcl", b"!" + FF)
+        high_mask_bang = write(tmp / "high-mask-bang.pcl",
+                               b"\x0e!" + FF)
+        high_mask_restore = write(tmp / "high-mask-restore.pcl",
+                                  b"\xa1!" + FF)
+        high_mask_restore_expected = write(
+            tmp / "high-mask-restore-expected.pcl",
+            b"\x0e!\x0f!" + FF)
         high_mask_pdf = tmp / "high-mask.pdf"
         high_mask_bang_pdf = tmp / "high-mask-bang.pdf"
+        high_mask_restore_pdf = tmp / "high-mask-restore.pdf"
+        high_mask_restore_expected_pdf = \
+            tmp / "high-mask-restore-expected.pdf"
         render(dreamprint, high_mask, high_mask_pdf)
         render(dreamprint, high_mask_bang, high_mask_bang_pdf)
+        render(dreamprint, high_mask_restore, high_mask_restore_pdf)
+        render(dreamprint, high_mask_restore_expected,
+               high_mask_restore_expected_pdf)
         if ppm_sha256(high_mask_pdf, tmp / "high-mask", dpi=300) != \
            ppm_sha256(high_mask_bang_pdf, tmp / "high-mask-bang", dpi=300):
-            raise AssertionError("high printable byte did not mask to visible ASCII glyph")
+            raise AssertionError("high printable byte did not use secondary context")
+        if ppm_sha256(high_mask_restore_pdf,
+                      tmp / "high-mask-restore", dpi=300) != \
+           ppm_sha256(high_mask_restore_expected_pdf,
+                      tmp / "high-mask-restore-expected", dpi=300):
+            raise AssertionError("high printable byte did not restore primary context")
         if "\xc0" not in pdftotext(high_mask_pdf):
             raise AssertionError("high printable byte lost selectable source text")
 
