@@ -2344,6 +2344,8 @@ uint8_t PclPrinter::text_glyph_byte(uint8_t b) const
 			return (uint8_t)(b - 0x21);
 		return (uint8_t)(b - 1);
 	}
+	if (!control_filter_routes_printable() && b >= 0x80)
+		return (uint8_t)(b & 0x7f);
 	if (symbol_set == kSymbolRoman8 || symbol_set == 0)
 		return b;
 	return symbol_glyph_byte(symbol_set, b);

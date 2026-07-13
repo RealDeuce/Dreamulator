@@ -187,6 +187,18 @@ def main():
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
 
+        high_mask = write(tmp / "high-mask.pcl", b"\xa1" + FF)
+        high_mask_bang = write(tmp / "high-mask-bang.pcl", b"!" + FF)
+        high_mask_pdf = tmp / "high-mask.pdf"
+        high_mask_bang_pdf = tmp / "high-mask-bang.pdf"
+        render(dreamprint, high_mask, high_mask_pdf)
+        render(dreamprint, high_mask_bang, high_mask_bang_pdf)
+        if ppm_sha256(high_mask_pdf, tmp / "high-mask", dpi=300) != \
+           ppm_sha256(high_mask_bang_pdf, tmp / "high-mask-bang", dpi=300):
+            raise AssertionError("high printable byte did not mask to visible ASCII glyph")
+        if "\xc0" not in pdftotext(high_mask_pdf):
+            raise AssertionError("high printable byte lost selectable source text")
+
         transparent_fixed = write(tmp / "transparent-fixed.pcl",
                                   ESC + b"&p4X" + b"!\x05\x85!" + FF)
         explicit_spaces = write(tmp / "explicit-spaces.pcl", b"!  !" + FF)
