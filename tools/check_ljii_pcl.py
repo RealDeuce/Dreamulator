@@ -1004,6 +1004,25 @@ def main():
         if "!" not in pdftotext(cursor_stack_clamp_pdf):
             raise AssertionError("cursor stack clamp lost selectable text")
 
+        cursor_stack_page_left = write(
+            tmp / "cursor-stack-page-left.pcl",
+            ESC + b"*p0X" + ESC + b"&f0S" + ESC + b"*p300X" +
+            ESC + b"&f1S" + b"!" + FF)
+        cursor_stack_page_left_pdf = tmp / "cursor-stack-page-left.pdf"
+        render(dreamprint, cursor_stack_page_left,
+               cursor_stack_page_left_pdf)
+        cursor_stack_page_left_box = ppm_bbox(
+            cursor_stack_page_left_pdf, tmp / "cursor-stack-page-left",
+            dpi=300)
+        default_position_box_for_stack = ppm_bbox(
+            default_position_pdf, tmp / "default-position-stack-box",
+            dpi=300)
+        if cursor_stack_page_left_box is None or \
+           default_position_box_for_stack is None or \
+           default_position_box_for_stack[0] - \
+           cursor_stack_page_left_box[0] < 40:
+            raise AssertionError("cursor stack pop missed page-left x")
+
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)
         same_orientation_pdf = tmp / "same-orientation.pdf"

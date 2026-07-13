@@ -1343,11 +1343,11 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				st_.y_pos = cursor_stack_.back().second;
 				cursor_stack_.pop_back();
 				const float guard_in = 1.0f / 12.0f;
-				float max_x = std::max(logical_x0_in_,
+				float max_x = std::max(0.0f,
 				                       st_.page_width_in - guard_in);
 				float max_y = std::max(logical_y0_in_,
 				                       st_.page_height_in - guard_in);
-				st_.x_pos = std::max(logical_x0_in_,
+				st_.x_pos = std::max(0.0f,
 				                     std::min(st_.x_pos, max_x));
 				st_.y_pos = std::max(logical_y0_in_,
 				                     std::min(st_.y_pos, max_y));
