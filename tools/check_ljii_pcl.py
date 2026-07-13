@@ -375,6 +375,23 @@ def main():
            ppm_sha256(explicit_tab_pdf, tmp / "explicit-tab", dpi=150):
             raise AssertionError("horizontal tab did not use next tab stop")
 
+        tab_from_page_left = write(tmp / "tab-from-page-left.pcl",
+                                   ESC + b"*p0X\t!" + FF)
+        tab_from_page_left_expected = write(
+            tmp / "tab-from-page-left-expected.pcl",
+            ESC + b"*p50X!" + FF)
+        tab_from_page_left_pdf = tmp / "tab-from-page-left.pdf"
+        tab_from_page_left_expected_pdf = \
+            tmp / "tab-from-page-left-expected.pdf"
+        render(dreamprint, tab_from_page_left, tab_from_page_left_pdf)
+        render(dreamprint, tab_from_page_left_expected,
+               tab_from_page_left_expected_pdf)
+        if ppm_sha256(tab_from_page_left_pdf,
+                      tmp / "tab-from-page-left", dpi=300) != \
+           ppm_sha256(tab_from_page_left_expected_pdf,
+                      tmp / "tab-from-page-left-expected", dpi=300):
+            raise AssertionError("tab left of margin did not clamp to margin")
+
         dot_position = write(tmp / "dot-position.pcl",
                              ESC + b"*p300X" + b"A" + FF)
         dot_position_fractional = write(tmp / "dot-position-fractional.pcl",
