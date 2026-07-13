@@ -1112,10 +1112,20 @@ def main():
                                   "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
                                   "24 db 42 bd 66 99") +
                               ESC + b"(4660X" + b")" + FF)
+        soft_fractional = write(tmp / "soft-fractional.pcl",
+                                ESC + b"*c4660.9D" +
+                                ESC + b"*c41.9E" +
+                                ESC + b")s18W" +
+                                bytes.fromhex(
+                                    "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                                    "24 db 42 bd 66 99") +
+                                ESC + b"(4660X" + b")" + FF)
         soft_pdf = tmp / "soft.pdf"
         soft_negative_pdf = tmp / "soft-negative.pdf"
+        soft_fractional_pdf = tmp / "soft-fractional.pdf"
         render(dreamprint, soft, soft_pdf)
         render(dreamprint, soft_negative, soft_negative_pdf)
+        render(dreamprint, soft_fractional, soft_fractional_pdf)
         if ")" not in pdftotext(soft_pdf):
             raise AssertionError("downloaded glyph text did not extract")
         if ppm_nonwhite(soft_pdf, tmp / "soft") < 5:
@@ -1123,6 +1133,9 @@ def main():
         if ppm_sha256(soft_pdf, tmp / "soft", dpi=150) != \
            ppm_sha256(soft_negative_pdf, tmp / "soft-negative", dpi=150):
             raise AssertionError("negative downloaded font id/code did not normalize")
+        if ppm_sha256(soft_pdf, tmp / "soft", dpi=150) != \
+           ppm_sha256(soft_fractional_pdf, tmp / "soft-fractional", dpi=150):
+            raise AssertionError("fractional downloaded font id/code rounded")
 
         soft_glyph = bytes.fromhex(
             "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
@@ -1135,14 +1148,32 @@ def main():
                                  soft_two_glyphs +
                                  ESC + b"*c41E" + ESC + b"*c3F" +
                                  b"(" + FF)
+        soft_delete_target = write(tmp / "soft-delete-target.pcl",
+                                   soft_two_glyphs +
+                                   ESC + b"*c41E" + ESC + b"*c3F" +
+                                   b")" + FF)
+        soft_delete_target_fractional = write(
+            tmp / "soft-delete-target-fractional.pcl",
+            soft_two_glyphs + ESC + b"*c41E" + ESC + b"*c3.9F" +
+            b")" + FF)
+        soft_keep_target = write(tmp / "soft-keep-target.pcl",
+                                 soft_two_glyphs + b")" + FF)
         soft_keep_char = write(tmp / "soft-keep-char.pcl",
                                soft_two_glyphs + b"(" + FF)
         soft_housekeeping = write(tmp / "soft-housekeeping.pcl",
                                   soft_two_glyphs + ESC + b"*c6F" + b"(" + FF)
         soft_delete_char_pdf = tmp / "soft-delete-char.pdf"
+        soft_delete_target_pdf = tmp / "soft-delete-target.pdf"
+        soft_delete_target_fractional_pdf = \
+            tmp / "soft-delete-target-fractional.pdf"
+        soft_keep_target_pdf = tmp / "soft-keep-target.pdf"
         soft_keep_char_pdf = tmp / "soft-keep-char.pdf"
         soft_housekeeping_pdf = tmp / "soft-housekeeping.pdf"
         render(dreamprint, soft_delete_char, soft_delete_char_pdf)
+        render(dreamprint, soft_delete_target, soft_delete_target_pdf)
+        render(dreamprint, soft_delete_target_fractional,
+               soft_delete_target_fractional_pdf)
+        render(dreamprint, soft_keep_target, soft_keep_target_pdf)
         render(dreamprint, soft_keep_char, soft_keep_char_pdf)
         render(dreamprint, soft_housekeeping, soft_housekeeping_pdf)
         keep_hash = ppm_sha256(soft_keep_char_pdf, tmp / "soft-keep-char",
@@ -1153,6 +1184,15 @@ def main():
         if ppm_sha256(soft_housekeeping_pdf, tmp / "soft-housekeeping",
                       dpi=150) != keep_hash:
             raise AssertionError("downloaded font housekeeping deleted glyphs")
+        delete_target_hash = ppm_sha256(soft_delete_target_pdf,
+                                        tmp / "soft-delete-target", dpi=150)
+        if ppm_sha256(soft_delete_target_fractional_pdf,
+                      tmp / "soft-delete-target-fractional",
+                      dpi=150) != delete_target_hash:
+            raise AssertionError("fractional downloaded font control selector rounded")
+        if ppm_sha256(soft_keep_target_pdf, tmp / "soft-keep-target",
+                      dpi=150) == delete_target_hash:
+            raise AssertionError("downloaded font delete-target regression is not sensitive")
 
         invalid_resource = (
             ESC + b"*c33E" +

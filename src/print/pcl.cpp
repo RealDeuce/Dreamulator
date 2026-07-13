@@ -1475,13 +1475,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		}
 		case 'D':
-			soft_font_id_ = std::min(0x7fff, std::abs(ival));
+			soft_font_id_ = std::min(0x7fff, pcl_integer_word(value));
 			current_soft_font();
 			break;
 		case 'E':
-			soft_char_code_ = (uint8_t)(std::min(0x7fff, std::abs(ival)) & 0xff);
+			soft_char_code_ =
+				(uint8_t)(std::min(0x7fff, pcl_integer_word(value)) & 0xff);
 			break;
 		case 'F':
+			ival = pcl_signed_integer_word(value);
 			if (ival == 0 || ival == 1) {
 				std::vector<int> ids;
 				for (const auto &entry : soft_fonts_)
