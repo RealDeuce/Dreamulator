@@ -1316,7 +1316,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			active_font_request().pitch =
 				(int)std::lround(st_.pitch_cpi * 100.0f);
-			hmi_in_ = 1.0f / std::max(1.0f, st_.pitch_cpi);
+			sync_active_font_state();
 			break;
 		default:
 			break;

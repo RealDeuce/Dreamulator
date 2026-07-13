@@ -1502,6 +1502,18 @@ def main():
                       dpi=150):
             raise AssertionError("fixed spacing match skipped pitch filtering")
 
+        prop_pitch_mode_line = write(
+            tmp / "prop-pitch-mode-line.pcl",
+            ESC + b"(s1p10h12v0s0b3T" + ESC + b"&k2S" + b"ii" + FF,
+        )
+        prop_pitch_mode_line_pdf = tmp / "prop-pitch-mode-line.pdf"
+        render(dreamprint, prop_pitch_mode_line, prop_pitch_mode_line_pdf)
+        if ppm_sha256(prop_pitch_10_pdf, tmp / "prop-pitch-10",
+                      dpi=150) != \
+           ppm_sha256(prop_pitch_mode_line_pdf,
+                      tmp / "prop-pitch-mode-line", dpi=150):
+            raise AssertionError("pitch-mode refresh bypassed selected-context HMI")
+
         pitch_positive = write(tmp / "pitch-positive.pcl",
                                ESC + b"(s10H" + b"Pitch sample" + FF)
         pitch_negative = write(tmp / "pitch-negative.pcl",
