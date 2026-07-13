@@ -1033,6 +1033,49 @@ def main():
                       tmp / "explicit-secondary-line", dpi=150):
             raise AssertionError("built-in secondary font ID 8 did not select line-printer context")
 
+        primary_symbol_miss = write(
+            tmp / "primary-symbol-miss.pcl",
+            ESC + b"(1234U" +
+            ESC + b"(s0p10h12v0s0b3T" + b"!!" + FF,
+        )
+        primary_symbol_fallback = write(
+            tmp / "primary-symbol-fallback.pcl",
+            ESC + b"(s0p10h12v0s0b3T" + b"!!" + FF,
+        )
+        secondary_symbol_miss = write(
+            tmp / "secondary-symbol-miss.pcl",
+            ESC + b")1234U" +
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" + b"!!" + FF,
+        )
+        secondary_symbol_fallback = write(
+            tmp / "secondary-symbol-fallback.pcl",
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" + b"!!" + FF,
+        )
+        primary_symbol_miss_pdf = tmp / "primary-symbol-miss.pdf"
+        primary_symbol_fallback_pdf = tmp / "primary-symbol-fallback.pdf"
+        secondary_symbol_miss_pdf = tmp / "secondary-symbol-miss.pdf"
+        secondary_symbol_fallback_pdf = tmp / "secondary-symbol-fallback.pdf"
+        render(dreamprint, primary_symbol_miss, primary_symbol_miss_pdf)
+        render(dreamprint, primary_symbol_fallback,
+               primary_symbol_fallback_pdf)
+        render(dreamprint, secondary_symbol_miss, secondary_symbol_miss_pdf)
+        render(dreamprint, secondary_symbol_fallback,
+               secondary_symbol_fallback_pdf)
+        if ppm_sha256(primary_symbol_miss_pdf,
+                      tmp / "primary-symbol-miss", dpi=150) != \
+           ppm_sha256(primary_symbol_fallback_pdf,
+                      tmp / "primary-symbol-fallback", dpi=150):
+            raise AssertionError("primary symbol miss did not fall back before rendering")
+        if ppm_sha256(secondary_symbol_miss_pdf,
+                      tmp / "secondary-symbol-miss", dpi=150) != \
+           ppm_sha256(secondary_symbol_fallback_pdf,
+                      tmp / "secondary-symbol-fallback", dpi=150):
+            raise AssertionError("secondary symbol miss did not fall back before rendering")
+        if "!!" not in "".join(pdftotext(primary_symbol_miss_pdf).split()):
+            raise AssertionError("primary symbol miss lost selectable text")
+        if "!!" not in "".join(pdftotext(secondary_symbol_miss_pdf).split()):
+            raise AssertionError("secondary symbol miss lost selectable text")
+
         typeface_low_priority = write(
             tmp / "typeface-low-priority.pcl",
             ESC + b"(s0p10h12v0s0b0T" + b"Stroke sample" + FF,
