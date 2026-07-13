@@ -268,14 +268,20 @@ def main():
                               ESC + b"&z3WABC!" + FF)
         generic_drain_probe = write(tmp / "generic-drain-probe.pcl",
                                     ESC + b"&z2W" + b"A\x1aXB!" + FF)
+        generic_drain_lower = write(tmp / "generic-drain-lower.pcl",
+                                    ESC + b"&z2w3WABC!" + FF)
         generic_drain_pdf = tmp / "generic-drain.pdf"
         generic_drain_probe_pdf = tmp / "generic-drain-probe.pdf"
+        generic_drain_lower_pdf = tmp / "generic-drain-lower.pdf"
         render(dreamprint, generic_drain, generic_drain_pdf)
         render(dreamprint, generic_drain_probe, generic_drain_probe_pdf)
+        render(dreamprint, generic_drain_lower, generic_drain_lower_pdf)
         if pdftotext(generic_drain_pdf).strip() != "!":
             raise AssertionError("generic unsupported W payload leaked text")
         if pdftotext(generic_drain_probe_pdf).strip() != "B!":
             raise AssertionError("generic unsupported W payload control drain was wrong")
+        if pdftotext(generic_drain_lower_pdf).strip() != "C!":
+            raise AssertionError("generic lowercase w drain count was not preserved")
 
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",

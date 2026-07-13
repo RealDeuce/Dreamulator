@@ -513,6 +513,7 @@ private:
 	int vfc_text_last_line_ = 62;
 	int pending_vfc_count_ = -1;
 	int pending_raster_count_ = -1;
+	int pending_drain_count_ = -1;
 	bool underline_span_active_ = false;
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
@@ -597,6 +598,7 @@ void PclPrinter::reset_ljii_state()
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_raster_count_ = -1;
+	pending_drain_count_ = -1;
 	underline_span_active_ = false;
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
@@ -911,6 +913,10 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		    !((group_ == '&' && subgroup_ == 'l') ||
 		      (group_ == '*' && subgroup_ == 'b') ||
 		      ((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
+			if (pending_drain_count_ >= 0) {
+				ival = pending_drain_count_;
+				pending_drain_count_ = -1;
+			}
 			begin_payload(State::DrainData, std::abs(ival));
 		} else {
 			apply_param(group_, subgroup_, value, static_cast<char>(b));
@@ -924,6 +930,9 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			pending_raster_count_ = std::abs(lower_value);
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
 			pending_vfc_count_ = std::abs(lower_value);
+		} else if (b == 'w' &&
+		           !(((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
+			pending_drain_count_ = std::abs(lower_value);
 		} else {
 			apply_param(group_, subgroup_, value,
 			            static_cast<char>(std::toupper(b)));
