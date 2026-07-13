@@ -445,19 +445,28 @@ def main():
                                     ESC + b"&k2S" + b"Pitch mode" + FF)
         pitch_mode_negative = write(tmp / "pitch-mode-negative.pcl",
                                     ESC + b"&k-2S" + b"Pitch mode" + FF)
+        pitch_mode_fractional = write(tmp / "pitch-mode-fractional.pcl",
+                                      ESC + b"&k2.9S" + b"Pitch mode" + FF)
         pitch_mode_invalid = write(tmp / "pitch-mode-invalid.pcl",
                                    ESC + b"&k6H" + ESC + b"&k1S" + b"!" + FF)
         pitch_mode_positive_pdf = tmp / "pitch-mode-positive.pdf"
         pitch_mode_negative_pdf = tmp / "pitch-mode-negative.pdf"
+        pitch_mode_fractional_pdf = tmp / "pitch-mode-fractional.pdf"
         pitch_mode_invalid_pdf = tmp / "pitch-mode-invalid.pdf"
         render(dreamprint, pitch_mode_positive, pitch_mode_positive_pdf)
         render(dreamprint, pitch_mode_negative, pitch_mode_negative_pdf)
+        render(dreamprint, pitch_mode_fractional, pitch_mode_fractional_pdf)
         render(dreamprint, pitch_mode_invalid, pitch_mode_invalid_pdf)
         if ppm_sha256(pitch_mode_positive_pdf, tmp / "pitch-mode-positive",
                       dpi=150) != \
            ppm_sha256(pitch_mode_negative_pdf, tmp / "pitch-mode-negative",
                       dpi=150):
             raise AssertionError("negative pitch-mode selector was not absolute")
+        if ppm_sha256(pitch_mode_positive_pdf, tmp / "pitch-mode-positive",
+                      dpi=150) != \
+           ppm_sha256(pitch_mode_fractional_pdf,
+                      tmp / "pitch-mode-fractional", dpi=150):
+            raise AssertionError("fractional pitch-mode selector rounded")
         if ppm_sha256(hmi_default_glyph_pdf, tmp / "hmi-default-glyph",
                       dpi=300) != \
            ppm_sha256(pitch_mode_invalid_pdf, tmp / "pitch-mode-invalid",
@@ -629,15 +638,31 @@ def main():
                                    ESC + b"&k2G" + b"A\nB" + FF)
         line_term_negative = write(tmp / "line-term-negative.pcl",
                                    ESC + b"&k-2G" + b"A\nB" + FF)
+        line_term_fractional = write(tmp / "line-term-fractional.pcl",
+                                     ESC + b"&k2G" + b"A\rB" + FF)
+        line_term_fractional_probe = write(
+            tmp / "line-term-fractional-probe.pcl",
+            ESC + b"&k2.9G" + b"A\rB" + FF)
         line_term_positive_pdf = tmp / "line-term-positive.pdf"
         line_term_negative_pdf = tmp / "line-term-negative.pdf"
+        line_term_fractional_pdf = tmp / "line-term-fractional.pdf"
+        line_term_fractional_probe_pdf = \
+            tmp / "line-term-fractional-probe.pdf"
         render(dreamprint, line_term_positive, line_term_positive_pdf)
         render(dreamprint, line_term_negative, line_term_negative_pdf)
+        render(dreamprint, line_term_fractional, line_term_fractional_pdf)
+        render(dreamprint, line_term_fractional_probe,
+               line_term_fractional_probe_pdf)
         if ppm_sha256(line_term_positive_pdf, tmp / "line-term-positive",
                       dpi=150) != \
            ppm_sha256(line_term_negative_pdf, tmp / "line-term-negative",
                       dpi=150):
             raise AssertionError("negative line termination selector was not absolute")
+        if ppm_sha256(line_term_fractional_pdf, tmp / "line-term-fractional",
+                      dpi=150) != \
+           ppm_sha256(line_term_fractional_probe_pdf,
+                      tmp / "line-term-fractional-probe", dpi=150):
+            raise AssertionError("fractional line termination selector rounded")
 
         line_term_default = write(tmp / "line-term-default.pcl",
                                   ESC + b"&k0G" + b"A\rB" + FF)
@@ -659,15 +684,28 @@ def main():
         wrap_negative = write(tmp / "wrap-negative.pcl",
                               b"X" + ESC + b"&s-1C" + ESC + b"&a80C" +
                               b"A" + FF)
+        wrap_enabled = write(tmp / "wrap-enabled.pcl",
+                             b"X" + ESC + b"&s0C" + ESC + b"&a80C" +
+                             b"A" + FF)
+        wrap_fractional = write(tmp / "wrap-fractional.pcl",
+                                b"X" + ESC + b"&s0.9C" + ESC + b"&a80C" +
+                                b"A" + FF)
         wrap_positive_pdf = tmp / "wrap-positive.pdf"
         wrap_negative_pdf = tmp / "wrap-negative.pdf"
+        wrap_enabled_pdf = tmp / "wrap-enabled.pdf"
+        wrap_fractional_pdf = tmp / "wrap-fractional.pdf"
         render(dreamprint, wrap_positive, wrap_positive_pdf)
         render(dreamprint, wrap_negative, wrap_negative_pdf)
+        render(dreamprint, wrap_enabled, wrap_enabled_pdf)
+        render(dreamprint, wrap_fractional, wrap_fractional_pdf)
         if "".join(pdftotext(wrap_negative_pdf).split()) != "X":
             raise AssertionError("negative wrap-disable selector allowed overflow text")
         if ppm_sha256(wrap_positive_pdf, tmp / "wrap-positive", dpi=150) != \
            ppm_sha256(wrap_negative_pdf, tmp / "wrap-negative", dpi=150):
             raise AssertionError("negative wrap-disable selector did not match positive")
+        if ppm_sha256(wrap_enabled_pdf, tmp / "wrap-enabled", dpi=150) != \
+           ppm_sha256(wrap_fractional_pdf, tmp / "wrap-fractional", dpi=150):
+            raise AssertionError("fractional wrap selector rounded")
 
         control_z = write(tmp / "control-z.pcl",
                           b"A" + bytes([0x1a, 0x58]) + b"B" + FF)

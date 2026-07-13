@@ -1177,7 +1177,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'k') {
 		switch (term) {
 		case 'G':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival <= 3)
 				line_term_ = ival;
 			break;
@@ -1190,7 +1190,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'S':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				st_.pitch_cpi = 10.0f;
 			} else if (ival == 2) {
@@ -1292,7 +1292,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			begin_payload(State::TransparentData, std::abs(ival));
 	} else if (group == '&' && subgroup == 's') {
 		if (term == 'C') {
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0)
 				wrap_enabled_ = true;
 			else if (ival == 1)
