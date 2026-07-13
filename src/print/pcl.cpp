@@ -1408,12 +1408,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		}
 	} else if (group == '*' && subgroup == 't') {
 		if (term == 'R')
-			set_raster_resolution(std::abs(ival));
+			set_raster_resolution(pcl_integer_word(value));
 	} else if (group == '*' && subgroup == 'r') {
 		switch (term) {
 		case 'A':
 			if (!raster_active_) {
-				int start_selector = std::abs(ival);
+				int start_selector = pcl_integer_word(value);
 				raster_x_in_ = (start_selector == 1)
 					? ((orientation_ & 1) ? st_.y_pos : st_.x_pos)
 					: 0.0f;

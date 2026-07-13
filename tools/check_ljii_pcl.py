@@ -1239,16 +1239,39 @@ def main():
                            ESC + b"*r1A" +
                            ESC + b"*b4W" +
                            bytes([0xf0, 0x0f, 0xaa, 0x55]) + FF)
+        raster_start_zero = write(tmp / "raster-start-zero.pcl",
+                                  ESC + b"*p2384X" +
+                                  ESC + b"*t300R" +
+                                  ESC + b"*r0A" +
+                                  ESC + b"*b4W" +
+                                  bytes([0xf0, 0x0f, 0xaa, 0x55]) + FF)
+        raster_start_fractional = write(
+            tmp / "raster-start-fractional.pcl",
+            ESC + b"*p2384X" +
+            ESC + b"*t300R" +
+            ESC + b"*r0.9A" +
+            ESC + b"*b4W" +
+            bytes([0xf0, 0x0f, 0xaa, 0x55]) + FF)
         raster_full_pdf = tmp / "raster-full.pdf"
         raster_cap_pdf = tmp / "raster-cap.pdf"
+        raster_start_zero_pdf = tmp / "raster-start-zero.pdf"
+        raster_start_fractional_pdf = tmp / "raster-start-fractional.pdf"
         render(dreamprint, raster_full, raster_full_pdf)
         render(dreamprint, raster_cap, raster_cap_pdf)
+        render(dreamprint, raster_start_zero, raster_start_zero_pdf)
+        render(dreamprint, raster_start_fractional,
+               raster_start_fractional_pdf)
         full_pixels = ppm_nonwhite(raster_full_pdf, tmp / "raster-full",
                                    dpi=150)
         cap_pixels = ppm_nonwhite(raster_cap_pdf, tmp / "raster-cap",
                                   dpi=150)
         if not (0 < cap_pixels < full_pixels):
             raise AssertionError("raster transfer cap did not reduce row")
+        if ppm_sha256(raster_start_zero_pdf, tmp / "raster-start-zero",
+                      dpi=150) != \
+           ppm_sha256(raster_start_fractional_pdf,
+                      tmp / "raster-start-fractional", dpi=150):
+            raise AssertionError("fractional raster start selector rounded")
 
         raster_150 = write(tmp / "raster-150.pcl",
                            ESC + b"*t150R" +
@@ -1260,13 +1283,24 @@ def main():
                                ESC + b"*r0A" +
                                ESC + b"*b2W" +
                                bytes([0xf0, 0x0f]) + FF)
+        raster_frac_150 = write(tmp / "raster-frac-150.pcl",
+                                ESC + b"*t150.9R" +
+                                ESC + b"*r0A" +
+                                ESC + b"*b2W" +
+                                bytes([0xf0, 0x0f]) + FF)
         raster_150_pdf = tmp / "raster-150.pdf"
         raster_neg_150_pdf = tmp / "raster-neg-150.pdf"
+        raster_frac_150_pdf = tmp / "raster-frac-150.pdf"
         render(dreamprint, raster_150, raster_150_pdf)
         render(dreamprint, raster_neg_150, raster_neg_150_pdf)
+        render(dreamprint, raster_frac_150, raster_frac_150_pdf)
         if ppm_sha256(raster_150_pdf, tmp / "raster-150", dpi=300) != \
            ppm_sha256(raster_neg_150_pdf, tmp / "raster-neg-150", dpi=300):
             raise AssertionError("negative raster resolution did not match positive")
+        if ppm_sha256(raster_150_pdf, tmp / "raster-150", dpi=300) != \
+           ppm_sha256(raster_frac_150_pdf, tmp / "raster-frac-150",
+                      dpi=300):
+            raise AssertionError("fractional raster resolution rounded")
 
         raster_151 = write(tmp / "raster-151.pcl",
                            ESC + b"*t151R" +
