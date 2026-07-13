@@ -2672,7 +2672,13 @@ const LjiiFontRequest &PclPrinter::active_font_request() const
 void PclPrinter::sync_active_font_state()
 {
 	const LjiiFontRequest &req = active_font_request();
-	st_.pitch_cpi = std::max(1.0f, (float)req.pitch / 100.0f);
+	int pitch = req.pitch;
+	if (!selected_soft_font()) {
+		int context_pitch = ljii_context_pitch(select_ljii_context(req));
+		if (context_pitch > 0)
+			pitch = context_pitch;
+	}
+	st_.pitch_cpi = std::max(1.0f, (float)pitch / 100.0f);
 	hmi_in_ = 1.0f / st_.pitch_cpi;
 	st_.proportional = (req.spacing != 0);
 	st_.italic = (req.style == 1);

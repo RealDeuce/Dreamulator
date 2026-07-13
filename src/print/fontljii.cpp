@@ -35027,6 +35027,13 @@ uint32_t select_ljii_context(const LjiiFontRequest &request)
 	return best ? best->context : default_ljii_context_for_pitch((float)request.pitch / 100.0f, request.symbol_set);
 }
 
+int ljii_context_pitch(uint32_t context_longword)
+{
+	for (const auto &record : ljii_records)
+		if (record.context == context_longword) return record.pitch;
+	return 0;
+}
+
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte)
 {
 	for (const auto &record : ljii_records) {

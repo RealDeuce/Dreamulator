@@ -1469,19 +1469,19 @@ def main():
 
         prop_pitch_10 = write(
             tmp / "prop-pitch-10.pcl",
-            ESC + b"(s1p10h12v0s0b3T" + b"i" + FF,
+            ESC + b"(s1p10h12v0s0b3T" + b"ii" + FF,
         )
         prop_pitch_line = write(
             tmp / "prop-pitch-line.pcl",
-            ESC + b"(s1p16.66h12v0s0b3T" + b"i" + FF,
+            ESC + b"(s1p16.66h12v0s0b3T" + b"ii" + FF,
         )
         fixed_pitch_10 = write(
             tmp / "fixed-pitch-10.pcl",
-            ESC + b"(s0p10h12v0s0b3T" + b"i" + FF,
+            ESC + b"(s0p10h12v0s0b3T" + b"ii" + FF,
         )
         fixed_pitch_line = write(
             tmp / "fixed-pitch-line.pcl",
-            ESC + b"(s0p16.66h12v0s0b3T" + b"i" + FF,
+            ESC + b"(s0p16.66h12v0s0b3T" + b"ii" + FF,
         )
         prop_pitch_10_pdf = tmp / "prop-pitch-10.pdf"
         prop_pitch_line_pdf = tmp / "prop-pitch-line.pdf"
