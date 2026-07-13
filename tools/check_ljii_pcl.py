@@ -1586,6 +1586,46 @@ def main():
             raise AssertionError(
                 "lowercase downloaded-font W record did not survive to uppercase W")
 
+        soft_after_reset_permanent = write(
+            tmp / "soft-after-reset-permanent.pcl",
+            ESC + b"*c4660D" +
+            ESC + b"*c41E" +
+            ESC + b")s18W" +
+            bytes.fromhex(
+                "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                "24 db 42 bd 66 99") +
+            ESC + b"*c5F" + ESC + b"E" +
+            ESC + b"(4660X" + b")" + FF)
+        soft_after_reset_temporary = write(
+            tmp / "soft-after-reset-temporary.pcl",
+            ESC + b"*c4660D" +
+            ESC + b"*c41E" +
+            ESC + b")s18W" +
+            bytes.fromhex(
+                "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                "24 db 42 bd 66 99") +
+            ESC + b"E" + ESC + b"(4660X" + b")" + FF)
+        soft_after_reset_default = write(
+            tmp / "soft-after-reset-default.pcl", b")" + FF)
+        soft_after_reset_permanent_pdf = tmp / "soft-after-reset-permanent.pdf"
+        soft_after_reset_temporary_pdf = tmp / "soft-after-reset-temporary.pdf"
+        soft_after_reset_default_pdf = tmp / "soft-after-reset-default.pdf"
+        render(dreamprint, soft_after_reset_permanent,
+               soft_after_reset_permanent_pdf)
+        render(dreamprint, soft_after_reset_temporary,
+               soft_after_reset_temporary_pdf)
+        render(dreamprint, soft_after_reset_default,
+               soft_after_reset_default_pdf)
+        if ppm_sha256(soft_after_reset_permanent_pdf,
+                      tmp / "soft-after-reset-permanent", dpi=150) != \
+           ppm_sha256(soft_pdf, tmp / "soft-again", dpi=150):
+            raise AssertionError("permanent downloaded font did not survive reset")
+        if ppm_sha256(soft_after_reset_temporary_pdf,
+                      tmp / "soft-after-reset-temporary", dpi=150) != \
+           ppm_sha256(soft_after_reset_default_pdf,
+                      tmp / "soft-after-reset-default", dpi=150):
+            raise AssertionError("temporary downloaded font survived reset")
+
         payload_control_download = write(
             tmp / "payload-control-download.pcl",
             ESC + b"*c4660D" +
@@ -2783,6 +2823,30 @@ def main():
                       tmp / "macro-reset-definition-expected", dpi=300):
             raise AssertionError(
                 "ESC E did not reset as an active macro-definition exception")
+
+        macro_permanent_reset = write(
+            tmp / "macro-permanent-reset.pcl",
+            ESC + b"&f418Y" +
+            ESC + b"&f0X" + b"P" + ESC + b"&f1X" +
+            ESC + b"&f10X" +
+            ESC + b"E" +
+            ESC + b"&f418Y" + ESC + b"&f2X" +
+            b"!" + FF)
+        macro_temporary_reset = write(
+            tmp / "macro-temporary-reset.pcl",
+            ESC + b"&f419Y" +
+            ESC + b"&f0X" + b"T" + ESC + b"&f1X" +
+            ESC + b"E" +
+            ESC + b"&f419Y" + ESC + b"&f2X" +
+            b"!" + FF)
+        macro_permanent_reset_pdf = tmp / "macro-permanent-reset.pdf"
+        macro_temporary_reset_pdf = tmp / "macro-temporary-reset.pdf"
+        render(dreamprint, macro_permanent_reset, macro_permanent_reset_pdf)
+        render(dreamprint, macro_temporary_reset, macro_temporary_reset_pdf)
+        if "P!" not in "".join(pdftotext(macro_permanent_reset_pdf).split()):
+            raise AssertionError("permanent macro did not survive reset")
+        if "".join(pdftotext(macro_temporary_reset_pdf).split()) != "!":
+            raise AssertionError("temporary macro survived reset")
 
         macro_nested = write(tmp / "macro-nested.pcl",
                              ESC + b"&f500Y" +

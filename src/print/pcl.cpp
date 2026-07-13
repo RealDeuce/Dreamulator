@@ -689,9 +689,19 @@ void PclPrinter::reset_ljii_state()
 void PclPrinter::software_reset()
 {
 	publish_current_page();
+	std::map<int, Macro> permanent_macros;
+	for (const auto &entry : macros_)
+		if (entry.second.permanent)
+			permanent_macros.emplace(entry.first, entry.second);
+	std::map<int, SoftFont> permanent_fonts;
+	for (const auto &entry : soft_fonts_)
+		if (entry.second.permanent)
+			permanent_fonts.emplace(entry.first, entry.second);
 	PrinterConfig cfg = cfg_;
 	reset_printer_state(cfg);
 	reset_ljii_state();
+	macros_ = std::move(permanent_macros);
+	soft_fonts_ = std::move(permanent_fonts);
 	state_ = State::Normal;
 }
 
