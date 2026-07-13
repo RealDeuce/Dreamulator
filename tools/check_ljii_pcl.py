@@ -2062,6 +2062,32 @@ def main():
         if "Live!" not in pdftotext(overlay_pdf):
             raise AssertionError("macro overlay did not replay at publication")
 
+        overlay_repeated = write(
+            tmp / "overlay-repeated.pcl",
+            ESC + b"&f129Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + b"Page1" + FF + b"Page2" + FF)
+        overlay_repeated_pdf = tmp / "overlay-repeated.pdf"
+        render(dreamprint, overlay_repeated, overlay_repeated_pdf)
+        overlay_repeated_text = pdftotext(overlay_repeated_pdf)
+        if pdf_pages(overlay_repeated_pdf) != 2 or \
+           overlay_repeated_text.count("!") < 2:
+            raise AssertionError("macro overlay did not survive page publication")
+
+        overlay_disable = write(
+            tmp / "overlay-disable.pcl",
+            ESC + b"&f130Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" +
+            ESC + b"&f5X" +
+            b"Live" + FF)
+        overlay_disable_pdf = tmp / "overlay-disable.pdf"
+        render(dreamprint, overlay_disable, overlay_disable_pdf)
+        if "!" in pdftotext(overlay_disable_pdf):
+            raise AssertionError("macro overlay disable selector did not clear state")
+
         overlay_missing_then_defined = write(
             tmp / "overlay-missing-then-defined.pcl",
             ESC + b"&f124Y" +
@@ -2103,6 +2129,33 @@ def main():
            overlay_transparent_text.count("!") < 2:
             raise AssertionError("transparent overlay text did not extract")
 
+        overlay_mixed_control = write(
+            tmp / "overlay-mixed-control.pcl",
+            ESC + b"&f131Y" +
+            ESC + b"&f0X" + ESC + b"&k1G" + b"!\r!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_cursor = write(
+            tmp / "overlay-cursor.pcl",
+            ESC + b"&f132Y" +
+            ESC + b"&f0X" + ESC + b"&a2C" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_vertical = write(
+            tmp / "overlay-vertical.pcl",
+            ESC + b"&f133Y" +
+            ESC + b"&f0X" + ESC + b"&a72V" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_mixed_control_pdf = tmp / "overlay-mixed-control.pdf"
+        overlay_cursor_pdf = tmp / "overlay-cursor.pdf"
+        overlay_vertical_pdf = tmp / "overlay-vertical.pdf"
+        render(dreamprint, overlay_mixed_control, overlay_mixed_control_pdf)
+        render(dreamprint, overlay_cursor, overlay_cursor_pdf)
+        render(dreamprint, overlay_vertical, overlay_vertical_pdf)
+        if pdftotext(overlay_mixed_control_pdf).count("!") < 2:
+            raise AssertionError("mixed-control overlay did not replay CR mode")
+
         overlay_text_only = write(
             tmp / "overlay-text-only.pcl",
             ESC + b"&f127Y" +
@@ -2122,6 +2175,18 @@ def main():
         overlay_raster_pdf = tmp / "overlay-raster.pdf"
         render(dreamprint, overlay_text_only, overlay_text_only_pdf)
         render(dreamprint, overlay_raster, overlay_raster_pdf)
+        text_only_box = ppm_bbox(overlay_text_only_pdf,
+                                 tmp / "overlay-text-only", dpi=300)
+        cursor_box = ppm_bbox(overlay_cursor_pdf,
+                              tmp / "overlay-cursor", dpi=300)
+        vertical_box = ppm_bbox(overlay_vertical_pdf,
+                                tmp / "overlay-vertical", dpi=300)
+        if text_only_box is None or cursor_box is None or \
+           cursor_box[0] >= text_only_box[0]:
+            raise AssertionError("cursor-position overlay did not move glyph")
+        if text_only_box is None or vertical_box is None or \
+           vertical_box[1] >= text_only_box[1]:
+            raise AssertionError("vertical-decipoint overlay did not move glyph")
         if ppm_nonwhite(overlay_transparent_pdf,
                         tmp / "overlay-transparent", dpi=300) <= \
            ppm_nonwhite(overlay_text_only_pdf,
