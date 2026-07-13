@@ -2631,7 +2631,7 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 		return true;
 	}
 	if (len >= 4) {
-		if (b == 'X') {
+		if (b == 'X' || b == 'x') {
 			size_t pos = 3;
 			bool negative = false;
 			if (pos + 1 < len &&
@@ -2670,6 +2670,10 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 			if (have_digit && std::abs(value) == 1) {
 				macros_[macro_id_].bytes.resize(macro_command_start_);
 				defining_macro_ = false;
+				state_ = State::Normal;
+				param_pos_ = 0;
+				param_buf_[0] = 0;
+				param_relative_ = false;
 			}
 			macro_stop_buf_.clear();
 			return true;

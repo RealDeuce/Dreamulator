@@ -1961,6 +1961,17 @@ def main():
         if "!" not in pdftotext(macro_fractional_pdf):
             raise AssertionError("fractional macro selector rounded")
 
+        macro_lower_stop = write(tmp / "macro-lower-stop.pcl",
+                                 ESC + b"&f701Y" +
+                                 ESC + b"&f0x" + b"!\r" +
+                                 ESC + b"&f1x" +
+                                 ESC + b"&f2x" + b"Z" + FF)
+        macro_lower_stop_pdf = tmp / "macro-lower-stop.pdf"
+        render(dreamprint, macro_lower_stop, macro_lower_stop_pdf)
+        lower_stop_text = pdftotext(macro_lower_stop_pdf)
+        if "!" not in lower_stop_text or "Z" not in lower_stop_text:
+            raise AssertionError("lowercase macro control did not stop and replay")
+
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",
             b"A" +
