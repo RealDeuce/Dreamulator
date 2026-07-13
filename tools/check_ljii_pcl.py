@@ -1222,6 +1222,50 @@ def main():
             " 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 50"
         )
 
+        def invalid_resource_case(name, payload):
+            stream = (
+                ESC + b"*c33E" +
+                ESC + b")s" + str(len(payload)).encode("ascii") + b"W" +
+                payload +
+                b"!" + FF
+            )
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            if pdftotext(pdf).strip() != "!":
+                raise AssertionError(f"{name} shifted following printable text")
+            if ppm_sha256(bang_pdf, tmp / f"{name}-bang", dpi=150) != \
+               ppm_sha256(pdf, tmp / name, dpi=150):
+                raise AssertionError(f"{name} installed a resource glyph")
+
+        invalid_resource_payloads = []
+        invalid_resource_payloads.append(
+            ("resource-invalid-type", resource_header[:3] + b"\x03" +
+             resource_header[4:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-first-overflow", resource_header[:6] +
+             b"\x10\x68" + resource_header[8:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-zero-line-count", resource_header[:8] +
+             b"\x00\x00" + resource_header[10:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-high-line-count", resource_header[:8] +
+             b"\x10\x69" + resource_header[10:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-reversed-range", resource_header[:6] +
+             b"\x00\x0a" + resource_header[8:10] + b"\x00\x05" +
+             resource_header[12:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-high-range", resource_header[:10] +
+             b"\x10\x69" + resource_header[12:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-invalid-class", resource_header[:12] + b"\x02" +
+             resource_header[13:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-short-budget", resource_header[:8]))
+        for name, payload in invalid_resource_payloads:
+            invalid_resource_case(name, payload)
+
         def resource_width_case(name, header):
             stream = (
                 ESC + b"*c4660D" +
