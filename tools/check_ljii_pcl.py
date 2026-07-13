@@ -1744,6 +1744,50 @@ def main():
             raise AssertionError(
                 "downloaded font payload metrics did not refresh active HMI")
 
+        soft_descriptor_oversized = bytearray(64)
+        soft_descriptor_capped = bytearray(64)
+        for descriptor in (soft_descriptor_oversized, soft_descriptor_capped):
+            descriptor[0x22] = 0x01
+            descriptor[0x23] = 0x15
+        soft_descriptor_oversized[0x24] = 0xff
+        soft_descriptor_oversized[0x25] = 0xff
+        soft_descriptor_oversized[0x28] = 0xff
+        soft_descriptor_oversized[0x29] = 0xff
+        soft_descriptor_capped[0x24] = 0x41
+        soft_descriptor_capped[0x25] = 0xa0
+        soft_descriptor_capped[0x28] = 0x2a
+        soft_descriptor_capped[0x29] = 0xaa
+        soft_descriptor_glyph = b"\xe0\xe0\xe0"
+        soft_descriptor_clamped = write(
+            tmp / "soft-descriptor-clamped.pcl",
+            ESC + b"*c4662D" +
+            ESC + b"(s64W" + bytes(soft_descriptor_oversized) +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + soft_descriptor_glyph +
+            b"AA" + FF)
+        soft_descriptor_explicit = write(
+            tmp / "soft-descriptor-explicit.pcl",
+            ESC + b"*c4662D" +
+            ESC + b"(s64W" + bytes(soft_descriptor_capped) +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + soft_descriptor_glyph +
+            b"AA" + FF)
+        soft_descriptor_clamped_pdf = tmp / "soft-descriptor-clamped.pdf"
+        soft_descriptor_explicit_pdf = tmp / "soft-descriptor-explicit.pdf"
+        render(dreamprint, soft_descriptor_clamped,
+               soft_descriptor_clamped_pdf)
+        render(dreamprint, soft_descriptor_explicit,
+               soft_descriptor_explicit_pdf)
+        if "AA" not in pdftotext(soft_descriptor_clamped_pdf):
+            raise AssertionError(
+                "downloaded descriptor clamp stream text did not extract")
+        if ppm_sha256(soft_descriptor_clamped_pdf,
+                      tmp / "soft-descriptor-clamped", dpi=300) != \
+           ppm_sha256(soft_descriptor_explicit_pdf,
+                      tmp / "soft-descriptor-explicit", dpi=300):
+            raise AssertionError(
+                "downloaded descriptor pitch/height words were not capped")
+
         soft_after_reset_permanent = write(
             tmp / "soft-after-reset-permanent.pcl",
             ESC + b"*c4660D" +

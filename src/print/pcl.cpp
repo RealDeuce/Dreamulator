@@ -2203,9 +2203,9 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 				int pitch = ((int)payload[0x24] << 8) | payload[0x25];
 				int height = ((int)payload[0x28] << 8) | payload[0x29];
 				if (pitch > 0)
-					req.pitch = pitch;
+					req.pitch = std::min<int>(pitch, 0x41a0);
 				if (height > 0)
-					req.height = height;
+					req.height = std::min<int>(height, 0x2aaa);
 			}
 		}
 		return;
