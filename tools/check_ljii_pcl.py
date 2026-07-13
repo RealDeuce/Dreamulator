@@ -2213,6 +2213,37 @@ def main():
                       tmp / "raster-start-fractional", dpi=150):
             raise AssertionError("fractional raster start selector rounded")
 
+        raster_cursor_before_start = write(
+            tmp / "raster-cursor-before-start.pcl",
+            ESC + b"*t300R" +
+            ESC + b"*p900Y" +
+            ESC + b"*r0A" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_cursor_after_start = write(
+            tmp / "raster-cursor-after-start.pcl",
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*p900Y" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_cursor_before_start_pdf = \
+            tmp / "raster-cursor-before-start.pdf"
+        raster_cursor_after_start_pdf = tmp / "raster-cursor-after-start.pdf"
+        render(dreamprint, raster_cursor_before_start,
+               raster_cursor_before_start_pdf)
+        render(dreamprint, raster_cursor_after_start,
+               raster_cursor_after_start_pdf)
+        if ppm_nonwhite(raster_cursor_after_start_pdf,
+                        tmp / "raster-cursor-after-start", dpi=300) <= 0:
+            raise AssertionError("raster cursor-transfer regression is blank")
+        if ppm_sha256(raster_cursor_before_start_pdf,
+                      tmp / "raster-cursor-before-start", dpi=300) != \
+           ppm_sha256(raster_cursor_after_start_pdf,
+                      tmp / "raster-cursor-after-start", dpi=300):
+            raise AssertionError(
+                "raster transfer did not use transfer-time vertical cursor")
+
         raster_page_edge_payload = bytes([0] * 312 + [0xff])
         raster_page_edge = write(tmp / "raster-page-edge.pcl",
                                  ESC + b"*t300R" +

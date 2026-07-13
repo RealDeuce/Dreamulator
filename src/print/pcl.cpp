@@ -396,7 +396,6 @@ private:
 		int raster_scale = 1;
 		bool raster_active = false;
 		float raster_x_in = 0.0f;
-		float raster_y_in = 0.0f;
 		int raster_row = 0;
 		float rect_w_in = 0.0f;
 		float rect_h_in = 0.0f;
@@ -556,7 +555,7 @@ private:
 	int raster_scale_ = 1;
 	bool raster_active_ = false;
 	float raster_x_in_ = 0.0f;
-	float raster_y_in_ = 0.0f;
+	float raster_transfer_y_in_ = 0.0f;
 	int raster_row_ = 0;
 
 	float rect_w_in_ = 0.0f;
@@ -645,7 +644,7 @@ void PclPrinter::reset_ljii_state()
 	raster_scale_ = 4;
 	raster_active_ = false;
 	raster_x_in_ = 0.0f;
-	raster_y_in_ = 0.0f;
+	raster_transfer_y_in_ = 0.0f;
 	raster_row_ = 0;
 	rect_w_in_ = 0.0f;
 	rect_h_in_ = 0.0f;
@@ -1547,7 +1546,6 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				raster_x_in_ = (start_selector == 1)
 					? ((orientation_ & 1) ? st_.y_pos : st_.x_pos)
 					: 0.0f;
-				raster_y_in_ = (orientation_ & 1) ? st_.x_pos : st_.y_pos;
 				raster_row_ = 0;
 				raster_active_ = true;
 			}
@@ -1784,7 +1782,9 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 		return;
 
 	int start_x_dot = (int)std::floor(raster_x_in_ * kDotsPerIn);
-	int start_y_dot = (int)std::floor(raster_y_in_ * kDotsPerIn) + raster_row_;
+	raster_transfer_y_in_ = ((orientation_ & 1) ? st_.x_pos : st_.y_pos) +
+	                        (float)raster_row_ / kDotsPerIn;
+	int start_y_dot = (int)std::floor(raster_transfer_y_in_ * kDotsPerIn);
 	int page_w_dot = (int)std::floor(st_.page_width_in * kDotsPerIn);
 	int page_h_dot = (int)std::floor(st_.page_height_in * kDotsPerIn);
 
@@ -1838,7 +1838,6 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 			x_dot += 32;
 		}
 	}
-	raster_row_ += raster_scale_;
 	advance_raster_cursor_after_transfer();
 }
 
@@ -1857,7 +1856,7 @@ void PclPrinter::draw_raster_dot(int x_dot, int y_dot)
 {
 	int dpi = prof_.render_dpi;
 	float base_x = raster_x_in_ * kDotsPerIn + (float)x_dot;
-	float base_y = raster_y_in_ * kDotsPerIn + (float)raster_row_ + (float)y_dot;
+	float base_y = raster_transfer_y_in_ * kDotsPerIn + (float)y_dot;
 	int x0 = (int)std::floor(base_x * (float)dpi / kDotsPerIn);
 	int y0 = (int)std::floor(base_y * (float)dpi / kDotsPerIn);
 	int x1 = (int)std::ceil((base_x + 1.0f) * (float)dpi / kDotsPerIn);
@@ -2961,7 +2960,6 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.raster_scale = raster_scale_;
 	env.raster_active = raster_active_;
 	env.raster_x_in = raster_x_in_;
-	env.raster_y_in = raster_y_in_;
 	env.raster_row = raster_row_;
 	env.rect_w_in = rect_w_in_;
 	env.rect_h_in = rect_h_in_;
@@ -3007,7 +3005,6 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	raster_scale_ = env.raster_scale;
 	raster_active_ = env.raster_active;
 	raster_x_in_ = env.raster_x_in;
-	raster_y_in_ = env.raster_y_in;
 	raster_row_ = env.raster_row;
 	rect_w_in_ = env.rect_w_in;
 	rect_h_in_ = env.rect_h_in;
