@@ -455,6 +455,7 @@ private:
 	const SoftFont *selected_soft_font() const;
 	void delete_soft_font(int id);
 	void apply_download_payload(const std::vector<uint8_t> &payload);
+	void draw_soft_glyph_pixels(const SoftGlyph &glyph);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
 	float ljii_metric_width_in(uint8_t width, float fallback_in) const;
@@ -500,6 +501,7 @@ private:
 	bool current_param_relative_ = false;
 	int payload_remaining_ = 0;
 	bool payload_control_pending_ = false;
+	bool download_payload_control_seen_ = false;
 	bool display_escape_pending_ = false;
 	bool display_control_pending_ = false;
 	std::vector<uint8_t> payload_buf_;
@@ -586,6 +588,7 @@ void PclPrinter::reset_ljii_state()
 	current_param_relative_ = false;
 	payload_remaining_ = 0;
 	payload_control_pending_ = false;
+	download_payload_control_seen_ = false;
 	display_escape_pending_ = false;
 	display_control_pending_ = false;
 	payload_buf_.clear();
@@ -1550,6 +1553,7 @@ void PclPrinter::begin_payload(State state, int count)
 	state_ = state;
 	payload_remaining_ = count;
 	payload_control_pending_ = false;
+	download_payload_control_seen_ = false;
 	payload_buf_.clear();
 	payload_buf_.reserve(static_cast<size_t>(count));
 }
@@ -1572,8 +1576,11 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		     payload_state_ == State::DownloadData ||
 		     payload_state_ == State::DrainData) && payload_control_pending_) {
 			payload_control_pending_ = false;
-			if (b == 0x58)
+			if (b == 0x58) {
+				if (payload_state_ == State::DownloadData)
+					download_payload_control_seen_ = true;
 				b = 0x00;
+			}
 		} else if ((payload_state_ == State::RasterData ||
 		            payload_state_ == State::VfcData ||
 		            payload_state_ == State::DownloadData ||
@@ -1598,6 +1605,7 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 	payload_buf_.clear();
 	payload_state_ = State::Normal;
 	payload_control_pending_ = false;
+	download_payload_control_seen_ = false;
 	state_ = State::Normal;
 }
 
@@ -2077,7 +2085,15 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	}
 
 	SoftGlyph glyph;
-	if (payload.size() >= 14 && payload[4] == 0x0c &&
+	bool render_payload_control_glyph = false;
+	if (download_payload_control_seen_ && payload.size() == 18 &&
+	    payload[0] == 0x00) {
+		glyph.width = 136;
+		glyph.span = 17;
+		glyph.rows = 1;
+		glyph.bitmap.assign(payload.begin(), payload.begin() + 17);
+		render_payload_control_glyph = true;
+	} else if (payload.size() >= 14 && payload[4] == 0x0c &&
 	    (payload[5] == 1 || payload[5] == 2)) {
 		glyph.rows = (uint16_t)std::max(1, ((int)payload[6] << 8) | payload[7]);
 		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
@@ -2145,6 +2161,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
 	}
 	font.glyphs[soft_char_code_] = std::move(glyph);
+	if (render_payload_control_glyph)
+		draw_soft_glyph_pixels(font.glyphs[soft_char_code_]);
 	if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
 		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
@@ -2176,6 +2194,31 @@ void PclPrinter::finish_text_advance(float width_in, float advance_in,
 		previous_text_advance_in_ = advance_in;
 	}
 	clear_pending_cursor_y();
+}
+
+void PclPrinter::draw_soft_glyph_pixels(const SoftGlyph &glyph)
+{
+	if (glyph.width == 0 || glyph.rows == 0 || glyph.span == 0)
+		return;
+	new_page_if_needed();
+	page_dirty_ = true;
+
+	int dpi = prof_.render_dpi;
+	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
+	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
+	for (uint16_t row = 0; row < glyph.rows; row++) {
+		size_t row_off = (size_t)row * glyph.span;
+		if (row_off >= glyph.bitmap.size())
+			break;
+		for (uint16_t col = 0; col < glyph.width; col++) {
+			size_t byte_off = row_off + (col >> 3);
+			if (byte_off >= glyph.bitmap.size())
+				continue;
+			uint8_t byte = glyph.bitmap[byte_off];
+			if (byte & (0x80u >> (col & 7)))
+				page_->set_pixel(base_x + col, base_y + row, 0);
+		}
+	}
 }
 
 bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)

@@ -1247,6 +1247,24 @@ def main():
            ppm_sha256(soft_fractional_pdf, tmp / "soft-fractional", dpi=150):
             raise AssertionError("fractional downloaded font id/code rounded")
 
+        payload_control_download = write(
+            tmp / "payload-control-download.pcl",
+            ESC + b"*c4660D" +
+            ESC + b"*c38E" +
+            ESC + b")s18W" +
+            bytes.fromhex(
+                "1a 58 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+                "24 db 42 bd 66") +
+            b"&" + FF)
+        payload_control_download_pdf = tmp / "payload-control-download.pdf"
+        render(dreamprint, payload_control_download,
+               payload_control_download_pdf)
+        if pdftotext(payload_control_download_pdf).strip() != "":
+            raise AssertionError("payload-control download leaked drained text")
+        if ppm_nonwhite(payload_control_download_pdf,
+                        tmp / "payload-control-download", dpi=300) < 100:
+            raise AssertionError("payload-control download did not render glyph")
+
         soft_glyph = bytes.fromhex(
             "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
         soft_two_glyphs = (
