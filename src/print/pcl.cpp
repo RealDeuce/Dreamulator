@@ -1338,6 +1338,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if (group == '&' && subgroup == 'f') {
 		switch (term) {
 		case 'S':
+			if (replaying_macro_)
+				break;
 			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				if (cursor_stack_.size() < 20)
