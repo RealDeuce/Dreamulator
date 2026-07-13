@@ -1033,9 +1033,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'X':
 			ival = std::abs(ival);
-			if (ival < 1)
-				ival = 1;
-			copy_count_ = std::min(99, ival);
+			if (ival > 0)
+				copy_count_ = std::min(99, ival);
 			break;
 		default:
 			break;

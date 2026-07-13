@@ -617,6 +617,14 @@ def main():
         if pdf_pages(orientation_negative_pdf) != pdf_pages(orientation_positive_pdf):
             raise AssertionError("negative orientation selector was not absolute")
 
+        copies_zero_ignored = write(tmp / "copies-zero-ignored.pcl",
+                                    ESC + b"&l2X" + ESC + b"&l0X" +
+                                    b"!" + FF)
+        copies_zero_ignored_pdf = tmp / "copies-zero-ignored.pdf"
+        render(dreamprint, copies_zero_ignored, copies_zero_ignored_pdf)
+        if pdf_pages(copies_zero_ignored_pdf) != 2:
+            raise AssertionError("zero copy selector changed prior copy count")
+
         page_size_positive = write(tmp / "page-size-positive.pcl",
                                    ESC + b"&l3A" + b"!" + FF)
         page_size_negative = write(tmp / "page-size-negative.pcl",
