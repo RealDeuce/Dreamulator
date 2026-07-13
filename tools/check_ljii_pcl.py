@@ -2076,6 +2076,66 @@ def main():
         if "!" in pdftotext(overlay_missing_then_defined_pdf):
             raise AssertionError("missing overlay enable survived later definition")
 
+        overlay_empty = write(
+            tmp / "overlay-empty.pcl",
+            ESC + b"&f125Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" +
+            ESC + b"&f0X" +
+            ESC + b"&f1X" +
+            b"Live" + FF)
+        overlay_empty_pdf = tmp / "overlay-empty.pdf"
+        render(dreamprint, overlay_empty, overlay_empty_pdf)
+        if "!" in pdftotext(overlay_empty_pdf):
+            raise AssertionError("empty overlay macro record replayed at publication")
+
+        overlay_transparent = write(
+            tmp / "overlay-transparent.pcl",
+            ESC + b"&f126Y" +
+            ESC + b"&f0X" + ESC + b"&p2X" + b"!!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_transparent_pdf = tmp / "overlay-transparent.pdf"
+        render(dreamprint, overlay_transparent, overlay_transparent_pdf)
+        overlay_transparent_text = pdftotext(overlay_transparent_pdf)
+        if "Live" not in overlay_transparent_text or \
+           overlay_transparent_text.count("!") < 2:
+            raise AssertionError("transparent overlay text did not extract")
+
+        overlay_text_only = write(
+            tmp / "overlay-text-only.pcl",
+            ESC + b"&f127Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_raster = write(
+            tmp / "overlay-raster.pcl",
+            ESC + b"&f128Y" +
+            ESC + b"&f0X" + b"!" +
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*b2W" + bytes([0xc3, 0x3c]) +
+            ESC + b"&f1X" +
+            ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_text_only_pdf = tmp / "overlay-text-only.pdf"
+        overlay_raster_pdf = tmp / "overlay-raster.pdf"
+        render(dreamprint, overlay_text_only, overlay_text_only_pdf)
+        render(dreamprint, overlay_raster, overlay_raster_pdf)
+        if ppm_nonwhite(overlay_transparent_pdf,
+                        tmp / "overlay-transparent", dpi=300) <= \
+           ppm_nonwhite(overlay_text_only_pdf,
+                        tmp / "overlay-text-only", dpi=300):
+            raise AssertionError("transparent overlay payload did not add pixels")
+        overlay_raster_text = pdftotext(overlay_raster_pdf)
+        if "Live" not in overlay_raster_text or "!" not in overlay_raster_text:
+            raise AssertionError("raster overlay lost selectable text")
+        if ppm_nonwhite(overlay_raster_pdf, tmp / "overlay-raster",
+                        dpi=300) <= \
+           ppm_nonwhite(overlay_text_only_pdf,
+                        tmp / "overlay-text-only", dpi=300):
+            raise AssertionError("raster overlay payload did not add pixels")
+
     print("ok: LaserJet II PCL regression checks passed")
 
 

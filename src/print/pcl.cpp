@@ -2597,9 +2597,11 @@ void PclPrinter::set_page_length(float length_in)
 void PclPrinter::publish_current_page()
 {
 	flush_underline_span();
-	if (overlay_enabled_ && !replaying_macro_ &&
-	    macros_.find(overlay_macro_id_) != macros_.end())
-		replay_macro(overlay_macro_id_, MacroReplayMode::Overlay);
+	if (overlay_enabled_ && !replaying_macro_) {
+		auto it = macros_.find(overlay_macro_id_);
+		if (it != macros_.end() && !it->second.bytes.empty())
+			replay_macro(overlay_macro_id_, MacroReplayMode::Overlay);
+	}
 	flush_underline_span();
 	flush_pending_line();
 	if (page_ && page_dirty_) {
