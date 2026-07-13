@@ -523,6 +523,7 @@ private:
 	int overlay_macro_id_ = 0;
 	bool defining_macro_ = false;
 	bool replaying_macro_ = false;
+	int macro_replay_depth_ = 0;
 	bool overlay_enabled_ = false;
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
@@ -598,6 +599,7 @@ void PclPrinter::reset_ljii_state()
 	overlay_macro_id_ = 0;
 	defining_macro_ = false;
 	replaying_macro_ = false;
+	macro_replay_depth_ = 0;
 	overlay_enabled_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
@@ -2518,7 +2520,7 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 
 void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 {
-	if (replaying_macro_)
+	if (macro_replay_depth_ >= 32)
 		return;
 	auto it = macros_.find(id);
 	if (it == macros_.end())
@@ -2529,6 +2531,7 @@ void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 		flush_underline_span();
 		env = capture_print_environment();
 	}
+	macro_replay_depth_++;
 	replaying_macro_ = true;
 	const std::vector<uint8_t> bytes = it->second.bytes;
 	state_ = State::Normal;
@@ -2539,7 +2542,8 @@ void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 		flush_underline_span();
 		restore_print_environment(env);
 	}
-	replaying_macro_ = false;
+	macro_replay_depth_--;
+	replaying_macro_ = macro_replay_depth_ > 0;
 }
 
 std::unique_ptr<PrinterSim> create_pcl_printer(PrinterModel model, PdfWriter &pdf)

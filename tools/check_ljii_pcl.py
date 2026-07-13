@@ -1118,6 +1118,20 @@ def main():
         if execute_cursor_pixels > 50 or execute_macro_pixels < 200:
             raise AssertionError("macro execute unexpectedly restored cursor")
 
+        macro_nested = write(tmp / "macro-nested.pcl",
+                             ESC + b"&f500Y" +
+                             ESC + b"&f0X" + b"N" +
+                             ESC + b"&f1X" +
+                             ESC + b"&f501Y" +
+                             ESC + b"&f0X" +
+                             ESC + b"&f500Y" + ESC + b"&f2X" +
+                             ESC + b"&f1X" +
+                             ESC + b"&f501Y" + ESC + b"&f2X" + FF)
+        macro_nested_pdf = tmp / "macro-nested.pdf"
+        render(dreamprint, macro_nested, macro_nested_pdf)
+        if "N" not in pdftotext(macro_nested_pdf):
+            raise AssertionError("nested macro execute did not replay payload")
+
         macro_negative = write(tmp / "macro-negative.pcl",
                                ESC + b"&f-321Y" +
                                ESC + b"&f0X" + b"!" +
