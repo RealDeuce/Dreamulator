@@ -992,9 +992,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'E':
 			value = std::abs(value);
+		{
+			float new_top = logical_y0_in_ + (float)value * vmi_in_;
+			if (vmi_in_ <= 0.0f || new_top >= st_.page_height_in - 0.0001f)
+				break;
 			flush_underline_span();
-			st_.top_margin_in = logical_y0_in_ +
-			                    std::max(0.0f, (float)value * vmi_in_);
+			st_.top_margin_in = new_top;
 			if (pending_cursor_y_)
 				refresh_pending_cursor_y();
 			else
@@ -1004,10 +1007,16 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			rebuild_default_vfc_table();
 			restart_underline_span();
 			break;
+		}
 		case 'F':
 			value = std::abs(value);
 			if (value > 0.0) {
-				text_length_in_ = std::max(0.0f, (float)value * vmi_in_);
+				float text_length = (float)value * vmi_in_;
+				if (vmi_in_ <= 0.0f ||
+				    text_length > st_.page_height_in - st_.top_margin_in +
+				                  0.0001f)
+					break;
+				text_length_in_ = std::max(0.0f, text_length);
 				text_length_custom_ = true;
 			} else {
 				restore_default_text_length();

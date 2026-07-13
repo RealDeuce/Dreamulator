@@ -479,6 +479,34 @@ def main():
                       dpi=150):
             raise AssertionError("zero VMI changed existing line spacing")
 
+        top_margin_default = write(tmp / "top-margin-default.pcl", b"A" + FF)
+        top_margin_invalid = write(tmp / "top-margin-invalid.pcl",
+                                   ESC + b"&l999E" + b"A" + FF)
+        top_margin_default_pdf = tmp / "top-margin-default.pdf"
+        top_margin_invalid_pdf = tmp / "top-margin-invalid.pdf"
+        render(dreamprint, top_margin_default, top_margin_default_pdf)
+        render(dreamprint, top_margin_invalid, top_margin_invalid_pdf)
+        if ppm_sha256(top_margin_default_pdf, tmp / "top-margin-default",
+                      dpi=150) != \
+           ppm_sha256(top_margin_invalid_pdf, tmp / "top-margin-invalid",
+                      dpi=150):
+            raise AssertionError("invalid top margin changed placement")
+
+        text_length_short = write(tmp / "text-length-short.pcl",
+                                  ESC + b"&l2F" + ESC + b"&l2V" + b"A" + FF)
+        text_length_invalid = write(tmp / "text-length-invalid.pcl",
+                                    ESC + b"&l2F" + ESC + b"&l999F" +
+                                    ESC + b"&l2V" + b"A" + FF)
+        text_length_short_pdf = tmp / "text-length-short.pdf"
+        text_length_invalid_pdf = tmp / "text-length-invalid.pdf"
+        render(dreamprint, text_length_short, text_length_short_pdf)
+        render(dreamprint, text_length_invalid, text_length_invalid_pdf)
+        if ppm_sha256(text_length_short_pdf, tmp / "text-length-short",
+                      dpi=150) != \
+           ppm_sha256(text_length_invalid_pdf, tmp / "text-length-invalid",
+                      dpi=150):
+            raise AssertionError("invalid text length changed VFC state")
+
         prop_prev_width = write(tmp / "prop-prev-width.pcl",
                                 ESC + b"(s1P" + b"Wi\bX" + FF)
         prop_hmi_backspace = write(tmp / "prop-hmi-backspace.pcl",
