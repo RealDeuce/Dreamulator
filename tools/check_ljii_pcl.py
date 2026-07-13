@@ -264,6 +264,19 @@ def main():
         if "".join(pdftotext(transparent_negative_pdf).split()) != "EAB":
             raise AssertionError("negative transparent count did not consume payload")
 
+        generic_drain = write(tmp / "generic-drain.pcl",
+                              ESC + b"&z3WABC!" + FF)
+        generic_drain_probe = write(tmp / "generic-drain-probe.pcl",
+                                    ESC + b"&z2W" + b"A\x1aXB!" + FF)
+        generic_drain_pdf = tmp / "generic-drain.pdf"
+        generic_drain_probe_pdf = tmp / "generic-drain-probe.pdf"
+        render(dreamprint, generic_drain, generic_drain_pdf)
+        render(dreamprint, generic_drain_probe, generic_drain_probe_pdf)
+        if pdftotext(generic_drain_pdf).strip() != "!":
+            raise AssertionError("generic unsupported W payload leaked text")
+        if pdftotext(generic_drain_probe_pdf).strip() != "B!":
+            raise AssertionError("generic unsupported W payload control drain was wrong")
+
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",
                              b"A" + ESC + b"&a8C" + b"B" + FF)

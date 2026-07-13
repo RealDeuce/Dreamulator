@@ -332,6 +332,7 @@ private:
 		RasterData,
 		TransparentData,
 		VfcData,
+		DrainData,
 		DisplayFunctions,
 		DownloadData,
 		ControlZ,
@@ -691,6 +692,7 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::RasterData:
 	case State::TransparentData:
 	case State::VfcData:
+	case State::DrainData:
 	case State::DownloadData:
 		finish_payload_byte(b);
 		return;
@@ -901,10 +903,18 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 
 	param_buf_[param_pos_] = 0;
 	double value = param_pos_ > 0 ? std::atof(param_buf_) : 0.0;
+	int ival = static_cast<int>(std::lround(value));
 	current_param_relative_ = param_relative_;
 
 	if (b >= '@' && b <= '^') {
-		apply_param(group_, subgroup_, value, static_cast<char>(b));
+		if (b == 'W' &&
+		    !((group_ == '&' && subgroup_ == 'l') ||
+		      (group_ == '*' && subgroup_ == 'b') ||
+		      ((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
+			begin_payload(State::DrainData, std::abs(ival));
+		} else {
+			apply_param(group_, subgroup_, value, static_cast<char>(b));
+		}
 		if (state_ == State::Parameterized)
 			state_ = State::Normal;
 		param_relative_ = false;
@@ -1486,17 +1496,20 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 	} else {
 		if ((payload_state_ == State::RasterData ||
 		     payload_state_ == State::VfcData ||
-		     payload_state_ == State::DownloadData) && payload_control_pending_) {
+		     payload_state_ == State::DownloadData ||
+		     payload_state_ == State::DrainData) && payload_control_pending_) {
 			payload_control_pending_ = false;
 			if (b == 0x58)
 				b = 0x00;
 		} else if ((payload_state_ == State::RasterData ||
 		            payload_state_ == State::VfcData ||
-		            payload_state_ == State::DownloadData) && b == 0x1a) {
+		            payload_state_ == State::DownloadData ||
+		            payload_state_ == State::DrainData) && b == 0x1a) {
 			payload_control_pending_ = true;
 			return;
 		}
-		payload_buf_.push_back(b);
+		if (payload_state_ != State::DrainData)
+			payload_buf_.push_back(b);
 	}
 
 	if (--payload_remaining_ > 0)
