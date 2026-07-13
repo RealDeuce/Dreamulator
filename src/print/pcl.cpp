@@ -1114,9 +1114,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (current_param_relative_)
 				st_.x_pos += (float)value * hmi_in_;
 			else
-				st_.x_pos = logical_x0_in_ + (float)value * hmi_in_;
-			st_.x_pos = std::max(logical_x0_in_,
-			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+				st_.x_pos = (float)value * hmi_in_;
+			st_.x_pos = std::max(0.0f,
+			                     std::min(st_.x_pos, st_.page_width_in));
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
@@ -1125,9 +1125,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (current_param_relative_)
 				st_.x_pos += (float)value / 720.0f;
 			else
-				st_.x_pos = logical_x0_in_ + (float)value / 720.0f;
-			st_.x_pos = std::max(logical_x0_in_,
-			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+				st_.x_pos = (float)value / 720.0f;
+			st_.x_pos = std::max(0.0f,
+			                     std::min(st_.x_pos, st_.page_width_in));
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;
@@ -1420,9 +1420,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (current_param_relative_)
 				st_.x_pos += (float)word / kDotsPerIn;
 			else
-				st_.x_pos = logical_x0_in_ + (float)word / kDotsPerIn;
-			st_.x_pos = std::max(logical_x0_in_,
-			                     std::min(st_.x_pos, logical_x0_in_ + logical_w_in_));
+				st_.x_pos = (float)word / kDotsPerIn;
+			st_.x_pos = std::max(0.0f,
+			                     std::min(st_.x_pos, st_.page_width_in));
 			clear_pending_cursor_y();
 			restart_underline_span();
 			break;

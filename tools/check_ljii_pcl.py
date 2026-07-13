@@ -364,7 +364,7 @@ def main():
 
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",
-                             b"A" + ESC + b"&a8C" + b"B" + FF)
+                             b"A" + ESC + b"*p290X" + b"B" + FF)
         tabbed_pdf = tmp / "tabbed.pdf"
         explicit_tab_pdf = tmp / "explicit-tab.pdf"
         render(dreamprint, tabbed, tabbed_pdf)
@@ -414,6 +414,39 @@ def main():
            ppm_sha256(dot_position_y_fractional_pdf,
                       tmp / "dot-position-y-fractional", dpi=300):
             raise AssertionError("vertical dot position used fractional word")
+
+        dot_position_zero = write(tmp / "dot-position-zero.pcl",
+                                  ESC + b"*p0X" + b"!" + FF)
+        column_position_zero = write(tmp / "column-position-zero.pcl",
+                                     ESC + b"&a0C" + b"!" + FF)
+        decipoint_position_zero = write(
+            tmp / "decipoint-position-zero.pcl",
+            ESC + b"&a0H" + b"!" + FF)
+        dot_position_zero_pdf = tmp / "dot-position-zero.pdf"
+        column_position_zero_pdf = tmp / "column-position-zero.pdf"
+        decipoint_position_zero_pdf = tmp / "decipoint-position-zero.pdf"
+        render(dreamprint, dot_position_zero, dot_position_zero_pdf)
+        render(dreamprint, column_position_zero, column_position_zero_pdf)
+        render(dreamprint, decipoint_position_zero,
+               decipoint_position_zero_pdf)
+        if ppm_sha256(dot_position_zero_pdf, tmp / "dot-position-zero",
+                      dpi=300) != \
+           ppm_sha256(column_position_zero_pdf,
+                      tmp / "column-position-zero", dpi=300):
+            raise AssertionError("zero dot and column positions diverged")
+        if ppm_sha256(dot_position_zero_pdf,
+                      tmp / "dot-position-zero-again", dpi=300) != \
+           ppm_sha256(decipoint_position_zero_pdf,
+                      tmp / "decipoint-position-zero", dpi=300):
+            raise AssertionError("zero dot and decipoint positions diverged")
+        default_position_box = ppm_bbox(default_position_pdf,
+                                        tmp / "default-position-box",
+                                        dpi=300)
+        dot_zero_box = ppm_bbox(dot_position_zero_pdf,
+                                tmp / "dot-position-zero-box", dpi=300)
+        if default_position_box is None or dot_zero_box is None or \
+           default_position_box[0] - dot_zero_box[0] < 40:
+            raise AssertionError("absolute horizontal zero missed page-left")
 
         default_first_line = write(tmp / "default-first-line.pcl", b"A" + FF)
         explicit_first_line = write(tmp / "explicit-first-line.pcl",
@@ -842,16 +875,16 @@ def main():
             raise AssertionError("invalid line termination selector changed mode")
 
         wrap_positive = write(tmp / "wrap-positive.pcl",
-                              b"X" + ESC + b"&s1C" + ESC + b"&a80C" +
+                              b"X" + ESC + b"&s1C" + ESC + b"&a81C" +
                               b"A" + FF)
         wrap_negative = write(tmp / "wrap-negative.pcl",
-                              b"X" + ESC + b"&s-1C" + ESC + b"&a80C" +
+                              b"X" + ESC + b"&s-1C" + ESC + b"&a81C" +
                               b"A" + FF)
         wrap_enabled = write(tmp / "wrap-enabled.pcl",
-                             b"X" + ESC + b"&s0C" + ESC + b"&a80C" +
+                             b"X" + ESC + b"&s0C" + ESC + b"&a81C" +
                              b"A" + FF)
         wrap_fractional = write(tmp / "wrap-fractional.pcl",
-                                b"X" + ESC + b"&s0.9C" + ESC + b"&a80C" +
+                                b"X" + ESC + b"&s0.9C" + ESC + b"&a81C" +
                                 b"A" + FF)
         wrap_positive_pdf = tmp / "wrap-positive.pdf"
         wrap_negative_pdf = tmp / "wrap-negative.pdf"
@@ -1935,31 +1968,31 @@ def main():
             raise AssertionError("negative rule hatch fill did not normalize")
         if not ppm_pixel_dark(rule_landscape_pattern1_pdf,
                               tmp / "rule-landscape-pattern1",
-                              71, 50, dpi=300) or \
+                              7, 50, dpi=300) or \
            ppm_pixel_dark(rule_landscape_pattern1_pdf,
                           tmp / "rule-landscape-pattern1",
-                          60, 55, dpi=300):
+                          0, 55, dpi=300):
             raise AssertionError("landscape pattern 1 did not remap to selector 9")
         if not ppm_pixel_dark(rule_landscape_pattern2_pdf,
                               tmp / "rule-landscape-pattern2",
-                              60, 55, dpi=300) or \
+                              0, 55, dpi=300) or \
            ppm_pixel_dark(rule_landscape_pattern2_pdf,
                           tmp / "rule-landscape-pattern2",
-                          71, 50, dpi=300):
+                          7, 50, dpi=300):
             raise AssertionError("landscape pattern 2 did not remap to selector 8")
         if not ppm_pixel_dark(rule_landscape_pattern3_pdf,
                               tmp / "rule-landscape-pattern3",
-                              67, 50, dpi=300) or \
+                              1, 50, dpi=300) or \
            ppm_pixel_dark(rule_landscape_pattern3_pdf,
                           tmp / "rule-landscape-pattern3",
-                          71, 50, dpi=300):
+                          12, 50, dpi=300):
             raise AssertionError("landscape pattern 3 did not remap to selector 11")
         if not ppm_pixel_dark(rule_landscape_pattern4_pdf,
                               tmp / "rule-landscape-pattern4",
-                              60, 50, dpi=300) or \
+                              12, 50, dpi=300) or \
            ppm_pixel_dark(rule_landscape_pattern4_pdf,
                           tmp / "rule-landscape-pattern4",
-                          67, 50, dpi=300):
+                          1, 50, dpi=300):
             raise AssertionError("landscape pattern 4 did not remap to selector 10")
         if pdf_pages(rule_off_page_no_publish_pdf) != 1:
             raise AssertionError("off-page rectangle dirtied an empty page")
@@ -2381,14 +2414,14 @@ def main():
         render(dreamprint, macro_execute_no_restore,
                macro_execute_no_restore_pdf)
         call_cursor_pixels = ppm_rect_nonwhite(
-            macro_call_restore_pdf, tmp / "macro-call-restore", 78, 70, 112,
+            macro_call_restore_pdf, tmp / "macro-call-restore", 83, 70, 112,
             130, dpi=300)
         execute_cursor_pixels = ppm_rect_nonwhite(
             macro_execute_no_restore_pdf, tmp / "macro-execute-no-restore",
-            78, 70, 112, 130, dpi=300)
+            83, 70, 112, 130, dpi=300)
         execute_macro_pixels = ppm_rect_nonwhite(
             macro_execute_no_restore_pdf, tmp / "macro-execute-no-restore-far",
-            375, 70, 420, 130, dpi=300)
+            295, 70, 365, 130, dpi=300)
         if call_cursor_pixels < 200:
             raise AssertionError("macro call did not restore caller cursor")
         if execute_cursor_pixels > 50 or execute_macro_pixels < 200:
