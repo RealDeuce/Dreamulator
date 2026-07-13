@@ -383,6 +383,21 @@ def main():
         if pdftotext(generic_drain_lower_fractional_pdf).strip() != "C!":
             raise AssertionError("generic lowercase w fractional count rounded")
 
+        c0_zero_rows = write(tmp / "c0-zero-rows.pcl",
+                             ESC + b"(0N" + b"A\x00\x07\x0bB" + FF)
+        c0_zero_expected = write(tmp / "c0-zero-expected.pcl",
+                                 ESC + b"(0N" + b"AB" + FF)
+        c0_zero_rows_pdf = tmp / "c0-zero-rows.pdf"
+        c0_zero_expected_pdf = tmp / "c0-zero-expected.pdf"
+        render(dreamprint, c0_zero_rows, c0_zero_rows_pdf)
+        render(dreamprint, c0_zero_expected, c0_zero_expected_pdf)
+        if pdftotext(c0_zero_rows_pdf).strip() != "AB":
+            raise AssertionError("normal C0 zero-handler rows leaked selectable text")
+        if ppm_sha256(c0_zero_rows_pdf, tmp / "c0-zero-rows", dpi=150) != \
+           ppm_sha256(c0_zero_expected_pdf,
+                      tmp / "c0-zero-expected", dpi=150):
+            raise AssertionError("normal C0 zero-handler rows changed pixels")
+
         tabbed = write(tmp / "tabbed.pcl", b"A\tB" + FF)
         explicit_tab = write(tmp / "explicit-tab.pcl",
                              b"A" + ESC + b"*p290X" + b"B" + FF)

@@ -859,6 +859,10 @@ void PclPrinter::process_normal(uint8_t b)
 void PclPrinter::process_control(uint8_t b)
 {
 	switch (b) {
+	case 0x00:
+	case 0x07:
+	case 0x0B:
+		break;
 	case 0x08:
 		flush_underline_span();
 	{
