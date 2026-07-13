@@ -117,6 +117,11 @@ def ppm_pixel(pdf, stem, x, y, dpi=72):
     return pixels[off:off + 3]
 
 
+def ppm_pixel_dark(pdf, stem, x, y, dpi=72):
+    pixel = ppm_pixel(pdf, stem, x, y, dpi=dpi)
+    return sum(pixel) < 384
+
+
 def ppm_rect_nonwhite(pdf, stem, x0, y0, x1, y1, dpi=72):
     width, height, pixels = ppm_image(pdf, stem, dpi)
     x0 = max(0, min(width, x0))
@@ -1670,6 +1675,22 @@ def main():
                               ESC + b"*c64a64b-50g-2P" + FF)
         rule_neg_pattern = write(tmp / "rule-neg-pattern.pcl",
                                  ESC + b"*c64a64b-2g-3P" + FF)
+        rule_landscape_pattern1 = write(
+            tmp / "rule-landscape-pattern1.pcl",
+            ESC + b"&l1O" + ESC + b"*p0X" + ESC + b"*p0Y" +
+            ESC + b"*c16a16b1g3P" + FF)
+        rule_landscape_pattern2 = write(
+            tmp / "rule-landscape-pattern2.pcl",
+            ESC + b"&l1O" + ESC + b"*p0X" + ESC + b"*p0Y" +
+            ESC + b"*c16a16b2g3P" + FF)
+        rule_landscape_pattern3 = write(
+            tmp / "rule-landscape-pattern3.pcl",
+            ESC + b"&l1O" + ESC + b"*p0X" + ESC + b"*p0Y" +
+            ESC + b"*c16a16b3g3P" + FF)
+        rule_landscape_pattern4 = write(
+            tmp / "rule-landscape-pattern4.pcl",
+            ESC + b"&l1O" + ESC + b"*p0X" + ESC + b"*p0Y" +
+            ESC + b"*c16a16b4g3P" + FF)
         rule_solid_pdf = tmp / "rule-solid.pdf"
         rule_dot_integer_pdf = tmp / "rule-dot-integer.pdf"
         rule_dot_fractional_pdf = tmp / "rule-dot-fractional.pdf"
@@ -1681,6 +1702,10 @@ def main():
         rule_pattern_pdf = tmp / "rule-pattern.pdf"
         rule_neg_gray_pdf = tmp / "rule-neg-gray.pdf"
         rule_neg_pattern_pdf = tmp / "rule-neg-pattern.pdf"
+        rule_landscape_pattern1_pdf = tmp / "rule-landscape-pattern1.pdf"
+        rule_landscape_pattern2_pdf = tmp / "rule-landscape-pattern2.pdf"
+        rule_landscape_pattern3_pdf = tmp / "rule-landscape-pattern3.pdf"
+        rule_landscape_pattern4_pdf = tmp / "rule-landscape-pattern4.pdf"
         render(dreamprint, rule_solid, rule_solid_pdf)
         render(dreamprint, rule_dot_integer, rule_dot_integer_pdf)
         render(dreamprint, rule_dot_fractional, rule_dot_fractional_pdf)
@@ -1693,6 +1718,14 @@ def main():
         render(dreamprint, rule_pattern, rule_pattern_pdf)
         render(dreamprint, rule_neg_gray, rule_neg_gray_pdf)
         render(dreamprint, rule_neg_pattern, rule_neg_pattern_pdf)
+        render(dreamprint, rule_landscape_pattern1,
+               rule_landscape_pattern1_pdf)
+        render(dreamprint, rule_landscape_pattern2,
+               rule_landscape_pattern2_pdf)
+        render(dreamprint, rule_landscape_pattern3,
+               rule_landscape_pattern3_pdf)
+        render(dreamprint, rule_landscape_pattern4,
+               rule_landscape_pattern4_pdf)
         solid_pixels = ppm_nonwhite(rule_solid_pdf, tmp / "rule-solid",
                                     dpi=300)
         gray_pixels = ppm_nonwhite(rule_gray_pdf, tmp / "rule-gray",
@@ -1723,6 +1756,34 @@ def main():
         if ppm_sha256(rule_neg_pattern_pdf, tmp / "rule-neg-pattern", dpi=300) != \
            ppm_sha256(rule_pattern_pdf, tmp / "rule-pattern", dpi=300):
             raise AssertionError("negative rule hatch fill did not normalize")
+        if not ppm_pixel_dark(rule_landscape_pattern1_pdf,
+                              tmp / "rule-landscape-pattern1",
+                              71, 50, dpi=300) or \
+           ppm_pixel_dark(rule_landscape_pattern1_pdf,
+                          tmp / "rule-landscape-pattern1",
+                          60, 55, dpi=300):
+            raise AssertionError("landscape pattern 1 did not remap to selector 9")
+        if not ppm_pixel_dark(rule_landscape_pattern2_pdf,
+                              tmp / "rule-landscape-pattern2",
+                              60, 55, dpi=300) or \
+           ppm_pixel_dark(rule_landscape_pattern2_pdf,
+                          tmp / "rule-landscape-pattern2",
+                          71, 50, dpi=300):
+            raise AssertionError("landscape pattern 2 did not remap to selector 8")
+        if not ppm_pixel_dark(rule_landscape_pattern3_pdf,
+                              tmp / "rule-landscape-pattern3",
+                              67, 50, dpi=300) or \
+           ppm_pixel_dark(rule_landscape_pattern3_pdf,
+                          tmp / "rule-landscape-pattern3",
+                          71, 50, dpi=300):
+            raise AssertionError("landscape pattern 3 did not remap to selector 11")
+        if not ppm_pixel_dark(rule_landscape_pattern4_pdf,
+                              tmp / "rule-landscape-pattern4",
+                              60, 50, dpi=300) or \
+           ppm_pixel_dark(rule_landscape_pattern4_pdf,
+                          tmp / "rule-landscape-pattern4",
+                          67, 50, dpi=300):
+            raise AssertionError("landscape pattern 4 did not remap to selector 10")
 
         overflow = bytearray(ESC + b"&l2X")
         for i in range(80):
