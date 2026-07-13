@@ -1204,10 +1204,15 @@ def main():
         underline_fractional = write(tmp / "underline-fractional.pcl",
                                      ESC + b"&d3.9D" + b"A\tB" +
                                      ESC + b"&d@" + FF)
+        underline_other = write(tmp / "underline-other.pcl",
+                                ESC + b"&d4D" + b"A\tB" +
+                                ESC + b"&d@" + FF)
         underline_negative_pdf = tmp / "underline-negative.pdf"
         underline_fractional_pdf = tmp / "underline-fractional.pdf"
+        underline_other_pdf = tmp / "underline-other.pdf"
         render(dreamprint, underline_negative, underline_negative_pdf)
         render(dreamprint, underline_fractional, underline_fractional_pdf)
+        render(dreamprint, underline_other, underline_other_pdf)
         if ppm_sha256(underline_span_pdf, tmp / "underline-span",
                       dpi=150) != \
            ppm_sha256(underline_negative_pdf, tmp / "underline-negative",
@@ -1218,6 +1223,11 @@ def main():
            ppm_sha256(underline_fractional_pdf, tmp / "underline-fractional",
                       dpi=150):
             raise AssertionError("fractional underline selector rounded")
+        if ppm_sha256(underline_fixed_pdf, tmp / "underline-fixed",
+                      dpi=150) != \
+           ppm_sha256(underline_other_pdf, tmp / "underline-other",
+                      dpi=150):
+            raise AssertionError("non-3D underline selector did not stay fixed")
 
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +

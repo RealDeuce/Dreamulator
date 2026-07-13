@@ -1179,16 +1179,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		switch (term) {
 		case 'D':
 			ival = pcl_integer_word(value);
-			if (ival <= 3) {
-				flush_underline_span();
-				st_.underline = true;
-				underline_selector_ = (ival == 3) ? 1 : 0;
-				start_underline_span();
-			} else {
-				flush_underline_span();
-				st_.underline = false;
-				underline_selector_ = 0;
-			}
+			flush_underline_span();
+			st_.underline = true;
+			underline_selector_ = (ival == 3) ? 1 : 0;
+			start_underline_span();
 			break;
 		case '@':
 			flush_underline_span();
