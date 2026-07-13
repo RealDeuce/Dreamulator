@@ -468,6 +468,37 @@ def main():
            default_first_line_box[1] - vmi_zero_box[1] < 25:
             raise AssertionError("zero VMI did not refresh pending cursor y")
 
+        vmi_short_page_base = write(tmp / "vmi-short-page-base.pcl",
+                                    ESC + b"&l20P" + ESC + b"&a1R" +
+                                    b"A" + FF)
+        vmi_short_page_reject = write(tmp / "vmi-short-page-reject.pcl",
+                                      ESC + b"&l20P" + ESC + b"&l336C" +
+                                      ESC + b"&a1R" + b"A" + FF)
+        lpi_short_page_base = write(tmp / "lpi-short-page-base.pcl",
+                                    ESC + b"&l5P" + ESC + b"&a1R" +
+                                    b"A" + FF)
+        lpi_short_page_reject = write(tmp / "lpi-short-page-reject.pcl",
+                                      ESC + b"&l5P" + ESC + b"&l1D" +
+                                      ESC + b"&a1R" + b"A" + FF)
+        vmi_short_page_base_pdf = tmp / "vmi-short-page-base.pdf"
+        vmi_short_page_reject_pdf = tmp / "vmi-short-page-reject.pdf"
+        lpi_short_page_base_pdf = tmp / "lpi-short-page-base.pdf"
+        lpi_short_page_reject_pdf = tmp / "lpi-short-page-reject.pdf"
+        render(dreamprint, vmi_short_page_base, vmi_short_page_base_pdf)
+        render(dreamprint, vmi_short_page_reject, vmi_short_page_reject_pdf)
+        render(dreamprint, lpi_short_page_base, lpi_short_page_base_pdf)
+        render(dreamprint, lpi_short_page_reject, lpi_short_page_reject_pdf)
+        if ppm_sha256(vmi_short_page_base_pdf,
+                      tmp / "vmi-short-page-base", dpi=150) != \
+           ppm_sha256(vmi_short_page_reject_pdf,
+                      tmp / "vmi-short-page-reject", dpi=150):
+            raise AssertionError("VMI beyond page extent was not rejected")
+        if ppm_sha256(lpi_short_page_base_pdf,
+                      tmp / "lpi-short-page-base", dpi=150) != \
+           ppm_sha256(lpi_short_page_reject_pdf,
+                      tmp / "lpi-short-page-reject", dpi=150):
+            raise AssertionError("LPI beyond page extent was not rejected")
+
         hmi_positive = write(tmp / "hmi-positive.pcl",
                              ESC + b"&k6H" + b"!!" + FF)
         hmi_negative = write(tmp / "hmi-negative.pcl",

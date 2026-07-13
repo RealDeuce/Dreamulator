@@ -998,7 +998,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'C':
 			value = std::abs(value);
 			if (pcl_integer_word(value) <= 0x150) {
-				vmi_in_ = (float)value / 48.0f;
+				float new_vmi = (float)value / 48.0f;
+				if (new_vmi > st_.page_height_in + 0.0001f)
+					break;
+				vmi_in_ = new_vmi;
 				st_.line_spacing_in = vmi_in_;
 				refresh_pending_cursor_y();
 				update_vfc_bounds();
@@ -1012,7 +1015,10 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival == 1 || ival == 2 || ival == 3 || ival == 4 ||
 			    ival == 6 || ival == 8 || ival == 12 || ival == 16 ||
 			    ival == 24 || ival == 48) {
-				vmi_in_ = 1.0f / (float)ival;
+				float new_vmi = 1.0f / (float)ival;
+				if (new_vmi > st_.page_height_in + 0.0001f)
+					break;
+				vmi_in_ = new_vmi;
 				st_.line_spacing_in = vmi_in_;
 				refresh_pending_cursor_y();
 				update_vfc_bounds();
