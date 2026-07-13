@@ -339,6 +339,26 @@ def main():
                       tmp / "transparent-fractional-count", dpi=150):
             raise AssertionError("fractional transparent count rounded")
 
+        transparent_lower_chain = write(
+            tmp / "transparent-lower-chain.pcl",
+            ESC + b"&p2x3XABC" + FF)
+        transparent_lower_expected = write(
+            tmp / "transparent-lower-expected.pcl",
+            b"ABC" + FF)
+        transparent_lower_chain_pdf = tmp / "transparent-lower-chain.pdf"
+        transparent_lower_expected_pdf = tmp / "transparent-lower-expected.pdf"
+        render(dreamprint, transparent_lower_chain,
+               transparent_lower_chain_pdf)
+        render(dreamprint, transparent_lower_expected,
+               transparent_lower_expected_pdf)
+        if "".join(pdftotext(transparent_lower_chain_pdf).split()) != "ABC":
+            raise AssertionError("lowercase transparent count consumed command bytes")
+        if ppm_sha256(transparent_lower_chain_pdf,
+                      tmp / "transparent-lower-chain", dpi=150) != \
+           ppm_sha256(transparent_lower_expected_pdf,
+                      tmp / "transparent-lower-expected", dpi=150):
+            raise AssertionError("lowercase transparent count did not defer to uppercase X")
+
         generic_drain = write(tmp / "generic-drain.pcl",
                               ESC + b"&z3WABC!" + FF)
         generic_drain_probe = write(tmp / "generic-drain-probe.pcl",

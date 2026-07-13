@@ -589,6 +589,7 @@ private:
 	int vfc_last_line_ = 63;
 	int vfc_text_last_line_ = 62;
 	int pending_vfc_count_ = -1;
+	int pending_transparent_count_ = -1;
 	int pending_raster_count_ = -1;
 	int pending_drain_count_ = -1;
 	int pending_download_count_ = -1;
@@ -679,6 +680,7 @@ void PclPrinter::reset_ljii_state()
 	font_req_[1].symbol_set = 0x000e;
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
+	pending_transparent_count_ = -1;
 	pending_raster_count_ = -1;
 	pending_drain_count_ = -1;
 	pending_download_count_ = -1;
@@ -1098,6 +1100,8 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 			state_ = State::Normal;
 			param_relative_ = false;
 			return;
+		} else if (group_ == '&' && subgroup_ == 'p' && b == 'x') {
+			pending_transparent_count_ = pcl_integer_word(value);
 		} else if (group_ == '&' && subgroup_ == 'l' && b == 'w') {
 			pending_vfc_count_ = pcl_integer_word(value);
 		} else if ((group_ == '(' || group_ == ')') &&
@@ -1486,8 +1490,15 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 		}
 	} else if (group == '&' && subgroup == 'p') {
-		if (term == 'X')
-			begin_payload(State::TransparentData, pcl_integer_word(value));
+		if (term == 'X') {
+			if (pending_transparent_count_ >= 0) {
+				ival = pending_transparent_count_;
+				pending_transparent_count_ = -1;
+			} else {
+				ival = pcl_integer_word(value);
+			}
+			begin_payload(State::TransparentData, ival);
+		}
 	} else if (group == '&' && subgroup == 's') {
 		if (term == 'C') {
 			ival = pcl_integer_word(value);
