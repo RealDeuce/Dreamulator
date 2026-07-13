@@ -1393,6 +1393,41 @@ def main():
                       tmp / "raster-start-fractional", dpi=150):
             raise AssertionError("fractional raster start selector rounded")
 
+        raster_skip_integer = write(tmp / "raster-skip-integer.pcl",
+                                    ESC + b"*t300R" +
+                                    ESC + b"*r0A" +
+                                    ESC + b"*b2Y" +
+                                    ESC + b"*b2W" +
+                                    bytes([0xf0, 0x0f]) + FF)
+        raster_skip_fractional = write(tmp / "raster-skip-fractional.pcl",
+                                       ESC + b"*t300R" +
+                                       ESC + b"*r0A" +
+                                       ESC + b"*b2.9Y" +
+                                       ESC + b"*b2W" +
+                                       bytes([0xf0, 0x0f]) + FF)
+        raster_skip_next = write(tmp / "raster-skip-next.pcl",
+                                 ESC + b"*t300R" +
+                                 ESC + b"*r0A" +
+                                 ESC + b"*b3Y" +
+                                 ESC + b"*b2W" +
+                                 bytes([0xf0, 0x0f]) + FF)
+        raster_skip_integer_pdf = tmp / "raster-skip-integer.pdf"
+        raster_skip_fractional_pdf = tmp / "raster-skip-fractional.pdf"
+        raster_skip_next_pdf = tmp / "raster-skip-next.pdf"
+        render(dreamprint, raster_skip_integer, raster_skip_integer_pdf)
+        render(dreamprint, raster_skip_fractional, raster_skip_fractional_pdf)
+        render(dreamprint, raster_skip_next, raster_skip_next_pdf)
+        if ppm_sha256(raster_skip_integer_pdf,
+                      tmp / "raster-skip-integer", dpi=300) != \
+           ppm_sha256(raster_skip_fractional_pdf,
+                      tmp / "raster-skip-fractional", dpi=300):
+            raise AssertionError("fractional raster row offset rounded")
+        if ppm_sha256(raster_skip_integer_pdf,
+                      tmp / "raster-skip-integer-again", dpi=300) == \
+           ppm_sha256(raster_skip_next_pdf,
+                      tmp / "raster-skip-next", dpi=300):
+            raise AssertionError("raster row offset sensitivity check failed")
+
         raster_150 = write(tmp / "raster-150.pcl",
                            ESC + b"*t150R" +
                            ESC + b"*r0A" +
