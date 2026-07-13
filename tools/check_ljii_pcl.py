@@ -903,6 +903,11 @@ def main():
                       dpi=150):
             raise AssertionError("invalid line termination selector changed mode")
 
+        wrap_default = write(tmp / "wrap-default.pcl",
+                             b"X" + ESC + b"&a81C" + b"A" + FF)
+        wrap_reset = write(tmp / "wrap-reset.pcl",
+                           ESC + b"&s0C" + ESC + b"E" + b"X" +
+                           ESC + b"&a81C" + b"A" + FF)
         wrap_positive = write(tmp / "wrap-positive.pcl",
                               b"X" + ESC + b"&s1C" + ESC + b"&a81C" +
                               b"A" + FF)
@@ -915,16 +920,30 @@ def main():
         wrap_fractional = write(tmp / "wrap-fractional.pcl",
                                 b"X" + ESC + b"&s0.9C" + ESC + b"&a81C" +
                                 b"A" + FF)
+        wrap_default_pdf = tmp / "wrap-default.pdf"
+        wrap_reset_pdf = tmp / "wrap-reset.pdf"
         wrap_positive_pdf = tmp / "wrap-positive.pdf"
         wrap_negative_pdf = tmp / "wrap-negative.pdf"
         wrap_enabled_pdf = tmp / "wrap-enabled.pdf"
         wrap_fractional_pdf = tmp / "wrap-fractional.pdf"
+        render(dreamprint, wrap_default, wrap_default_pdf)
+        render(dreamprint, wrap_reset, wrap_reset_pdf)
         render(dreamprint, wrap_positive, wrap_positive_pdf)
         render(dreamprint, wrap_negative, wrap_negative_pdf)
         render(dreamprint, wrap_enabled, wrap_enabled_pdf)
         render(dreamprint, wrap_fractional, wrap_fractional_pdf)
+        if "".join(pdftotext(wrap_default_pdf).split()) != "X":
+            raise AssertionError("default wrap state allowed overflow text")
+        if "".join(pdftotext(wrap_reset_pdf).split()) != "X":
+            raise AssertionError("ESC E did not reset wrap state")
         if "".join(pdftotext(wrap_negative_pdf).split()) != "X":
             raise AssertionError("negative wrap-disable selector allowed overflow text")
+        if ppm_sha256(wrap_default_pdf, tmp / "wrap-default", dpi=150) != \
+           ppm_sha256(wrap_positive_pdf, tmp / "wrap-positive", dpi=150):
+            raise AssertionError("default wrap state did not match disabled wrap")
+        if ppm_sha256(wrap_reset_pdf, tmp / "wrap-reset", dpi=150) != \
+           ppm_sha256(wrap_positive_pdf, tmp / "wrap-positive-again", dpi=150):
+            raise AssertionError("reset wrap state did not match disabled wrap")
         if ppm_sha256(wrap_positive_pdf, tmp / "wrap-positive", dpi=150) != \
            ppm_sha256(wrap_negative_pdf, tmp / "wrap-negative", dpi=150):
             raise AssertionError("negative wrap-disable selector did not match positive")
@@ -2199,19 +2218,20 @@ def main():
             raise AssertionError("copy-count overflow did not publish 3 pages")
 
         perf_lines = bytearray()
-        for i in range(59):
-            perf_lines += f"P{i:02d}\n".encode("ascii")
+        for i in range(60):
+            perf_lines += f"P{i:02d}\r\n".encode("ascii")
+        perf_tail = bytes(perf_lines) + b"Z" + FF
         perf_enabled = write(tmp / "perf-enabled.pcl",
-                             ESC + b"&l1L" + bytes(perf_lines) + FF)
+                             ESC + b"&l1L" + perf_tail)
         perf_preserved = write(tmp / "perf-preserved.pcl",
                                ESC + b"&l1L" + ESC + b"&l-2L" +
-                               bytes(perf_lines) + FF)
+                               perf_tail)
         perf_disabled = write(tmp / "perf-disabled.pcl",
                               ESC + b"&l1L" + ESC + b"&l0L" +
-                              bytes(perf_lines) + FF)
+                              perf_tail)
         perf_fractional = write(tmp / "perf-fractional.pcl",
                                 ESC + b"&l1L" + ESC + b"&l0.9L" +
-                                bytes(perf_lines) + FF)
+                                perf_tail)
         perf_enabled_pdf = tmp / "perf-enabled.pdf"
         perf_preserved_pdf = tmp / "perf-preserved.pdf"
         perf_disabled_pdf = tmp / "perf-disabled.pdf"
@@ -2869,7 +2889,7 @@ def main():
         overlay_chained_margin = write(
             tmp / "overlay-chained-margin.pcl",
             ESC + b"&f135Y" +
-            ESC + b"&f0X" + ESC + b"&a6l9M" + b"!" +
+            ESC + b"&f0X" + ESC + b"&s0C" + ESC + b"&a6l9M" + b"!" +
             ESC + b"&f1X" +
             ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
         overlay_mixed_control_pdf = tmp / "overlay-mixed-control.pdf"

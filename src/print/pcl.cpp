@@ -402,7 +402,7 @@ private:
 		float rect_h_in = 0.0f;
 		int fill_pattern = 0;
 		int copy_count = 1;
-		bool wrap_enabled = true;
+		bool wrap_enabled = false;
 		int selected_soft_font_id[2] = { -1, -1 };
 		int download_font_slot = 1;
 		std::vector<std::pair<float, float>> cursor_stack;
@@ -562,7 +562,7 @@ private:
 	float rect_h_in_ = 0.0f;
 	int fill_pattern_ = 0;
 	int copy_count_ = 1;
-	bool wrap_enabled_ = true;
+	bool wrap_enabled_ = false;
 
 	int macro_id_ = 0;
 	int overlay_macro_id_ = 0;
@@ -649,7 +649,7 @@ void PclPrinter::reset_ljii_state()
 	rect_h_in_ = 0.0f;
 	fill_pattern_ = 0;
 	copy_count_ = 1;
-	wrap_enabled_ = true;
+	wrap_enabled_ = false;
 	macro_id_ = 0;
 	overlay_macro_id_ = 0;
 	defining_macro_ = false;
