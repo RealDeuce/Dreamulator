@@ -1159,7 +1159,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				st_.y_pos += (float)value * st_.line_spacing_in;
 			else
 				st_.y_pos = st_.top_margin_in +
-				            (float)value * st_.line_spacing_in;
+				            ((float)value - 7.0f / 25.0f) *
+				            st_.line_spacing_in;
 			st_.y_pos = std::max(logical_y0_in_,
 			                     std::min(st_.y_pos, st_.page_height_in));
 			clear_pending_cursor_y();

@@ -445,6 +445,11 @@ def main():
                       dpi=150) != \
            ppm_sha256(vmi_over_limit_pdf, tmp / "vmi-over-limit", dpi=150):
             raise AssertionError("VMI integer over-limit command was not rejected")
+        if ppm_sha256(vmi_default_row_pdf, tmp / "vmi-default-row-again",
+                      dpi=150) != \
+           ppm_sha256(explicit_first_line_pdf,
+                      tmp / "explicit-first-line-again", dpi=150):
+            raise AssertionError("absolute row command missed first-line bias")
         vmi_default_box = ppm_bbox(vmi_default_row_pdf,
                                    tmp / "vmi-default-row", dpi=150)
         vmi_fractional_box = ppm_bbox(vmi_fractional_max_pdf,
