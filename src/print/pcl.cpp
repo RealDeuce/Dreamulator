@@ -978,7 +978,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			break;
 		case 'D':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0)
 				ival = 12;
 			if (ival == 1 || ival == 2 || ival == 3 || ival == 4 ||

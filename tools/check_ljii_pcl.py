@@ -1609,13 +1609,20 @@ def main():
                              ESC + b"&l8D" + b"A\nB" + FF)
         lpi_negative = write(tmp / "lpi-negative.pcl",
                              ESC + b"&l-8D" + b"A\nB" + FF)
+        lpi_fractional = write(tmp / "lpi-fractional.pcl",
+                               ESC + b"&l8.9D" + b"A\nB" + FF)
         lpi_positive_pdf = tmp / "lpi-positive.pdf"
         lpi_negative_pdf = tmp / "lpi-negative.pdf"
+        lpi_fractional_pdf = tmp / "lpi-fractional.pdf"
         render(dreamprint, lpi_positive, lpi_positive_pdf)
         render(dreamprint, lpi_negative, lpi_negative_pdf)
+        render(dreamprint, lpi_fractional, lpi_fractional_pdf)
         if ppm_sha256(lpi_positive_pdf, tmp / "lpi-positive", dpi=150) != \
            ppm_sha256(lpi_negative_pdf, tmp / "lpi-negative", dpi=150):
             raise AssertionError("negative LPI selector did not match positive selector")
+        if ppm_sha256(lpi_positive_pdf, tmp / "lpi-positive", dpi=150) != \
+           ppm_sha256(lpi_fractional_pdf, tmp / "lpi-fractional", dpi=150):
+            raise AssertionError("fractional LPI selector rounded")
 
         copies_negative = write(tmp / "copies-negative.pcl",
                                 ESC + b"&l-2X" + b"!" + FF)
