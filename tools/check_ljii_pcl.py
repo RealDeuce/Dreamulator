@@ -1334,16 +1334,23 @@ def main():
         perf_disabled = write(tmp / "perf-disabled.pcl",
                               ESC + b"&l1L" + ESC + b"&l0L" +
                               bytes(perf_lines) + FF)
+        perf_fractional = write(tmp / "perf-fractional.pcl",
+                                ESC + b"&l1L" + ESC + b"&l0.9L" +
+                                bytes(perf_lines) + FF)
         perf_enabled_pdf = tmp / "perf-enabled.pdf"
         perf_preserved_pdf = tmp / "perf-preserved.pdf"
         perf_disabled_pdf = tmp / "perf-disabled.pdf"
+        perf_fractional_pdf = tmp / "perf-fractional.pdf"
         render(dreamprint, perf_enabled, perf_enabled_pdf)
         render(dreamprint, perf_preserved, perf_preserved_pdf)
         render(dreamprint, perf_disabled, perf_disabled_pdf)
+        render(dreamprint, perf_fractional, perf_fractional_pdf)
         if pdf_pages(perf_preserved_pdf) != pdf_pages(perf_enabled_pdf):
             raise AssertionError("invalid perforation selector did not preserve state")
         if pdf_pages(perf_disabled_pdf) == pdf_pages(perf_enabled_pdf):
             raise AssertionError("perforation regression is not sensitive to disabled state")
+        if pdf_pages(perf_fractional_pdf) != pdf_pages(perf_disabled_pdf):
+            raise AssertionError("fractional perforation selector rounded")
 
         paper_zero = write(tmp / "paper-zero.pcl",
                            b"A" + ESC + b"&l0H" + b"B" + FF)

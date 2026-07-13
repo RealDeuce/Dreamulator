@@ -1028,7 +1028,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			publish_current_page();
 			break;
 		case 'L':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival == 0)
 				st_.perf_skip_lines = 0;
 			else if (ival == 1)
