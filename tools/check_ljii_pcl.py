@@ -1587,19 +1587,39 @@ def main():
 
         page_length_zero = write(tmp / "page-length-zero.pcl",
                                  b"A" + ESC + b"&l0P" + b"B" + FF)
+        page_length_zero_fractional = write(
+            tmp / "page-length-zero-fractional.pcl",
+            b"A" + ESC + b"&l0.9P" + b"B" + FF)
         page_length_zero_pdf = tmp / "page-length-zero.pdf"
+        page_length_zero_fractional_pdf = \
+            tmp / "page-length-zero-fractional.pdf"
         render(dreamprint, page_length_zero, page_length_zero_pdf)
+        render(dreamprint, page_length_zero_fractional,
+               page_length_zero_fractional_pdf)
         if pdf_pages(page_length_zero_pdf) != 2:
             raise AssertionError("page-length selector zero did not publish")
+        if pdf_pages(page_length_zero_fractional_pdf) != 2:
+            raise AssertionError("fractional zero page length did not publish")
+        if "".join(pdftotext(page_length_zero_fractional_pdf).split()) != "AB":
+            raise AssertionError("fractional zero page length lost text")
 
         page_length_nonzero = write(tmp / "page-length-nonzero.pcl",
                                     b"A" + ESC + b"&l66P" + b"B" + FF)
+        page_length_fractional = write(tmp / "page-length-fractional.pcl",
+                                       b"A" + ESC + b"&l66.9P" + b"B" + FF)
         page_length_nonzero_pdf = tmp / "page-length-nonzero.pdf"
+        page_length_fractional_pdf = tmp / "page-length-fractional.pdf"
         render(dreamprint, page_length_nonzero, page_length_nonzero_pdf)
+        render(dreamprint, page_length_fractional, page_length_fractional_pdf)
         if pdf_pages(page_length_nonzero_pdf) != 2:
             raise AssertionError("nonzero page length did not publish")
         if "AB" not in "".join(pdftotext(page_length_nonzero_pdf).split()):
             raise AssertionError("nonzero page length lost text")
+        if pdf_pages(page_length_fractional_pdf) != \
+           pdf_pages(page_length_nonzero_pdf):
+            raise AssertionError("fractional page length did not match integer word")
+        if "AB" not in "".join(pdftotext(page_length_fractional_pdf).split()):
+            raise AssertionError("fractional page length lost text")
 
         page_length_negative = write(tmp / "page-length-negative.pcl",
                                      b"A" + ESC + b"&l-66P" + b"B" + FF)

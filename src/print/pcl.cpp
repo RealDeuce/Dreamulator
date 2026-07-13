@@ -1039,15 +1039,14 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			set_orientation(pcl_integer_word(value));
 			break;
 		case 'P':
-			value = std::abs(value);
-			ival = std::abs(ival);
-			if (value > 0.0) {
-				float length_in = (float)value * vmi_in_;
+			ival = pcl_integer_word(value);
+			if (ival > 0) {
+				float length_in = (float)ival * vmi_in_;
 				if (length_in <= physical_h_in_ + 0.0001f) {
 					publish_current_page();
 					set_page_length(length_in);
 				}
-			} else if (ival == 0) {
+			} else {
 				set_page_size(page_size_code_);
 			}
 			break;
