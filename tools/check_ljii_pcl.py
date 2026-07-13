@@ -98,12 +98,16 @@ def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0):
         row = y * width * 3
         for x in range(min_x_filter, width):
             off = row + x * 3
-            if pixels[off:off + 3] == b"\xff\xff\xff":
+            if (pixels[off] == 0xff and pixels[off + 1] == 0xff and
+                    pixels[off + 2] == 0xff):
                 continue
-            min_x = min(min_x, x)
-            min_y = min(min_y, y)
-            max_x = max(max_x, x)
-            max_y = max(max_y, y)
+            if x < min_x:
+                min_x = x
+            if y < min_y:
+                min_y = y
+            if x > max_x:
+                max_x = x
+            max_y = y
     if max_x < 0:
         return None
     return min_x, min_y, max_x, max_y
@@ -2446,16 +2450,43 @@ def main():
         if "!" not in pdftotext(macro_fractional_pdf):
             raise AssertionError("fractional macro selector rounded")
 
-        macro_lower_stop = write(tmp / "macro-lower-stop.pcl",
-                                 ESC + b"&f701Y" +
-                                 ESC + b"&f0x" + b"!\r" +
-                                 ESC + b"&f1x" +
-                                 ESC + b"&f2x" + b"Z" + FF)
-        macro_lower_stop_pdf = tmp / "macro-lower-stop.pdf"
-        render(dreamprint, macro_lower_stop, macro_lower_stop_pdf)
-        lower_stop_text = pdftotext(macro_lower_stop_pdf)
-        if "!" not in lower_stop_text or "Z" not in lower_stop_text:
-            raise AssertionError("lowercase macro control did not stop and replay")
+        macro_lower_chain = write(tmp / "macro-lower-chain.pcl",
+                                  ESC + b"&f701Y" +
+                                  ESC + b"&f0x1X" +
+                                  ESC + b"&f2X" + b"Z" + FF)
+        macro_lower_payload = write(tmp / "macro-lower-payload.pcl",
+                                    ESC + b"&f702Y" +
+                                    ESC + b"&f0x" + b"!\r" +
+                                    ESC + b"&f1x" +
+                                    ESC + b"&f2x" + b"Z" + FF)
+        macro_lower_expected = write(tmp / "macro-lower-expected.pcl",
+                                     b"Z" + FF)
+        macro_lower_payload_expected = write(
+            tmp / "macro-lower-payload-expected.pcl", b"\rZ" + FF)
+        macro_lower_chain_pdf = tmp / "macro-lower-chain.pdf"
+        macro_lower_payload_pdf = tmp / "macro-lower-payload.pdf"
+        macro_lower_expected_pdf = tmp / "macro-lower-expected.pdf"
+        macro_lower_payload_expected_pdf = \
+            tmp / "macro-lower-payload-expected.pdf"
+        render(dreamprint, macro_lower_chain, macro_lower_chain_pdf)
+        render(dreamprint, macro_lower_payload, macro_lower_payload_pdf)
+        render(dreamprint, macro_lower_expected, macro_lower_expected_pdf)
+        render(dreamprint, macro_lower_payload_expected,
+               macro_lower_payload_expected_pdf)
+        expected_lower_hash = ppm_sha256(macro_lower_expected_pdf,
+                                         tmp / "macro-lower-expected",
+                                         dpi=300)
+        expected_lower_payload_hash = ppm_sha256(
+            macro_lower_payload_expected_pdf,
+            tmp / "macro-lower-payload-expected", dpi=300)
+        if ppm_sha256(macro_lower_chain_pdf,
+                      tmp / "macro-lower-chain", dpi=300) != \
+           expected_lower_hash:
+            raise AssertionError("lowercase macro chain did not stop definition")
+        if ppm_sha256(macro_lower_payload_pdf,
+                      tmp / "macro-lower-payload", dpi=300) != \
+           expected_lower_payload_hash:
+            raise AssertionError("lowercase macro start did not seed auto-prefix")
 
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",

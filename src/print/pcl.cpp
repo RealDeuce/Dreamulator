@@ -496,6 +496,8 @@ private:
 	void apply_page_geometry();
 	void set_page_length(float length_in);
 	void publish_current_page();
+	void start_macro_definition(bool lowercase_final);
+	void finish_macro_definition(size_t keep_size);
 	bool capture_macro_definition_byte(uint8_t b);
 	MacroPrintEnvironment capture_print_environment() const;
 	void restore_print_environment(const MacroPrintEnvironment &env);
@@ -566,6 +568,7 @@ private:
 	bool replaying_macro_ = false;
 	int macro_replay_depth_ = 0;
 	bool overlay_enabled_ = false;
+	bool macro_chain_active_ = false;
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
@@ -650,6 +653,7 @@ void PclPrinter::reset_ljii_state()
 	replaying_macro_ = false;
 	macro_replay_depth_ = 0;
 	overlay_enabled_ = false;
+	macro_chain_active_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
@@ -689,8 +693,22 @@ void PclPrinter::software_reset()
 
 void PclPrinter::parse_byte(uint8_t b)
 {
-	if (defining_macro_ && !replaying_macro_ && capture_macro_definition_byte(b))
-		return;
+	if (defining_macro_ && !replaying_macro_) {
+		if (macro_chain_active_ && state_ == State::Parameterized) {
+			bool chain_byte = is_param_byte(b) ||
+			                  (b >= '@' && b <= '^') ||
+			                  (b >= 'a' && b <= 'z');
+			if (chain_byte) {
+				process_parameter_byte(b);
+				if (!defining_macro_ || state_ != State::Parameterized)
+					macro_chain_active_ = false;
+				return;
+			}
+			macro_chain_active_ = false;
+		}
+		if (capture_macro_definition_byte(b))
+			return;
+	}
 
 	switch (state_) {
 	case State::Normal:
@@ -990,8 +1008,10 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 		           !(((group_ == '(' || group_ == ')') && subgroup_ == 's'))) {
 			pending_drain_count_ = pcl_integer_word(value);
 		} else {
-			apply_param(group_, subgroup_, value,
-			            static_cast<char>(std::toupper(b)));
+			char term = static_cast<char>(std::toupper(b));
+			if (group_ == '&' && subgroup_ == 'f' && b == 'x')
+				term = 'x';
+			apply_param(group_, subgroup_, value, term);
 		}
 		if (state_ == State::Parameterized) {
 			param_pos_ = 0;
@@ -1380,19 +1400,21 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			macro_id_ = pcl_integer_word(value);
 			break;
 		case 'X':
+		case 'x':
 			ival = pcl_integer_word(value);
+			if (defining_macro_ && ival != 1)
+				break;
 			if (replaying_macro_ && ival != 2 && ival != 3)
 				break;
 			if (ival == 0) {
-				defining_macro_ = true;
-				macros_[macro_id_].bytes.clear();
-				macro_command_start_ = 0;
-				macro_stop_buf_.clear();
+				start_macro_definition(term == 'x');
 			} else if (ival == 1) {
 				if (defining_macro_)
-					macros_[macro_id_].bytes.resize(macro_command_start_);
-				defining_macro_ = false;
-				macro_stop_buf_.clear();
+					finish_macro_definition(macro_stop_buf_.empty()
+					                        ? macros_[macro_id_].bytes.size()
+					                        : macro_command_start_);
+				else
+					macro_stop_buf_.clear();
 			} else if (ival == 2) {
 				replay_macro(macro_id_, MacroReplayMode::Execute);
 			} else if (ival == 3) {
@@ -2721,6 +2743,38 @@ void PclPrinter::publish_current_page()
 	pending_cursor_y_ = true;
 }
 
+void PclPrinter::start_macro_definition(bool lowercase_final)
+{
+	defining_macro_ = true;
+	Macro &macro = macros_[macro_id_];
+	macro.bytes.clear();
+	macro_command_start_ = 0;
+	macro_stop_buf_.clear();
+	macro_chain_active_ = lowercase_final;
+	if (lowercase_final) {
+		macro.bytes.push_back(0x1B);
+		macro.bytes.push_back('&');
+		macro.bytes.push_back('f');
+	} else {
+		macro.bytes.push_back(0);
+	}
+}
+
+void PclPrinter::finish_macro_definition(size_t keep_size)
+{
+	Macro &macro = macros_[macro_id_];
+	keep_size = std::min(keep_size, macro.bytes.size());
+	macro.bytes.resize(keep_size);
+	if ((macro.bytes.size() == 1 && macro.bytes[0] == 0) ||
+	    (macro.bytes.size() == 3 && macro.bytes[0] == 0x1B &&
+	     macro.bytes[1] == '&' && macro.bytes[2] == 'f')) {
+		macro.bytes.clear();
+	}
+	defining_macro_ = false;
+	macro_chain_active_ = false;
+	macro_stop_buf_.clear();
+}
+
 bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 {
 	if (b == 0x1B) {
@@ -2790,8 +2844,7 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 			if (negative)
 				value = -value;
 			if (have_digit && std::abs(value) == 1) {
-				macros_[macro_id_].bytes.resize(macro_command_start_);
-				defining_macro_ = false;
+				finish_macro_definition(macro_command_start_);
 				state_ = State::Normal;
 				param_pos_ = 0;
 				param_buf_[0] = 0;
