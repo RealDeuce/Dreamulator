@@ -2745,6 +2745,43 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_fractional_pdf).split()):
             raise AssertionError("fractional page length lost text")
 
+        page_length_legal = write(tmp / "page-length-legal.pcl",
+                                  ESC + b"&l84P" + b"!" + FF)
+        page_size_legal = write(tmp / "page-size-legal.pcl",
+                                ESC + b"&l3A" + b"!" + FF)
+        page_length_legal_pdf = tmp / "page-length-legal.pdf"
+        page_size_legal_pdf = tmp / "page-size-legal.pdf"
+        render(dreamprint, page_length_legal, page_length_legal_pdf)
+        render(dreamprint, page_size_legal, page_size_legal_pdf)
+        if ppm_sha256(page_length_legal_pdf, tmp / "page-length-legal",
+                      dpi=150) != \
+           ppm_sha256(page_size_legal_pdf, tmp / "page-size-legal", dpi=150):
+            raise AssertionError("84-line page length did not select legal geometry")
+        if pdftotext(page_length_legal_pdf).strip() != "!":
+            raise AssertionError("84-line page length lost selectable text")
+
+        page_length_default_from_legal = write(
+            tmp / "page-length-default-from-legal.pcl",
+            ESC + b"&l3A" + ESC + b"&l0P" + b"!" + FF)
+        page_length_default_letter = write(
+            tmp / "page-length-default-letter.pcl",
+            ESC + b"&l2A" + b"!" + FF)
+        page_length_default_from_legal_pdf = \
+            tmp / "page-length-default-from-legal.pdf"
+        page_length_default_letter_pdf = \
+            tmp / "page-length-default-letter.pdf"
+        render(dreamprint, page_length_default_from_legal,
+               page_length_default_from_legal_pdf)
+        render(dreamprint, page_length_default_letter,
+               page_length_default_letter_pdf)
+        if ppm_sha256(page_length_default_from_legal_pdf,
+                      tmp / "page-length-default-from-legal", dpi=150) != \
+           ppm_sha256(page_length_default_letter_pdf,
+                      tmp / "page-length-default-letter", dpi=150):
+            raise AssertionError("zero page length did not restore default letter geometry")
+        if pdftotext(page_length_default_from_legal_pdf).strip() != "!":
+            raise AssertionError("zero page length default lost selectable text")
+
         page_length_negative = write(tmp / "page-length-negative.pcl",
                                      b"A" + ESC + b"&l-66P" + b"B" + FF)
         page_length_negative_pdf = tmp / "page-length-negative.pdf"

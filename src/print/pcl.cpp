@@ -75,6 +75,30 @@ bool pcl_page_size_selector_valid(int code)
 	}
 }
 
+int pcl_page_size_for_length_dots(int dots, int orientation)
+{
+	dots = std::abs(dots);
+	if ((orientation & 1) == 0) {
+		if (dots <= 3150)
+			return 1;
+		if (dots <= 3300)
+			return 2;
+		if (dots <= 3507)
+			return 26;
+		if (dots <= 4200)
+			return 3;
+		return 0;
+	}
+
+	if (dots <= 2175)
+		return 1;
+	if (dots <= 2480)
+		return 26;
+	if (dots <= 2550)
+		return 2;
+	return 0;
+}
+
 float dots_to_in(int dots)
 {
 	return (float)dots / kDotsPerIn;
@@ -1161,13 +1185,18 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'P':
 			ival = pcl_integer_word(value);
 			if (ival > 0) {
-				float length_in = (float)ival * vmi_in_;
-				if (length_in <= physical_h_in_ + 0.0001f) {
+				int length_dots = (int)std::lround((float)ival * vmi_in_ *
+				                                  kDotsPerIn);
+				int code = pcl_page_size_for_length_dots(length_dots,
+				                                         orientation_);
+				if (code != 0) {
 					publish_current_page();
-					set_page_length(length_in);
+					page_size_code_ = code;
+					apply_page_geometry();
+					set_page_length((float)length_dots / kDotsPerIn);
 				}
 			} else {
-				set_page_size(page_size_code_);
+				set_page_size(2);
 			}
 			break;
 		case 'V':
