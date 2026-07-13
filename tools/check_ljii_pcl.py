@@ -1105,6 +1105,25 @@ def main():
                       dpi=150):
             raise AssertionError("negative VFC channel selector did not match positive")
 
+        vfc_limit_lines = bytearray()
+        for i in range(6):
+            vfc_limit_lines += f"V{i:02d}\n".encode("ascii")
+        vfc_limit_default = write(tmp / "vfc-limit-default.pcl",
+                                  ESC + b"&l1L" +
+                                  bytes(vfc_limit_lines) + FF)
+        vfc_limit_custom = write(tmp / "vfc-limit-custom.pcl",
+                                 ESC + b"&l1L" +
+                                 ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+                                 bytes(vfc_limit_lines) + FF)
+        vfc_limit_default_pdf = tmp / "vfc-limit-default.pdf"
+        vfc_limit_custom_pdf = tmp / "vfc-limit-custom.pdf"
+        render(dreamprint, vfc_limit_default, vfc_limit_default_pdf)
+        render(dreamprint, vfc_limit_custom, vfc_limit_custom_pdf)
+        if pdf_pages(vfc_limit_custom_pdf) <= pdf_pages(vfc_limit_default_pdf):
+            raise AssertionError("custom VFC channel-2 limit did not affect overflow")
+        if "V05" not in pdftotext(vfc_limit_custom_pdf):
+            raise AssertionError("custom VFC overflow lost trailing text")
+
         vfc_probe_x = write(tmp / "vfc-probe-x.pcl",
                             ESC + b"&l4W" + b"\x1aX\x00\x00\x02" +
                             ESC + b"&l2V" + b"!" + FF)

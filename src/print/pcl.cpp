@@ -363,6 +363,7 @@ private:
 		float vmi_in = 1.0f / 6.0f;
 		float text_length_in = 10.0f;
 		bool text_length_custom = false;
+		float vfc_limit_in = 10.0f;
 		LjiiFontRequest font_req[2];
 		int active_font_slot = 0;
 		std::vector<uint16_t> vfc_table;
@@ -427,6 +428,7 @@ private:
 	void advance_raster_cursor_after_transfer();
 	void set_raster_resolution(int dpi);
 	void rebuild_default_vfc_table();
+	void restore_default_text_length();
 	void update_vfc_bounds();
 	void apply_vfc_payload(const std::vector<uint8_t> &payload);
 	void vfc_channel_jump(int selector);
@@ -493,6 +495,7 @@ private:
 	float vmi_in_ = 1.0f / 6.0f;
 	float text_length_in_ = 10.0f;
 	bool text_length_custom_ = false;
+	float vfc_limit_in_ = 10.0f;
 	LjiiFontRequest font_req_[2];
 	int active_font_slot_ = 0;
 	std::vector<uint16_t> vfc_table_;
@@ -573,6 +576,7 @@ void PclPrinter::reset_ljii_state()
 	vmi_in_ = 1.0f / 6.0f;
 	text_length_in_ = 10.0f;
 	text_length_custom_ = false;
+	vfc_limit_in_ = logical_y0_in_ + text_length_in_;
 	font_req_[0] = LjiiFontRequest{};
 	font_req_[1] = LjiiFontRequest{};
 	font_req_[1].secondary = true;
@@ -933,6 +937,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				refresh_pending_cursor_y();
 			else
 				st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+			restore_default_text_length();
 			update_vfc_bounds();
 			rebuild_default_vfc_table();
 			restart_underline_span();
@@ -943,10 +948,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				text_length_in_ = std::max(0.0f, (float)value * vmi_in_);
 				text_length_custom_ = true;
 			} else {
-				text_length_in_ = std::max(0.0f, st_.page_height_in -
-				                                  st_.top_margin_in -
-				                                  st_.line_spacing_in);
-				text_length_custom_ = false;
+				restore_default_text_length();
 			}
 			update_vfc_bounds();
 			rebuild_default_vfc_table();
@@ -1640,6 +1642,7 @@ void PclPrinter::set_raster_resolution(int dpi)
 
 void PclPrinter::rebuild_default_vfc_table()
 {
+	vfc_limit_in_ = st_.top_margin_in + text_length_in_;
 	vfc_table_.assign(128, 0);
 	int text_last = std::max(0, std::min(127, vfc_text_last_line_));
 	int last = std::max(text_last, std::min(127, vfc_last_line_));
@@ -1675,6 +1678,14 @@ void PclPrinter::rebuild_default_vfc_table()
 	set_channel(0, 12);
 }
 
+void PclPrinter::restore_default_text_length()
+{
+	text_length_in_ = std::max(0.0f, st_.page_height_in -
+	                                 st_.top_margin_in -
+	                                 st_.line_spacing_in);
+	text_length_custom_ = false;
+}
+
 void PclPrinter::update_vfc_bounds()
 {
 	float line0 = st_.top_margin_in + st_.line_spacing_in;
@@ -1690,6 +1701,8 @@ void PclPrinter::update_vfc_bounds()
 void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
 {
 	if (payload.empty()) {
+		restore_default_text_length();
+		update_vfc_bounds();
 		rebuild_default_vfc_table();
 		return;
 	}
@@ -1704,6 +1717,17 @@ void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
 		uint16_t word = (uint16_t)(((uint16_t)payload[i] << 8) | payload[i + 1]);
 		vfc_table_[i / 2] = word;
 	}
+	vfc_limit_in_ = st_.page_height_in;
+	int text_last = std::max(0, std::min(127, vfc_text_last_line_));
+	for (int line = 0; line <= text_last; line++) {
+		if (vfc_table_[(size_t)line] & 0x0002u) {
+			vfc_limit_in_ = vfc_line_y(line);
+			break;
+		}
+	}
+	text_length_in_ = std::max(0.0f, vfc_limit_in_ - st_.top_margin_in);
+	text_length_custom_ = true;
+	update_vfc_bounds();
 }
 
 float PclPrinter::vfc_line_y(int line) const
@@ -2298,12 +2322,9 @@ void PclPrinter::ljii_line_feed()
 	st_.y_pos += st_.line_spacing_in;
 	float bottom = st_.page_height_in - 0.5f;
 	if (st_.perf_skip_lines > 0) {
-		bottom = st_.page_height_in -
-		         static_cast<float>(st_.perf_skip_lines) * st_.line_spacing_in;
-		if (text_length_custom_)
-			bottom = st_.top_margin_in + text_length_in_;
+		bottom = vfc_limit_in_;
 	}
-	if (st_.y_pos >= bottom)
+	if (bottom > 0.0f && st_.y_pos > bottom)
 		publish_current_page();
 
 	advance_line_direction();
@@ -2352,7 +2373,7 @@ void PclPrinter::apply_page_geometry()
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
-	text_length_custom_ = false;
+	restore_default_text_length();
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
@@ -2368,7 +2389,7 @@ void PclPrinter::set_page_length(float length_in)
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
-	text_length_custom_ = false;
+	restore_default_text_length();
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	restart_underline_span();
@@ -2461,6 +2482,7 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.vmi_in = vmi_in_;
 	env.text_length_in = text_length_in_;
 	env.text_length_custom = text_length_custom_;
+	env.vfc_limit_in = vfc_limit_in_;
 	env.font_req[0] = font_req_[0];
 	env.font_req[1] = font_req_[1];
 	env.active_font_slot = active_font_slot_;
@@ -2503,6 +2525,7 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	vmi_in_ = env.vmi_in;
 	text_length_in_ = env.text_length_in;
 	text_length_custom_ = env.text_length_custom;
+	vfc_limit_in_ = env.vfc_limit_in;
 	font_req_[0] = env.font_req[0];
 	font_req_[1] = env.font_req[1];
 	active_font_slot_ = env.active_font_slot;
