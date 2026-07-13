@@ -718,12 +718,19 @@ def main():
                                      b"A" + ESC + b"&l1O" + b"B" + FF)
         orientation_negative = write(tmp / "orientation-negative.pcl",
                                      b"A" + ESC + b"&l-1O" + b"B" + FF)
+        orientation_fractional = write(tmp / "orientation-fractional.pcl",
+                                       b"A" + ESC + b"&l1.9O" + b"B" + FF)
         orientation_positive_pdf = tmp / "orientation-positive.pdf"
         orientation_negative_pdf = tmp / "orientation-negative.pdf"
+        orientation_fractional_pdf = tmp / "orientation-fractional.pdf"
         render(dreamprint, orientation_positive, orientation_positive_pdf)
         render(dreamprint, orientation_negative, orientation_negative_pdf)
+        render(dreamprint, orientation_fractional, orientation_fractional_pdf)
         if pdf_pages(orientation_negative_pdf) != pdf_pages(orientation_positive_pdf):
             raise AssertionError("negative orientation selector was not absolute")
+        if pdf_pages(orientation_fractional_pdf) != \
+           pdf_pages(orientation_positive_pdf):
+            raise AssertionError("fractional orientation selector rounded")
 
         copies_zero_ignored = write(tmp / "copies-zero-ignored.pcl",
                                     ESC + b"&l2X" + ESC + b"&l0X" +
@@ -737,14 +744,22 @@ def main():
                                    ESC + b"&l3A" + b"!" + FF)
         page_size_negative = write(tmp / "page-size-negative.pcl",
                                    ESC + b"&l-3A" + b"!" + FF)
+        page_size_fractional = write(tmp / "page-size-fractional.pcl",
+                                     ESC + b"&l2.9A" + b"!" + FF)
+        page_size_integer = write(tmp / "page-size-integer.pcl",
+                                  ESC + b"&l2A" + b"!" + FF)
         page_size_invalid = write(tmp / "page-size-invalid.pcl",
                                   ESC + b"&l3A" + ESC + b"&l999A" +
                                   b"!" + FF)
         page_size_positive_pdf = tmp / "page-size-positive.pdf"
         page_size_negative_pdf = tmp / "page-size-negative.pdf"
+        page_size_fractional_pdf = tmp / "page-size-fractional.pdf"
+        page_size_integer_pdf = tmp / "page-size-integer.pdf"
         page_size_invalid_pdf = tmp / "page-size-invalid.pdf"
         render(dreamprint, page_size_positive, page_size_positive_pdf)
         render(dreamprint, page_size_negative, page_size_negative_pdf)
+        render(dreamprint, page_size_fractional, page_size_fractional_pdf)
+        render(dreamprint, page_size_integer, page_size_integer_pdf)
         render(dreamprint, page_size_invalid, page_size_invalid_pdf)
         if ppm_sha256(page_size_positive_pdf, tmp / "page-size-positive",
                       dpi=72) != \
@@ -756,6 +771,11 @@ def main():
            ppm_sha256(page_size_invalid_pdf, tmp / "page-size-invalid",
                       dpi=72):
             raise AssertionError("invalid page-size selector did not preserve state")
+        if ppm_sha256(page_size_fractional_pdf, tmp / "page-size-fractional",
+                      dpi=72) != \
+           ppm_sha256(page_size_integer_pdf, tmp / "page-size-integer",
+                      dpi=72):
+            raise AssertionError("fractional page-size selector rounded")
 
         upright = write(tmp / "upright.pcl",
                         ESC + b"(s0p10h0s0b3TItalic sample" + FF)
@@ -1421,10 +1441,16 @@ def main():
 
         copies_negative = write(tmp / "copies-negative.pcl",
                                 ESC + b"&l-2X" + b"!" + FF)
+        copies_fractional = write(tmp / "copies-fractional.pcl",
+                                  ESC + b"&l2.9X" + b"!" + FF)
         copies_negative_pdf = tmp / "copies-negative.pdf"
+        copies_fractional_pdf = tmp / "copies-fractional.pdf"
         render(dreamprint, copies_negative, copies_negative_pdf)
+        render(dreamprint, copies_fractional, copies_fractional_pdf)
         if pdf_pages(copies_negative_pdf) != 2:
             raise AssertionError("negative copy count was not absolute")
+        if pdf_pages(copies_fractional_pdf) != 2:
+            raise AssertionError("fractional copy count rounded")
 
         vfc_negative = write(tmp / "vfc-negative.pcl",
                              ESC + b"&l-4W" + b"\x00\x00\x00\x02" +

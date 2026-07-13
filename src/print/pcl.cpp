@@ -965,7 +965,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 
 	if (group == '&' && subgroup == 'l') {
 		switch (term) {
-		case 'A': set_page_size(std::abs(ival)); break;
+		case 'A': set_page_size(pcl_integer_word(value)); break;
 		case 'C':
 			value = std::abs(value);
 			if (value > 0.0 && pcl_integer_word(value) <= 0x150) {
@@ -1035,7 +1035,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				st_.perf_skip_lines = 6;
 			break;
 		case 'O':
-			set_orientation(std::abs(ival));
+			set_orientation(pcl_integer_word(value));
 			break;
 		case 'P':
 			value = std::abs(value);
@@ -1064,7 +1064,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				begin_payload(State::VfcData, std::abs(ival));
 			break;
 		case 'X':
-			ival = std::abs(ival);
+			ival = pcl_integer_word(value);
 			if (ival > 0)
 				copy_count_ = std::min(99, ival);
 			break;
