@@ -1289,7 +1289,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		}
 	} else if (group == '&' && subgroup == 'p') {
 		if (term == 'X')
-			begin_payload(State::TransparentData, std::abs(ival));
+			begin_payload(State::TransparentData, pcl_integer_word(value));
 	} else if (group == '&' && subgroup == 's') {
 		if (term == 'C') {
 			ival = pcl_integer_word(value);

@@ -264,6 +264,25 @@ def main():
         if "".join(pdftotext(transparent_negative_pdf).split()) != "EAB":
             raise AssertionError("negative transparent count did not consume payload")
 
+        transparent_integer_count = write(
+            tmp / "transparent-integer-count.pcl",
+            ESC + b"&p2X" + b"AB" + ESC + b"&a20C" + b"!" + FF)
+        transparent_fractional_count = write(
+            tmp / "transparent-fractional-count.pcl",
+            ESC + b"&p2.9X" + b"AB" + ESC + b"&a20C" + b"!" + FF)
+        transparent_integer_count_pdf = tmp / "transparent-integer-count.pdf"
+        transparent_fractional_count_pdf = \
+            tmp / "transparent-fractional-count.pdf"
+        render(dreamprint, transparent_integer_count,
+               transparent_integer_count_pdf)
+        render(dreamprint, transparent_fractional_count,
+               transparent_fractional_count_pdf)
+        if ppm_sha256(transparent_integer_count_pdf,
+                      tmp / "transparent-integer-count", dpi=150) != \
+           ppm_sha256(transparent_fractional_count_pdf,
+                      tmp / "transparent-fractional-count", dpi=150):
+            raise AssertionError("fractional transparent count rounded")
+
         generic_drain = write(tmp / "generic-drain.pcl",
                               ESC + b"&z3WABC!" + FF)
         generic_drain_probe = write(tmp / "generic-drain-probe.pcl",
