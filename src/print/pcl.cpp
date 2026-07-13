@@ -421,6 +421,10 @@ private:
 		int id = 0;
 		bool active = false;
 		bool permanent = false;
+		bool continuation_active = false;
+		uint8_t continuation_char = 0;
+		size_t continuation_offset = 0;
+		size_t continuation_remaining = 0;
 		bool resource_header_active = false;
 		uint8_t resource_type = 0;
 		uint16_t resource_first = 0;
@@ -2151,7 +2155,37 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
+	bool descriptor_shaped_payload = payload.size() >= 14 &&
+		payload[4] == 0x0c && (payload[5] == 1 || payload[5] == 2);
+	if (font.continuation_active &&
+	    font.continuation_char == soft_char_code_ &&
+	    !descriptor_shaped_payload &&
+	    !looks_like_ljii_font_resource_header(payload)) {
+		auto it = font.glyphs.find(font.continuation_char);
+		if (it == font.glyphs.end()) {
+			font.continuation_active = false;
+			font.continuation_remaining = 0;
+			return;
+		}
+		SoftGlyph &glyph = it->second;
+		size_t copy = std::min(payload.size(), font.continuation_remaining);
+		if (font.continuation_offset + copy > glyph.bitmap.size())
+			glyph.bitmap.resize(font.continuation_offset + copy, 0);
+		std::copy_n(payload.begin(), copy,
+		            glyph.bitmap.begin() +
+		            (std::vector<uint8_t>::difference_type)font.continuation_offset);
+		font.continuation_offset += copy;
+		font.continuation_remaining -= copy;
+		if (font.continuation_remaining == 0)
+			font.continuation_active = false;
+		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
+		return;
+	}
+
 	if (looks_like_ljii_font_resource_header(payload)) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
 		if (payload.size() < 64)
 			return;
 		uint8_t resource_type = payload[3];
@@ -2189,6 +2223,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	}
 
 	if (payload.size() >= 64 && soft_char_code_ <= 0x20) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
 			if (symbol != 0)
@@ -2216,6 +2252,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	SoftGlyph glyph;
 	bool render_payload_control_glyph = false;
 	bool preserve_declared_glyph_shape = false;
+	bool linear_descriptor_glyph = false;
+	size_t descriptor_bitmap_bytes = 0;
 	if (download_payload_control_seen_ && payload.size() == 18 &&
 	    payload[0] == 0x00) {
 		glyph.width = 136;
@@ -2225,13 +2263,19 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		render_payload_control_glyph = true;
 	} else if (payload.size() >= 14 && payload[4] == 0x0c &&
 	    (payload[5] == 1 || payload[5] == 2)) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
 		glyph.rows = (uint16_t)std::max(1, ((int)payload[6] << 8) | payload[7]);
 		glyph.width = (uint16_t)std::max(1, ((int)payload[8] << 8) | payload[9]);
 		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
 		glyph.bitmap.assign(payload.begin() + 12, payload.end());
 		preserve_declared_glyph_shape = true;
+		linear_descriptor_glyph = payload[5] == 1;
+		descriptor_bitmap_bytes = glyph.bitmap.size();
 	} else if (payload.size() >= 6 && payload[4] == 0x0c &&
 	           payload[5] != 1 && payload[5] != 2) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
 		return;
 	} else if (font.resource_header_active && payload.size() == 3) {
 		glyph.width = 4;
@@ -2284,6 +2328,12 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	}
 	if (glyph.bitmap.size() < expected && !glyph.bitmap.empty()) {
 		if (preserve_declared_glyph_shape) {
+			if (linear_descriptor_glyph) {
+				font.continuation_active = true;
+				font.continuation_char = soft_char_code_;
+				font.continuation_offset = descriptor_bitmap_bytes;
+				font.continuation_remaining = expected - descriptor_bitmap_bytes;
+			}
 			glyph.bitmap.resize(expected, 0);
 		} else {
 			size_t rows = glyph.bitmap.size() / std::max<uint16_t>(1, glyph.span);
@@ -2294,6 +2344,10 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			}
 			glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
 		}
+	}
+	if (!(linear_descriptor_glyph && descriptor_bitmap_bytes < expected)) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
 	}
 	font.glyphs[soft_char_code_] = std::move(glyph);
 	if (render_payload_control_glyph)

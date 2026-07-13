@@ -1821,6 +1821,38 @@ def main():
             raise AssertionError(
                 "partial descriptor glyph shape was not zero-filled")
 
+        completed_descriptor_glyph = padded_descriptor_glyph[:-2] + b"\xc3\x3c"
+        soft_descriptor_continued = write(
+            tmp / "soft-descriptor-continued.pcl",
+            ESC + b"*c4665D" +
+            ESC + b"*c65E" +
+            ESC + b"(s16W" + partial_descriptor_glyph +
+            ESC + b"(s2W" + b"\xc3\x3c" +
+            ESC + b"(4665X" +
+            b"A" + FF)
+        soft_descriptor_complete = write(
+            tmp / "soft-descriptor-complete.pcl",
+            ESC + b"*c4665D" +
+            ESC + b"*c65E" +
+            ESC + b"(s18W" + completed_descriptor_glyph +
+            ESC + b"(4665X" +
+            b"A" + FF)
+        soft_descriptor_continued_pdf = tmp / "soft-descriptor-continued.pdf"
+        soft_descriptor_complete_pdf = tmp / "soft-descriptor-complete.pdf"
+        render(dreamprint, soft_descriptor_continued,
+               soft_descriptor_continued_pdf)
+        render(dreamprint, soft_descriptor_complete,
+               soft_descriptor_complete_pdf)
+        if pdftotext(soft_descriptor_continued_pdf).strip() != "A":
+            raise AssertionError(
+                "continued descriptor glyph text did not extract")
+        if ppm_sha256(soft_descriptor_continued_pdf,
+                      tmp / "soft-descriptor-continued", dpi=300) != \
+           ppm_sha256(soft_descriptor_complete_pdf,
+                      tmp / "soft-descriptor-complete", dpi=300):
+            raise AssertionError(
+                "downloaded descriptor continuation did not complete glyph")
+
         soft_delete_refresh_header = bytearray(64)
         soft_delete_refresh_header[0] = 0x00
         soft_delete_refresh_header[1] = 0x01
