@@ -1853,6 +1853,43 @@ def main():
             raise AssertionError(
                 "downloaded descriptor continuation did not complete glyph")
 
+        split_partial_descriptor_glyph = bytes.fromhex(
+            "00 00 00 00 0c 02 00 02 00 18 00 00 a0 a1 b0")
+        split_completed_descriptor_glyph = split_partial_descriptor_glyph + \
+            b"\xc0\xc1\xd0"
+        soft_split_descriptor_continued = write(
+            tmp / "soft-split-descriptor-continued.pcl",
+            ESC + b"*c4666D" +
+            ESC + b"*c65E" +
+            ESC + b"(s15W" + split_partial_descriptor_glyph +
+            ESC + b"(s3W" + b"\xc0\xc1\xd0" +
+            ESC + b"(4666X" +
+            b"A" + FF)
+        soft_split_descriptor_complete = write(
+            tmp / "soft-split-descriptor-complete.pcl",
+            ESC + b"*c4666D" +
+            ESC + b"*c65E" +
+            ESC + b"(s18W" + split_completed_descriptor_glyph +
+            ESC + b"(4666X" +
+            b"A" + FF)
+        soft_split_descriptor_continued_pdf = \
+            tmp / "soft-split-descriptor-continued.pdf"
+        soft_split_descriptor_complete_pdf = \
+            tmp / "soft-split-descriptor-complete.pdf"
+        render(dreamprint, soft_split_descriptor_continued,
+               soft_split_descriptor_continued_pdf)
+        render(dreamprint, soft_split_descriptor_complete,
+               soft_split_descriptor_complete_pdf)
+        if pdftotext(soft_split_descriptor_continued_pdf).strip() != "A":
+            raise AssertionError(
+                "continued split-plane descriptor text did not extract")
+        if ppm_sha256(soft_split_descriptor_continued_pdf,
+                      tmp / "soft-split-descriptor-continued", dpi=300) != \
+           ppm_sha256(soft_split_descriptor_complete_pdf,
+                      tmp / "soft-split-descriptor-complete", dpi=300):
+            raise AssertionError(
+                "split-plane descriptor continuation did not complete glyph")
+
         soft_delete_refresh_header = bytearray(64)
         soft_delete_refresh_header[0] = 0x00
         soft_delete_refresh_header[1] = 0x01

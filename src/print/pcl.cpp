@@ -2252,7 +2252,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	SoftGlyph glyph;
 	bool render_payload_control_glyph = false;
 	bool preserve_declared_glyph_shape = false;
-	bool linear_descriptor_glyph = false;
+	bool continuable_descriptor_glyph = false;
+	bool descriptor_row_major_glyph = false;
 	size_t descriptor_bitmap_bytes = 0;
 	if (download_payload_control_seen_ && payload.size() == 18 &&
 	    payload[0] == 0x00) {
@@ -2270,7 +2271,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.span = (uint16_t)std::max(1, (int)((glyph.width + 7) >> 3));
 		glyph.bitmap.assign(payload.begin() + 12, payload.end());
 		preserve_declared_glyph_shape = true;
-		linear_descriptor_glyph = payload[5] == 1;
+		continuable_descriptor_glyph = true;
+		descriptor_row_major_glyph = payload[5] == 2;
 		descriptor_bitmap_bytes = glyph.bitmap.size();
 	} else if (payload.size() >= 6 && payload[4] == 0x0c &&
 	           payload[5] != 1 && payload[5] != 2) {
@@ -2309,7 +2311,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.bitmap = payload;
 
 	size_t expected = (size_t)glyph.rows * glyph.span;
-	if ((glyph.span & 1) && glyph.span > 1 && glyph.bitmap.size() == expected) {
+	if (!descriptor_row_major_glyph &&
+	    (glyph.span & 1) && glyph.span > 1 && glyph.bitmap.size() == expected) {
 		uint16_t prefix_span = glyph.span - 1;
 		size_t trailing_base = (size_t)glyph.rows * prefix_span;
 		std::vector<uint8_t> interleaved(expected);
@@ -2328,7 +2331,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	}
 	if (glyph.bitmap.size() < expected && !glyph.bitmap.empty()) {
 		if (preserve_declared_glyph_shape) {
-			if (linear_descriptor_glyph) {
+			if (continuable_descriptor_glyph) {
 				font.continuation_active = true;
 				font.continuation_char = soft_char_code_;
 				font.continuation_offset = descriptor_bitmap_bytes;
@@ -2345,7 +2348,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			glyph.rows = (uint16_t)std::min<size_t>(rows, 0xffff);
 		}
 	}
-	if (!(linear_descriptor_glyph && descriptor_bitmap_bytes < expected)) {
+	if (!(continuable_descriptor_glyph && descriptor_bitmap_bytes < expected)) {
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
 	}
