@@ -448,6 +448,16 @@ def main():
                       tmp / "tab-from-page-left-expected", dpi=300):
             raise AssertionError("tab left of margin did not clamp to margin")
 
+        tab_beyond_right = write(
+            tmp / "tab-beyond-right.pcl",
+            ESC + b"&a1M" + ESC + b"*p600X\t" + ESC + b"*c10a10b0P" + FF)
+        tab_beyond_right_pdf = tmp / "tab-beyond-right.pdf"
+        render(dreamprint, tab_beyond_right, tab_beyond_right_pdf)
+        tab_beyond_box = ppm_bbox(tab_beyond_right_pdf,
+                                  tmp / "tab-beyond-right", dpi=300)
+        if tab_beyond_box is None or tab_beyond_box[0] != 770:
+            raise AssertionError("tab beyond right margin clamped to margin")
+
         dot_position = write(tmp / "dot-position.pcl",
                              ESC + b"*p300X" + b"A" + FF)
         dot_position_fractional = write(tmp / "dot-position-fractional.pcl",

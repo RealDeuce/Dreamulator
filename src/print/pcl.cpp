@@ -893,9 +893,11 @@ void PclPrinter::process_control(uint8_t b)
 		float rel = std::max(0.0f, st_.x_pos - st_.left_margin_in);
 		float cols = rel / hmi_in_;
 		float next = (std::floor(cols / 8.0f) + 1.0f) * 8.0f;
+		float limit = (st_.x_pos > st_.right_margin_in) ?
+		              st_.page_width_in : st_.right_margin_in;
 		st_.x_pos = st_.left_margin_in + next * hmi_in_;
-		if (st_.x_pos > st_.right_margin_in)
-			st_.x_pos = st_.right_margin_in;
+		if (st_.x_pos > limit)
+			st_.x_pos = limit;
 		clear_pending_cursor_y();
 		break;
 	}
