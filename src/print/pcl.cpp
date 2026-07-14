@@ -1296,6 +1296,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		case 'P':
 			ival = pcl_integer_word(value);
 			if (ival > 0) {
+				if (vmi_in_ <= 0.0f)
+					break;
 				int length_dots = (int)std::lround((float)ival * vmi_in_ *
 				                                  kDotsPerIn);
 				int code = pcl_page_size_for_length_dots(length_dots,

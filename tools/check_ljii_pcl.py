@@ -3440,6 +3440,16 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_invalid_pdf).split()):
             raise AssertionError("invalid page length changed text output")
 
+        page_length_zero_vmi = write(
+            tmp / "page-length-zero-vmi.pcl",
+            b"A" + ESC + b"&l0C" + ESC + b"&l66P" + b"B" + FF)
+        page_length_zero_vmi_pdf = tmp / "page-length-zero-vmi.pdf"
+        render(dreamprint, page_length_zero_vmi, page_length_zero_vmi_pdf)
+        if pdf_pages(page_length_zero_vmi_pdf) != 1:
+            raise AssertionError("zero-VMI page length published current page")
+        if "AB" not in "".join(pdftotext(page_length_zero_vmi_pdf).split()):
+            raise AssertionError("zero-VMI page length changed text output")
+
         page_extent_reject = write(
             tmp / "page-extent-reject.pcl",
             ESC + b"&l20P" + b"A" + ESC + b"*p9999Y" + b"B" +
