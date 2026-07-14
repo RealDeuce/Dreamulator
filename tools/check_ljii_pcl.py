@@ -2226,6 +2226,40 @@ def main():
                         tmp / "payload-control-download", dpi=300) < 100:
             raise AssertionError("payload-control download did not render glyph")
 
+        zero_download_descriptor = write(
+            tmp / "zero-download-descriptor.pcl",
+            ESC + b")s0W" + bytes([0x04, 0x00, 0xaa]) + b"!" + FF)
+        zero_download_descriptor_primary = write(
+            tmp / "zero-download-descriptor-primary.pcl",
+            ESC + b"(s0W" + bytes([0x04, 0x00, 0xaa]) + b"!" + FF)
+        zero_download_descriptor_expected = write(
+            tmp / "zero-download-descriptor-expected.pcl", b"!" + FF)
+        zero_download_descriptor_pdf = tmp / "zero-download-descriptor.pdf"
+        zero_download_descriptor_primary_pdf = \
+            tmp / "zero-download-descriptor-primary.pdf"
+        zero_download_descriptor_expected_pdf = \
+            tmp / "zero-download-descriptor-expected.pdf"
+        render(dreamprint, zero_download_descriptor,
+               zero_download_descriptor_pdf)
+        render(dreamprint, zero_download_descriptor_primary,
+               zero_download_descriptor_primary_pdf)
+        render(dreamprint, zero_download_descriptor_expected,
+               zero_download_descriptor_expected_pdf)
+        if pdftotext(zero_download_descriptor_pdf).strip() != "!":
+            raise AssertionError("zero-count downloaded descriptor leaked text")
+        if pdftotext(zero_download_descriptor_primary_pdf).strip() != "!":
+            raise AssertionError("primary zero-count downloaded descriptor leaked text")
+        if ppm_sha256(zero_download_descriptor_pdf,
+                      tmp / "zero-download-descriptor", dpi=150) != \
+           ppm_sha256(zero_download_descriptor_expected_pdf,
+                      tmp / "zero-download-descriptor-expected", dpi=150):
+            raise AssertionError("zero-count downloaded descriptor changed pixels")
+        if ppm_sha256(zero_download_descriptor_primary_pdf,
+                      tmp / "zero-download-descriptor-primary", dpi=150) != \
+           ppm_sha256(zero_download_descriptor_expected_pdf,
+                      tmp / "zero-download-descriptor-expected-again", dpi=150):
+            raise AssertionError("primary zero-count downloaded descriptor changed pixels")
+
         soft_glyph = bytes.fromhex(
             "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
         soft_two_glyphs = (
