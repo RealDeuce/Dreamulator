@@ -28,7 +28,8 @@ Implemented font and pitch modes covered by the samples:
 - Epson LQ-500: draft Roman, LQ Roman, LQ Sans Serif; 10 cpi, 12 cpi,
   15 cpi, condensed, proportional
 - HP LaserJet II attributes: 10 cpi, 12 cpi request/fallback behavior,
-  line-printer pitch, stroke/style-selection requests, underline,
+  line-printer pitch, stroke/style-selection requests, resident upright
+  fallback for style-1 requests, underline,
   primary/secondary font slots, font ID/default selection, symbol sets, line
   termination, cursor stack/wrap behavior, transparent/display readers, macro
   replay, downloaded glyph selection, and small rule/raster placement sections

@@ -1792,11 +1792,11 @@ def main():
         pitch_negative = write(tmp / "pitch-negative.pcl",
                                ESC + b"(s-10H" + b"Pitch sample" + FF)
         style_positive = write(tmp / "style-positive.pcl",
-                               ESC + b"(s1S" + b"Italic sample" + FF)
+                               ESC + b"(s1S" + b"Style sample" + FF)
         style_negative = write(tmp / "style-negative.pcl",
-                               ESC + b"(s-1S" + b"Italic sample" + FF)
+                               ESC + b"(s-1S" + b"Style sample" + FF)
         style_fractional = write(tmp / "style-fractional.pcl",
-                                 ESC + b"(s1.9S" + b"Italic sample" + FF)
+                                 ESC + b"(s1.9S" + b"Style sample" + FF)
         pitch_positive_pdf = tmp / "pitch-positive.pdf"
         pitch_negative_pdf = tmp / "pitch-negative.pdf"
         style_positive_pdf = tmp / "style-positive.pdf"
@@ -1816,7 +1816,7 @@ def main():
         if ppm_sha256(style_positive_pdf, tmp / "style-positive", dpi=150) != \
            ppm_sha256(style_fractional_pdf, tmp / "style-fractional", dpi=150):
             raise AssertionError("fractional style request rounded")
-        if pdftotext(style_positive_pdf).strip() != "Italic sample":
+        if pdftotext(style_positive_pdf).strip() != "Style sample":
             raise AssertionError("style selector lost selectable input text")
 
         underline_fixed = write(tmp / "underline-fixed.pcl",
@@ -1841,16 +1841,19 @@ def main():
         if pdftotext(underline_space_pdf).strip() != "A B":
             raise AssertionError("underlined space did not remain selectable")
         if ppm_rect_nonwhite(underline_fixed_pdf, tmp / "underline-fixed",
-                             130, 113, 180, 118, dpi=300) == 0:
+                             130, 100, 180, 104, dpi=300) == 0:
             raise AssertionError("fixed underline span did not cover tab gap")
         if ppm_rect_nonwhite(underline_span_pdf, tmp / "underline-span",
-                             130, 90, 180, 95, dpi=300) == 0:
+                             130, 100, 180, 104, dpi=300) == 0:
             raise AssertionError("floating underline span did not cover tab gap")
-        if ppm_sha256(underline_fixed_pdf, tmp / "underline-fixed",
-                      dpi=150) == \
-           ppm_sha256(underline_span_pdf, tmp / "underline-span",
-                      dpi=150):
-            raise AssertionError("fixed and floating underline selectors rendered identically")
+        if ppm_rect_nonwhite(underline_span_pdf,
+                             tmp / "underline-span-old-above",
+                             130, 90, 180, 95, dpi=300) != 0:
+            raise AssertionError("floating underline rendered above the baseline")
+        if ppm_rect_nonwhite(underline_fixed_pdf,
+                             tmp / "underline-fixed-stale-baseline",
+                             130, 113, 180, 118, dpi=300) != 0:
+            raise AssertionError("fixed underline used stale pending baseline")
 
         underline_negative = write(tmp / "underline-negative.pcl",
                                    ESC + b"&d-3D" + b"A\tB" +
@@ -2330,6 +2333,63 @@ def main():
         if ppm_sha256(soft_keep_target_pdf, tmp / "soft-keep-target",
                       dpi=150) == delete_target_hash:
             raise AssertionError("downloaded font delete-target regression is not sensitive")
+
+        soft_marked_survives_delete_temp = write(
+            tmp / "soft-marked-survives-delete-temp.pcl",
+            ESC + b"*c4667D" +
+            ESC + b"*c41E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"*c5F" + ESC + b"*c1F" +
+            ESC + b"(4667X" + b")" + FF)
+        soft_marked_reference = write(
+            tmp / "soft-marked-reference.pcl",
+            ESC + b"*c4667D" +
+            ESC + b"*c41E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"(4667X" + b")" + FF)
+        soft_unmarked_delete_temp = write(
+            tmp / "soft-unmarked-delete-temp.pcl",
+            ESC + b"*c4668D" +
+            ESC + b"*c41E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"*c5F" + ESC + b"*c4F" + ESC + b"*c1F" +
+            ESC + b"(4668X" + b")" + FF)
+        soft_marked_delete_all = write(
+            tmp / "soft-marked-delete-all.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c41E" + ESC + b")s18W" + soft_glyph +
+            ESC + b"*c5F" + ESC + b"*c0F" +
+            ESC + b"(4669X" + b")" + FF)
+        soft_default_paren = write(tmp / "soft-default-paren.pcl",
+                                   b")" + FF)
+        soft_marked_survives_delete_temp_pdf = \
+            tmp / "soft-marked-survives-delete-temp.pdf"
+        soft_marked_reference_pdf = tmp / "soft-marked-reference.pdf"
+        soft_unmarked_delete_temp_pdf = tmp / "soft-unmarked-delete-temp.pdf"
+        soft_marked_delete_all_pdf = tmp / "soft-marked-delete-all.pdf"
+        soft_default_paren_pdf = tmp / "soft-default-paren.pdf"
+        render(dreamprint, soft_marked_survives_delete_temp,
+               soft_marked_survives_delete_temp_pdf)
+        render(dreamprint, soft_marked_reference, soft_marked_reference_pdf)
+        render(dreamprint, soft_unmarked_delete_temp,
+               soft_unmarked_delete_temp_pdf)
+        render(dreamprint, soft_marked_delete_all, soft_marked_delete_all_pdf)
+        render(dreamprint, soft_default_paren, soft_default_paren_pdf)
+        marked_hash = ppm_sha256(soft_marked_reference_pdf,
+                                 tmp / "soft-marked-reference", dpi=150)
+        default_paren_hash = ppm_sha256(soft_default_paren_pdf,
+                                        tmp / "soft-default-paren", dpi=150)
+        if ppm_sha256(soft_marked_survives_delete_temp_pdf,
+                      tmp / "soft-marked-survives-delete-temp",
+                      dpi=150) != marked_hash:
+            raise AssertionError("delete-temporary removed marked downloaded font")
+        if marked_hash == default_paren_hash:
+            raise AssertionError("downloaded font mark regression is not sensitive")
+        if ppm_sha256(soft_unmarked_delete_temp_pdf,
+                      tmp / "soft-unmarked-delete-temp",
+                      dpi=150) != default_paren_hash:
+            raise AssertionError("unmarked downloaded font survived delete-temporary")
+        if ppm_sha256(soft_marked_delete_all_pdf,
+                      tmp / "soft-marked-delete-all", dpi=150) != \
+           default_paren_hash:
+            raise AssertionError("delete-all preserved marked downloaded font")
 
         invalid_resource = (
             ESC + b"*c33E" +

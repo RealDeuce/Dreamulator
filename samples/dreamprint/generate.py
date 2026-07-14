@@ -609,8 +609,8 @@ def build_ljii_text_attributes() -> bytes:
             for style_request in (False, True):
                 for bold in (False, True):
                     attrs = [title]
-                    attrs.append("style-1 request" if style_request else
-                                 "style-0 request")
+                    attrs.append("style-1 request (upright resident fallback)"
+                                 if style_request else "style-0 request")
                     attrs.append("stroke-3B" if bold else "stroke-0B")
                     if underline != "off":
                         attrs.append(underline + " underline")

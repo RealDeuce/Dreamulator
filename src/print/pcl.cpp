@@ -3033,6 +3033,7 @@ void PclPrinter::start_underline_span()
 {
 	if (!st_.underline || underline_span_active_)
 		return;
+	refresh_pending_cursor_y();
 	underline_span_active_ = true;
 	underline_span_x0_in_ = st_.x_pos;
 	underline_span_y_in_ = st_.y_pos;
@@ -3055,9 +3056,9 @@ void PclPrinter::restart_underline_span()
 	start_underline_span();
 }
 
-float PclPrinter::underline_y_in(float y_in, int selector) const
+float PclPrinter::underline_y_in(float y_in, int) const
 {
-	return y_in + (selector ? -18.0f : 5.0f) / kDotsPerIn;
+	return y_in + 5.0f / kDotsPerIn;
 }
 
 void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in,
