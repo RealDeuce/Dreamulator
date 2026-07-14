@@ -2872,14 +2872,18 @@ def main():
                       dpi=300) != failed_descriptor_hash:
             raise AssertionError("fixed-record failed descriptor resume kept stale pixels")
 
-        def descriptor_glyph(rows, span, mode=1):
+        def descriptor_glyph(rows, span, mode=1, bitmap=None):
             width = span * 8
+            if bitmap is None:
+                bitmap = bytes([0xff]) * (rows * span)
+            if len(bitmap) != rows * span:
+                raise AssertionError("descriptor glyph bitmap length mismatch")
             return (
                 bytes([0, 0, 0, 0, 0x0c, mode]) +
                 rows.to_bytes(2, "big") +
                 width.to_bytes(2, "big") +
                 b"\x00\x00" +
-                bytes([0xff]) * (rows * span)
+                bitmap
             )
 
         def unresolved_glyph_case(name, rows, span):
@@ -2928,6 +2932,32 @@ def main():
         segmented_w = segmented_bbox[2] - segmented_bbox[0] + 1
         if segmented_h < 120 or segmented_h > 136 or segmented_w < 130:
             raise AssertionError("high-row selected segment used wrong visible bounds")
+
+        segment_blank_bitmap = (
+            bytes([0xff]) * (0x80 * 17) +
+            bytes([0x00]) * ((0x0082 - 0x80) * 17)
+        )
+        segment_blank_payload = descriptor_glyph(
+            0x0082, 17, mode=2, bitmap=segment_blank_bitmap)
+        segment_blank = write(
+            tmp / "download-row82-selected-segment-blank.pcl",
+            ESC + b"*c4670D" +
+            ESC + b"*c33E" +
+            ESC + b")s" +
+            str(len(segment_blank_payload)).encode("ascii") + b"W" +
+            segment_blank_payload +
+            ESC + b"*p300Y" +
+            ESC + b"(4670X" +
+            b"!" + FF,
+        )
+        segment_blank_pdf = tmp / "download-row82-selected-segment-blank.pdf"
+        render(dreamprint, segment_blank, segment_blank_pdf)
+        if pdftotext(segment_blank_pdf).strip() != "!":
+            raise AssertionError("row-0x0082 selected segment lost selectable text")
+        if ppm_bbox(segment_blank_pdf,
+                    tmp / "download-row82-selected-segment-blank",
+                    dpi=300) is not None:
+            raise AssertionError("row-0x0082 selected segment used pre-segment rows")
 
         bad_char_payload = write(
             tmp / "bad-char-payload.pcl",
