@@ -2350,6 +2350,42 @@ def main():
                 type1_width < no_resource_width):
             raise AssertionError("resource header did not select glyph shape")
 
+        resource_header_class0 = resource_header[:12] + b"\x00" + \
+            resource_header[13:]
+        resource_header_class1 = resource_header[:12] + b"\x01" + \
+            resource_header[13:]
+
+        def resource_high_char_case(name, header, include_glyph):
+            stream = (
+                ESC + b"*c4668D" +
+                ESC + b"*c160E" +
+                ESC + b")s80W" + header + bytes(16)
+            )
+            if include_glyph:
+                stream += ESC + b")s3W" + b"\xff\xff\xff"
+            stream += ESC + b"(4668X" + bytes([0xa0]) + FF
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            return pdf
+
+        resource_high_reject_pdf = resource_high_char_case(
+            "resource-high-char-reject", resource_header_class0, True)
+        resource_high_baseline_pdf = resource_high_char_case(
+            "resource-high-char-baseline", resource_header_class0, False)
+        resource_high_allowed_pdf = resource_high_char_case(
+            "resource-high-char-allowed", resource_header_class1, True)
+        if ppm_sha256(resource_high_reject_pdf,
+                      tmp / "resource-high-char-reject", dpi=300) != \
+           ppm_sha256(resource_high_baseline_pdf,
+                      tmp / "resource-high-char-baseline", dpi=300):
+            raise AssertionError("resource header class-0 installed high downloaded character")
+        if ppm_sha256(resource_high_allowed_pdf,
+                      tmp / "resource-high-char-allowed", dpi=300) == \
+           ppm_sha256(resource_high_baseline_pdf,
+                      tmp / "resource-high-char-baseline-again", dpi=300):
+            raise AssertionError("resource header class-1 did not install high downloaded character")
+
         bad_char_payload = write(
             tmp / "bad-char-payload.pcl",
             ESC + b"*c4660D" +

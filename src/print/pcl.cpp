@@ -468,6 +468,7 @@ private:
 		size_t continuation_remaining = 0;
 		bool resource_header_active = false;
 		uint8_t resource_type = 0;
+		bool resource_extended_chars = false;
 		uint16_t resource_first = 0;
 		uint16_t resource_last = 0x7f;
 		int symbol_set = kSymbolRoman8;
@@ -2344,8 +2345,9 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 
 		font.resource_header_active = true;
 		font.resource_type = resource_type;
+		font.resource_extended_chars = font_class >= 1;
 		font.resource_first = first;
-		font.resource_last = resource_type == 0 ? 0x007f : 0x00ff;
+		font.resource_last = font.resource_extended_chars ? 0x00ff : 0x007f;
 		font.symbol_set = be16_at(payload, 14);
 		if (font.symbol_set == 0)
 			font.symbol_set = kSymbolRoman8;
@@ -2447,6 +2449,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.continuation_remaining = 0;
 		return;
 	} else if (font.resource_header_active && payload.size() == 3) {
+		if (soft_char_code_ >= 0x80 && !font.resource_extended_chars)
+			return;
 		glyph.width = 4;
 		glyph.span = 1;
 		glyph.rows = 3;
