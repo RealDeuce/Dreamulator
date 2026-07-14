@@ -3205,9 +3205,9 @@ void PclPrinter::restart_underline_span()
 	start_underline_span();
 }
 
-float PclPrinter::underline_y_in(float y_in, int) const
+float PclPrinter::underline_y_in(float y_in, int selector) const
 {
-	return y_in + 5.0f / kDotsPerIn;
+	return y_in + (selector == 1 ? 18.0f : 5.0f) / kDotsPerIn;
 }
 
 void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in,

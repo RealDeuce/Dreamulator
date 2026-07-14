@@ -1993,8 +1993,12 @@ def main():
                              130, 100, 180, 104, dpi=300) == 0:
             raise AssertionError("fixed underline span did not cover tab gap")
         if ppm_rect_nonwhite(underline_span_pdf, tmp / "underline-span",
-                             130, 100, 180, 104, dpi=300) == 0:
+                             130, 113, 180, 118, dpi=300) == 0:
             raise AssertionError("floating underline span did not cover tab gap")
+        if ppm_rect_nonwhite(underline_span_pdf,
+                             tmp / "underline-span-fixed-row",
+                             130, 100, 180, 104, dpi=300) != 0:
+            raise AssertionError("floating underline used fixed underline row")
         if ppm_rect_nonwhite(underline_span_pdf,
                              tmp / "underline-span-old-above",
                              130, 90, 180, 95, dpi=300) != 0:
