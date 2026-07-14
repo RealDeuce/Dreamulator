@@ -3824,6 +3824,63 @@ def main():
         if "".join(pdftotext(macro_temporary_reset_pdf).split()) != "!":
             raise AssertionError("temporary macro survived reset")
 
+        macro_delete_temporary = write(
+            tmp / "macro-delete-temporary.pcl",
+            ESC + b"&f420Y" +
+            ESC + b"&f0X" + b"T" + ESC + b"&f1X" +
+            ESC + b"&f421Y" +
+            ESC + b"&f0X" + b"P" + ESC + b"&f1X" +
+            ESC + b"&f10X" +
+            ESC + b"&f7X" +
+            ESC + b"&f420Y" + ESC + b"&f2X" +
+            ESC + b"&f421Y" + ESC + b"&f2X" +
+            b"!" + FF)
+        macro_delete_current = write(
+            tmp / "macro-delete-current.pcl",
+            ESC + b"&f422Y" +
+            ESC + b"&f0X" + b"C" + ESC + b"&f1X" +
+            ESC + b"&f8X" +
+            ESC + b"&f2X" +
+            b"!" + FF)
+        macro_delete_all = write(
+            tmp / "macro-delete-all.pcl",
+            ESC + b"&f423Y" +
+            ESC + b"&f0X" + b"A" + ESC + b"&f1X" +
+            ESC + b"&f10X" +
+            ESC + b"&f6X" +
+            ESC + b"&f2X" +
+            b"!" + FF)
+        macro_permanent_to_temporary_delete = write(
+            tmp / "macro-permanent-to-temporary-delete.pcl",
+            ESC + b"&f424Y" +
+            ESC + b"&f0X" + b"R" + ESC + b"&f1X" +
+            ESC + b"&f10X" +
+            ESC + b"&f9X" +
+            ESC + b"&f7X" +
+            ESC + b"&f2X" +
+            b"!" + FF)
+        macro_delete_temporary_pdf = tmp / "macro-delete-temporary.pdf"
+        macro_delete_current_pdf = tmp / "macro-delete-current.pdf"
+        macro_delete_all_pdf = tmp / "macro-delete-all.pdf"
+        macro_permanent_to_temporary_delete_pdf = \
+            tmp / "macro-permanent-to-temporary-delete.pdf"
+        render(dreamprint, macro_delete_temporary,
+               macro_delete_temporary_pdf)
+        render(dreamprint, macro_delete_current, macro_delete_current_pdf)
+        render(dreamprint, macro_delete_all, macro_delete_all_pdf)
+        render(dreamprint, macro_permanent_to_temporary_delete,
+               macro_permanent_to_temporary_delete_pdf)
+        macro_delete_temporary_text = "".join(
+            pdftotext(macro_delete_temporary_pdf).split())
+        if macro_delete_temporary_text != "P!":
+            raise AssertionError("delete-temporary macro selector removed wrong records")
+        if "".join(pdftotext(macro_delete_current_pdf).split()) != "!":
+            raise AssertionError("delete-current macro selector left replayable record")
+        if "".join(pdftotext(macro_delete_all_pdf).split()) != "!":
+            raise AssertionError("delete-all macro selector preserved permanent record")
+        if "".join(pdftotext(macro_permanent_to_temporary_delete_pdf).split()) != "!":
+            raise AssertionError("make-temporary macro selector did not affect delete-temporary")
+
         macro_nested = write(tmp / "macro-nested.pcl",
                              ESC + b"&f500Y" +
                              ESC + b"&f0X" + b"N" +
