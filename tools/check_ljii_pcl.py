@@ -3378,6 +3378,34 @@ def main():
                       tmp / "raster-start-second-origin", dpi=300):
             raise AssertionError("active raster start still matched second origin")
 
+        raster_landscape_cursor = write(
+            tmp / "raster-landscape-cursor.pcl",
+            ESC + b"&l1O" +
+            ESC + b"*t300R" +
+            ESC + b"*r1A" +
+            ESC + b"*b1W" +
+            b"\x00" +
+            b"!" + FF)
+        raster_landscape_cursor_expected = write(
+            tmp / "raster-landscape-cursor-expected.pcl",
+            ESC + b"&l1O" +
+            ESC + b"*p59X" +
+            b"!" + FF)
+        raster_landscape_cursor_pdf = tmp / "raster-landscape-cursor.pdf"
+        raster_landscape_cursor_expected_pdf = \
+            tmp / "raster-landscape-cursor-expected.pdf"
+        render(dreamprint, raster_landscape_cursor,
+               raster_landscape_cursor_pdf)
+        render(dreamprint, raster_landscape_cursor_expected,
+               raster_landscape_cursor_expected_pdf)
+        if pdftotext(raster_landscape_cursor_pdf).strip() != "!":
+            raise AssertionError("landscape raster cursor update lost text")
+        if ppm_sha256(raster_landscape_cursor_pdf,
+                      tmp / "raster-landscape-cursor", dpi=300) != \
+           ppm_sha256(raster_landscape_cursor_expected_pdf,
+                      tmp / "raster-landscape-cursor-expected", dpi=300):
+            raise AssertionError("landscape raster transfer did not update cursor")
+
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
         for _ in range(30):
