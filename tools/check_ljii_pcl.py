@@ -3456,6 +3456,71 @@ def main():
         if macro_transparent_text.count("AB") < 256:
             raise AssertionError("macro transparent append lost replayed text")
 
+        macro_transparent_lower_append = write(
+            tmp / "macro-transparent-lower-append.pcl",
+            ESC + b"&f707Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" +
+            ESC + b"&p1x9X" + b"BC" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_transparent_lower_append_pdf = \
+            tmp / "macro-transparent-lower-append.pdf"
+        render(dreamprint, macro_transparent_lower_append,
+               macro_transparent_lower_append_pdf)
+        macro_transparent_lower_text = "".join(
+            pdftotext(macro_transparent_lower_append_pdf).split())
+        if macro_transparent_lower_text.count("ABC") < 256:
+            raise AssertionError("macro transparent lowercase delayed payload replayed handler")
+
+        macro_raster_lower_append = write(
+            tmp / "macro-raster-lower-append.pcl",
+            ESC + b"&f708Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" +
+            ESC + b"*b1w9W" + b"BC" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_raster_lower_append_pdf = tmp / "macro-raster-lower-append.pdf"
+        render(dreamprint, macro_raster_lower_append,
+               macro_raster_lower_append_pdf)
+        macro_raster_lower_text = "".join(
+            pdftotext(macro_raster_lower_append_pdf).split())
+        if macro_raster_lower_text.count("ABC") < 256:
+            raise AssertionError("macro raster lowercase delayed payload replayed handler")
+
+        macro_vfc_lower_append = write(
+            tmp / "macro-vfc-lower-append.pcl",
+            ESC + b"&f709Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" +
+            ESC + b"&l1w9W" + b"BC" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_vfc_lower_append_pdf = tmp / "macro-vfc-lower-append.pdf"
+        render(dreamprint, macro_vfc_lower_append,
+               macro_vfc_lower_append_pdf)
+        macro_vfc_lower_text = "".join(
+            pdftotext(macro_vfc_lower_append_pdf).split())
+        if macro_vfc_lower_text.count("ABC") < 256:
+            raise AssertionError("macro VFC lowercase delayed payload replayed handler")
+
+        macro_font_lower_append = write(
+            tmp / "macro-font-lower-append.pcl",
+            ESC + b"&f710Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" +
+            ESC + b")s1w9W" + b"BC" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_font_lower_append_pdf = tmp / "macro-font-lower-append.pdf"
+        render(dreamprint, macro_font_lower_append,
+               macro_font_lower_append_pdf)
+        macro_font_lower_text = "".join(
+            pdftotext(macro_font_lower_append_pdf).split())
+        if macro_font_lower_text.count("ABC") < 256:
+            raise AssertionError("macro font lowercase delayed payload replayed handler")
+
         macro_font_x_payload = write(
             tmp / "macro-font-x-payload.pcl",
             ESC + b"&f706Y" +
