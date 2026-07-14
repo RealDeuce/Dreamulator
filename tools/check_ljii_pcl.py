@@ -2512,6 +2512,56 @@ def main():
                       tmp / "fixed-record-type1-high-baseline", dpi=300):
             raise AssertionError("fixed-record type-1 did not install high downloaded character")
 
+        fixed_record_descriptor_expected = write(
+            tmp / "fixed-record-descriptor-expected.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c33E" +
+            ESC + b")s6W" + bytes.fromhex("aa 55 f0 0f c3 3c") +
+            ESC + b"(4669X" + b"!" + FF)
+        fixed_record_descriptor_current = write(
+            tmp / "fixed-record-descriptor-current.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c33E" +
+            ESC + b")s12w0W" +
+            bytes.fromhex("04 00 02 03 04 00 aa 55 f0 0f c3 3c") +
+            ESC + b"(4669X" + b"!" + FF)
+        fixed_record_descriptor_continuation = write(
+            tmp / "fixed-record-descriptor-continuation.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c33E" +
+            ESC + b")s8w0W" +
+            bytes.fromhex("04 00 02 03 04 00 aa 55") +
+            ESC + b")s7w0W" +
+            bytes.fromhex("04 01 cc f0 0f c3 3c") +
+            ESC + b"(4669X" + b"!" + FF)
+        fixed_record_descriptor_expected_pdf = \
+            tmp / "fixed-record-descriptor-expected.pdf"
+        fixed_record_descriptor_current_pdf = \
+            tmp / "fixed-record-descriptor-current.pdf"
+        fixed_record_descriptor_continuation_pdf = \
+            tmp / "fixed-record-descriptor-continuation.pdf"
+        render(dreamprint, fixed_record_descriptor_expected,
+               fixed_record_descriptor_expected_pdf)
+        render(dreamprint, fixed_record_descriptor_current,
+               fixed_record_descriptor_current_pdf)
+        render(dreamprint, fixed_record_descriptor_continuation,
+               fixed_record_descriptor_continuation_pdf)
+        if pdftotext(fixed_record_descriptor_current_pdf).strip() != "!":
+            raise AssertionError("fixed-record descriptor current path lost text")
+        if pdftotext(fixed_record_descriptor_continuation_pdf).strip() != "!":
+            raise AssertionError("fixed-record descriptor continuation path lost text")
+        descriptor_hash = ppm_sha256(fixed_record_descriptor_expected_pdf,
+                                     tmp / "fixed-record-descriptor-expected",
+                                     dpi=300)
+        if ppm_sha256(fixed_record_descriptor_current_pdf,
+                      tmp / "fixed-record-descriptor-current", dpi=300) != \
+           descriptor_hash:
+            raise AssertionError("fixed-record descriptor current path rendered wrong pixels")
+        if ppm_sha256(fixed_record_descriptor_continuation_pdf,
+                      tmp / "fixed-record-descriptor-continuation",
+                      dpi=300) != descriptor_hash:
+            raise AssertionError("fixed-record descriptor continuation path rendered wrong pixels")
+
         def descriptor_glyph(rows, span):
             width = span * 8
             return (

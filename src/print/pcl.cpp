@@ -391,6 +391,7 @@ private:
 		DrainData,
 		DisplayFunctions,
 		DownloadData,
+		DownloadDescriptorData,
 		ControlZ,
 		StatusQuery,
 	};
@@ -517,6 +518,7 @@ private:
 	const SoftFont *selected_soft_font() const;
 	void delete_soft_font(int id);
 	void refresh_soft_font_request(const SoftFont &font);
+	void apply_download_descriptor_payload(const std::vector<uint8_t> &payload);
 	void apply_download_payload(const std::vector<uint8_t> &payload);
 	void draw_soft_glyph_pixels(const SoftGlyph &glyph);
 	bool render_soft_glyph(uint8_t b, float char_w_in);
@@ -861,6 +863,7 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::VfcData:
 	case State::DrainData:
 	case State::DownloadData:
+	case State::DownloadDescriptorData:
 		finish_payload_byte(b);
 		return;
 	case State::DisplayFunctions:
@@ -1481,20 +1484,24 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			break;
 		case 'W':
 			download_font_slot_ = slot;
+		{
+			int final_count = pcl_integer_word(value);
 			if (pending_download_count_ >= 0) {
 				ival = pending_download_count_;
 				pending_download_count_ = -1;
 			} else {
-				ival = pcl_integer_word(value);
+				ival = final_count;
 			}
-			if (ival == 0) {
-				begin_payload(State::DrainData, 3);
+			if (final_count == 0) {
+				begin_payload(State::DownloadDescriptorData,
+				              ival > 0 ? ival : 3);
 			} else if (ival > 0x7fff) {
 				begin_payload(State::DrainData, 0x7fff);
 			} else {
 				begin_payload(State::DownloadData, ival);
 			}
 			break;
+		}
 		default:
 			break;
 		}
@@ -1852,16 +1859,19 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		if ((payload_state_ == State::RasterData ||
 		     payload_state_ == State::VfcData ||
 		     payload_state_ == State::DownloadData ||
+		     payload_state_ == State::DownloadDescriptorData ||
 		     payload_state_ == State::DrainData) && payload_control_pending_) {
 			payload_control_pending_ = false;
 			if (b == 0x58) {
-				if (payload_state_ == State::DownloadData)
+				if (payload_state_ == State::DownloadData ||
+				    payload_state_ == State::DownloadDescriptorData)
 					download_payload_control_seen_ = true;
 				b = 0x00;
 			}
 		} else if ((payload_state_ == State::RasterData ||
 		            payload_state_ == State::VfcData ||
 		            payload_state_ == State::DownloadData ||
+		            payload_state_ == State::DownloadDescriptorData ||
 		            payload_state_ == State::DrainData) && b == 0x1a) {
 			payload_control_pending_ = true;
 			return;
@@ -1879,6 +1889,10 @@ void PclPrinter::finish_payload_byte(uint8_t b)
 		apply_vfc_payload(payload_buf_);
 	else if (payload_state_ == State::DownloadData) {
 		apply_download_payload(payload_buf_);
+		if (download_font_slot_ == active_font_slot_)
+			sync_active_font_state();
+	} else if (payload_state_ == State::DownloadDescriptorData) {
+		apply_download_descriptor_payload(payload_buf_);
 		if (download_font_slot_ == active_font_slot_)
 			sync_active_font_state();
 	}
@@ -2316,6 +2330,76 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 		if (slot == active_font_slot_)
 			sync_active_font_state();
 	}
+}
+
+void PclPrinter::apply_download_descriptor_payload(
+	const std::vector<uint8_t> &payload)
+{
+	if (payload.size() < 3 || payload[0] != 0x04)
+		return;
+
+	SoftFont &font = current_soft_font();
+	font.active = true;
+	if (payload[1] != 0) {
+		if (!font.continuation_active)
+			return;
+		auto it = font.glyphs.find(font.continuation_char);
+		if (it == font.glyphs.end()) {
+			font.continuation_active = false;
+			font.continuation_remaining = 0;
+			return;
+		}
+		SoftGlyph &glyph = it->second;
+		auto first = payload.begin() +
+		             (std::vector<uint8_t>::difference_type)3;
+		size_t available = (size_t)(payload.end() - first);
+		size_t copy = std::min(available, font.continuation_remaining);
+		if (font.continuation_offset + copy > glyph.bitmap.size())
+			glyph.bitmap.resize(font.continuation_offset + copy, 0);
+		std::copy_n(first, copy,
+		            glyph.bitmap.begin() +
+		            (std::vector<uint8_t>::difference_type)font.continuation_offset);
+		font.continuation_offset += copy;
+		font.continuation_remaining -= copy;
+		if (font.continuation_remaining == 0)
+			font.continuation_active = false;
+		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
+		return;
+	}
+
+	font.continuation_active = false;
+	font.continuation_remaining = 0;
+	if (payload.size() < 6)
+		return;
+	if (soft_char_code_ >= 0x80 && soft_char_code_ < 0xa0)
+		return;
+	if (soft_char_code_ >= 0xa0 && !font.fixed_record_extended_chars)
+		return;
+
+	uint16_t span = payload[2];
+	uint16_t rows = payload[3];
+	if (span == 0 || rows == 0)
+		return;
+
+	SoftGlyph glyph;
+	glyph.span = span;
+	glyph.width = (uint16_t)(span * 8);
+	glyph.rows = rows;
+	glyph.bitmap.assign(payload.begin() + 6, payload.end());
+	size_t expected = (size_t)glyph.rows * glyph.span;
+	if (glyph.bitmap.size() < expected) {
+		size_t copied = glyph.bitmap.size();
+		glyph.bitmap.resize(expected, 0);
+		font.continuation_active = true;
+		font.continuation_char = soft_char_code_;
+		font.continuation_offset = copied;
+		font.continuation_remaining = expected - copied;
+	}
+
+	font.glyphs[soft_char_code_] = std::move(glyph);
+	if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
 
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
