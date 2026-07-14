@@ -738,6 +738,25 @@ def main():
                       dpi=300):
             raise AssertionError("invalid pitch-mode selector changed font pitch")
 
+        pitch_mode_default = write(tmp / "pitch-mode-default.pcl",
+                                   b"Pitch mode" + FF)
+        pitch_mode_default_pdf = tmp / "pitch-mode-default.pdf"
+        render(dreamprint, pitch_mode_default, pitch_mode_default_pdf)
+        if "".join(pdftotext(pitch_mode_positive_pdf).split()) != "Pitchmode":
+            raise AssertionError("line-printer pitch lost selectable text")
+        line_box = ppm_bbox(pitch_mode_positive_pdf,
+                            tmp / "pitch-mode-positive-box", dpi=300)
+        default_box = ppm_bbox(pitch_mode_default_pdf,
+                               tmp / "pitch-mode-default-box", dpi=300)
+        if line_box is None or default_box is None:
+            raise AssertionError("line-printer pitch rendered blank")
+        line_w = line_box[2] - line_box[0] + 1
+        line_h = line_box[3] - line_box[1] + 1
+        default_w = default_box[2] - default_box[0] + 1
+        default_h = default_box[3] - default_box[1] + 1
+        if line_w >= default_w * 3 // 4 or line_h >= default_h:
+            raise AssertionError("line-printer pitch did not select resident compact glyphs")
+
         vmi_zero_base = write(tmp / "vmi-zero-base.pcl",
                               ESC + b"&l12D" + b"A\nB" + FF)
         vmi_zero_ignored = write(tmp / "vmi-zero-ignored.pcl",
