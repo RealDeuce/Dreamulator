@@ -2749,6 +2749,82 @@ def main():
            ppm_sha256(raster_300_pdf, tmp / "raster-300-again", dpi=300):
             raise AssertionError("default raster mode still matched 300 dpi mode")
 
+        raster_active_resolution_ignored = write(
+            tmp / "raster-active-resolution-ignored.pcl",
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*t75R" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_end_reenables_resolution = write(
+            tmp / "raster-end-reenables-resolution.pcl",
+            ESC + b"*t300R" +
+            ESC + b"*r0A" +
+            ESC + b"*rB" +
+            ESC + b"*t150R" +
+            ESC + b"*r0A" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_active_start_ignored = write(
+            tmp / "raster-active-start-ignored.pcl",
+            ESC + b"*t300R" +
+            ESC + b"&a5C" +
+            ESC + b"*r1A" +
+            ESC + b"&a25C" +
+            ESC + b"*r1A" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_start_first_origin = write(
+            tmp / "raster-start-first-origin.pcl",
+            ESC + b"*t300R" +
+            ESC + b"&a5C" +
+            ESC + b"*r1A" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_start_second_origin = write(
+            tmp / "raster-start-second-origin.pcl",
+            ESC + b"*t300R" +
+            ESC + b"&a25C" +
+            ESC + b"*r1A" +
+            ESC + b"*b2W" +
+            bytes([0xf0, 0x0f]) + FF)
+        raster_active_resolution_ignored_pdf = \
+            tmp / "raster-active-resolution-ignored.pdf"
+        raster_end_reenables_resolution_pdf = \
+            tmp / "raster-end-reenables-resolution.pdf"
+        raster_active_start_ignored_pdf = \
+            tmp / "raster-active-start-ignored.pdf"
+        raster_start_first_origin_pdf = tmp / "raster-start-first-origin.pdf"
+        raster_start_second_origin_pdf = tmp / "raster-start-second-origin.pdf"
+        render(dreamprint, raster_active_resolution_ignored,
+               raster_active_resolution_ignored_pdf)
+        render(dreamprint, raster_end_reenables_resolution,
+               raster_end_reenables_resolution_pdf)
+        render(dreamprint, raster_active_start_ignored,
+               raster_active_start_ignored_pdf)
+        render(dreamprint, raster_start_first_origin,
+               raster_start_first_origin_pdf)
+        render(dreamprint, raster_start_second_origin,
+               raster_start_second_origin_pdf)
+        if ppm_sha256(raster_active_resolution_ignored_pdf,
+                      tmp / "raster-active-resolution-ignored", dpi=300) != \
+           ppm_sha256(raster_300_pdf, tmp / "raster-300-active", dpi=300):
+            raise AssertionError("active raster resolution update was not ignored")
+        if ppm_sha256(raster_end_reenables_resolution_pdf,
+                      tmp / "raster-end-reenables-resolution", dpi=300) != \
+           ppm_sha256(raster_150_pdf, tmp / "raster-150-after-end", dpi=300):
+            raise AssertionError("raster end did not re-enable resolution update")
+        if ppm_sha256(raster_active_start_ignored_pdf,
+                      tmp / "raster-active-start-ignored", dpi=300) != \
+           ppm_sha256(raster_start_first_origin_pdf,
+                      tmp / "raster-start-first-origin", dpi=300):
+            raise AssertionError("active raster start changed origin")
+        if ppm_sha256(raster_active_start_ignored_pdf,
+                      tmp / "raster-active-start-ignored-again", dpi=300) == \
+           ppm_sha256(raster_start_second_origin_pdf,
+                      tmp / "raster-start-second-origin", dpi=300):
+            raise AssertionError("active raster start still matched second origin")
+
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
         for _ in range(30):
