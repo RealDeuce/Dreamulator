@@ -602,6 +602,34 @@ def main():
                       tmp / "dot-position-y-fractional", dpi=300):
             raise AssertionError("vertical dot position used fractional word")
 
+        semicolon_continuation = write(
+            tmp / "semicolon-continuation.pcl",
+            ESC + b"&a1;2C" + b"A" + FF)
+        colon_continuation = write(
+            tmp / "colon-continuation.pcl",
+            ESC + b"&a1:2C" + b"A" + FF)
+        continuation_expected = write(
+            tmp / "continuation-expected.pcl",
+            ESC + b"&a2C" + b"A" + FF)
+        semicolon_continuation_pdf = tmp / "semicolon-continuation.pdf"
+        colon_continuation_pdf = tmp / "colon-continuation.pdf"
+        continuation_expected_pdf = tmp / "continuation-expected.pdf"
+        render(dreamprint, semicolon_continuation, semicolon_continuation_pdf)
+        render(dreamprint, colon_continuation, colon_continuation_pdf)
+        render(dreamprint, continuation_expected, continuation_expected_pdf)
+        expected_hash = ppm_sha256(continuation_expected_pdf,
+                                   tmp / "continuation-expected", dpi=300)
+        if ppm_sha256(semicolon_continuation_pdf,
+                      tmp / "semicolon-continuation", dpi=300) != expected_hash:
+            raise AssertionError("semicolon continuation broke parameter parsing")
+        if ppm_sha256(colon_continuation_pdf,
+                      tmp / "colon-continuation", dpi=300) != expected_hash:
+            raise AssertionError("colon continuation broke parameter parsing")
+        if pdftotext(semicolon_continuation_pdf).strip() != "A":
+            raise AssertionError("semicolon continuation leaked selectable text")
+        if pdftotext(colon_continuation_pdf).strip() != "A":
+            raise AssertionError("colon continuation leaked selectable text")
+
         dot_position_zero = write(tmp / "dot-position-zero.pcl",
                                   ESC + b"*p0X" + b"!" + FF)
         column_position_zero = write(tmp / "column-position-zero.pcl",

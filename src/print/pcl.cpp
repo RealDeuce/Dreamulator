@@ -1208,6 +1208,13 @@ void PclPrinter::process_parameter_byte(uint8_t b)
 	int ival = static_cast<int>(std::lround(value));
 	current_param_relative_ = param_relative_;
 
+	if (b == ':' || b == ';') {
+		param_pos_ = 0;
+		param_buf_[0] = 0;
+		param_relative_ = false;
+		return;
+	}
+
 	if (b >= '@' && b <= '^') {
 		if (b == 'W' &&
 		    !((group_ == '&' && subgroup_ == 'l') ||
