@@ -221,6 +221,15 @@ def main():
         secondary_line_sample_pdf = tmp / "secondary-line-sample.pdf"
         render(dreamprint, upright_line_sample, upright_line_sample_pdf)
         render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
+        primary_line_hash = ppm_sha256(upright_line_sample_pdf,
+                                       tmp / "upright-line-sample",
+                                       dpi=150)
+        secondary_line_hash = ppm_sha256(secondary_line_sample_pdf,
+                                         tmp / "secondary-line-sample",
+                                         dpi=150)
+        if primary_line_hash != secondary_line_hash:
+            raise AssertionError(
+                "portrait SO line did not match the primary Line Printer raster")
         primary_line_box = ppm_bbox(upright_line_sample_pdf,
                                     tmp / "upright-line-shape",
                                     dpi=150)
@@ -229,11 +238,8 @@ def main():
                                       dpi=150)
         if primary_line_box is None or secondary_line_box is None:
             raise AssertionError("sample primary/SO line rendered no resident glyphs")
-        primary_line_h = primary_line_box[3] - primary_line_box[1] + 1
         secondary_line_w = secondary_line_box[2] - secondary_line_box[0] + 1
         secondary_line_h = secondary_line_box[3] - secondary_line_box[1] + 1
-        if secondary_line_h >= primary_line_h:
-            raise AssertionError("sample SO line did not select the secondary resident class")
         if secondary_line_w <= secondary_line_h * 8:
             raise AssertionError("sample SO line rendered as vertical/rotated text")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
