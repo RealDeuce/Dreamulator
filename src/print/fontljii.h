@@ -29,7 +29,7 @@ struct LjiiFontRequest {
 };
 
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte);
-uint32_t select_ljii_context(const LjiiFontRequest &request);
+uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation);
 int ljii_context_pitch(uint32_t context_longword);
 uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set);
 

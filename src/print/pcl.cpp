@@ -464,7 +464,9 @@ private:
 		bool has_request_metrics = false;
 		bool has_pitch_metric = false;
 		bool has_height_metric = false;
+		bool has_style_metric = false;
 		bool has_stroke_metric = false;
+		bool has_typeface_metric = false;
 		bool continuation_active = false;
 		uint8_t continuation_char = 0;
 		size_t continuation_offset = 0;
@@ -479,7 +481,9 @@ private:
 		int spacing = 0;
 		int pitch = 1000;
 		int height = 1200;
+		int style = 0;
 		int stroke = 0;
+		int typeface = 0;
 		std::map<uint8_t, SoftGlyph> glyphs;
 	};
 
@@ -517,6 +521,7 @@ private:
 	SoftFont &current_soft_font();
 	SoftFont *selected_soft_font();
 	const SoftFont *selected_soft_font() const;
+	const SoftFont *selected_soft_font_candidate() const;
 	void delete_soft_font(int id);
 	void refresh_soft_font_request(const SoftFont &font);
 	void release_fixed_record_glyph(SoftFont &font, uint8_t ch);
@@ -2272,25 +2277,8 @@ PclPrinter::SoftFont &PclPrinter::current_soft_font()
 
 PclPrinter::SoftFont *PclPrinter::selected_soft_font()
 {
-	int id = selected_soft_font_id_[active_font_slot_ ? 1 : 0];
-	if (id >= 0) {
-		auto it = soft_fonts_.find(id);
-		if (it != soft_fonts_.end() && it->second.active)
-			return &it->second;
-		return nullptr;
-	}
-
-	SoftFont *fallback = nullptr;
-	for (auto &entry : soft_fonts_) {
-		if (!entry.second.active)
-			continue;
-		if (entry.second.glyphs.empty())
-			continue;
-		if (fallback)
-			return nullptr;
-		fallback = &entry.second;
-	}
-	return fallback;
+	return const_cast<SoftFont *>(
+		static_cast<const PclPrinter *>(this)->selected_soft_font());
 }
 
 const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
@@ -2302,18 +2290,68 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
 			return &it->second;
 		return nullptr;
 	}
+	return selected_soft_font_candidate();
+}
 
-	const SoftFont *fallback = nullptr;
+const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
+{
+	std::vector<const SoftFont *> candidates;
 	for (const auto &entry : soft_fonts_) {
 		if (!entry.second.active)
 			continue;
 		if (entry.second.glyphs.empty())
 			continue;
-		if (fallback)
-			return nullptr;
-		fallback = &entry.second;
+		candidates.push_back(&entry.second);
 	}
-	return fallback;
+	if (candidates.empty())
+		return nullptr;
+
+	const LjiiFontRequest &req = active_font_request();
+	auto prune = [&candidates](auto predicate) {
+		std::vector<const SoftFont *> filtered;
+		for (const SoftFont *font : candidates)
+			if (predicate(*font))
+				filtered.push_back(font);
+		if (!filtered.empty())
+			candidates = std::move(filtered);
+	};
+	auto nearest = [&candidates, &prune](auto value_fn, int requested) {
+		if (candidates.empty())
+			return;
+		int best_diff = 0x7fffffff;
+		for (const SoftFont *font : candidates)
+			best_diff = std::min(best_diff,
+			                     std::abs(value_fn(*font) - requested));
+		prune([&](const SoftFont &font) {
+			return std::abs(value_fn(font) - requested) == best_diff;
+		});
+	};
+
+	prune([&](const SoftFont &font) { return font.symbol_set == req.symbol_set; });
+	if (req.symbol_set != kSymbolRoman8)
+		prune([](const SoftFont &font) { return font.symbol_set == kSymbolRoman8; });
+
+	std::vector<const SoftFont *> spacing_matches;
+	for (const SoftFont *font : candidates)
+		if (font->spacing == req.spacing)
+			spacing_matches.push_back(font);
+	if (req.spacing == 1) {
+		if (!spacing_matches.empty())
+			candidates = std::move(spacing_matches);
+	} else if (!spacing_matches.empty()) {
+		candidates = std::move(spacing_matches);
+		nearest([](const SoftFont &font) { return font.pitch; }, req.pitch);
+	}
+
+	nearest([](const SoftFont &font) { return font.height; }, req.height);
+	prune([&](const SoftFont &font) { return font.style == req.style; });
+	if (req.stroke >= 3)
+		prune([](const SoftFont &font) { return font.stroke >= 3; });
+	else
+		prune([&](const SoftFont &font) { return font.stroke == req.stroke; });
+	prune([&](const SoftFont &font) { return font.typeface == req.typeface; });
+
+	return candidates.empty() ? nullptr : candidates.front();
 }
 
 void PclPrinter::delete_soft_font(int id)
@@ -2338,8 +2376,12 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 			req.pitch = font.pitch;
 		if (font.has_height_metric)
 			req.height = font.height;
+		if (font.has_style_metric)
+			req.style = font.style;
 		if (font.has_stroke_metric)
 			req.stroke = font.stroke;
+		if (font.has_typeface_metric)
+			req.typeface = font.typeface;
 		if (slot == active_font_slot_)
 			sync_active_font_state();
 	}
@@ -2422,8 +2464,6 @@ void PclPrinter::apply_download_descriptor_payload(
 		if (!glyph.split_plane && available >= 2 &&
 		    available < font.continuation_remaining) {
 			release_fixed_record_glyph(font, font.continuation_char);
-			if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-				selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 			return;
 		}
 		auto last = first + (std::vector<uint8_t>::difference_type)
@@ -2434,8 +2474,6 @@ void PclPrinter::apply_download_descriptor_payload(
 		font.continuation_remaining -= copy;
 		if (font.continuation_remaining == 0)
 			font.continuation_active = false;
-		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 		return;
 	}
 
@@ -2472,8 +2510,6 @@ void PclPrinter::apply_download_descriptor_payload(
 	}
 
 	font.glyphs[soft_char_code_] = std::move(glyph);
-	if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
 
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
@@ -2481,8 +2517,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	SoftFont &font = current_soft_font();
 	font.active = true;
 	if (payload.empty()) {
-		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 		return;
 	}
 
@@ -2507,8 +2541,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.continuation_remaining -= copy;
 		if (font.continuation_remaining == 0)
 			font.continuation_active = false;
-		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 		return;
 	}
 
@@ -2548,6 +2580,15 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			font.height = std::min<int>(height, 0x2aaa);
 			font.has_height_metric = true;
 		}
+		if (payload.size() > 0x31) {
+			font.style = payload[0x2f];
+			font.stroke = std::max(-7, std::min(7,
+			                                    (int)(int8_t)payload[0x30]));
+			font.typeface = payload[0x31];
+			font.has_style_metric = true;
+			font.has_stroke_metric = true;
+			font.has_typeface_metric = true;
+		}
 		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
 			LjiiFontRequest &req = font_request(download_font_slot_);
 			req.symbol_set = font.symbol_set;
@@ -2556,9 +2597,15 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 				req.pitch = font.pitch;
 			if (font.has_height_metric)
 				req.height = font.height;
+			if (font.has_style_metric)
+				req.style = font.style;
+			if (font.has_stroke_metric)
+				req.stroke = font.stroke;
+			if (font.has_typeface_metric)
+				req.typeface = font.typeface;
+			if (download_font_slot_ == active_font_slot_)
+				sync_active_font_state();
 		}
-		if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-			selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 		return;
 	}
 
@@ -2575,8 +2622,13 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		if (payload.size() > 0x21)
 			font.spacing = payload[0x21] ? 1 : 0;
 		if (payload.size() > 0x31) {
-			font.stroke = (int)(int8_t)payload[0x30];
+			font.style = payload[0x2f];
+			font.stroke = std::max(-7, std::min(7,
+			                                    (int)(int8_t)payload[0x30]));
+			font.typeface = payload[0x31];
+			font.has_style_metric = true;
 			font.has_stroke_metric = true;
+			font.has_typeface_metric = true;
 		}
 		if (payload.size() > 0x2a) {
 			int pitch = ((int)payload[0x24] << 8) | payload[0x25];
@@ -2594,12 +2646,18 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			LjiiFontRequest &req = font_request(download_font_slot_);
 			req.symbol_set = font.symbol_set;
 			req.spacing = font.spacing;
+			if (font.has_style_metric)
+				req.style = font.style;
 			if (font.has_stroke_metric)
 				req.stroke = font.stroke;
+			if (font.has_typeface_metric)
+				req.typeface = font.typeface;
 			if (font.has_pitch_metric)
 				req.pitch = font.pitch;
 			if (font.has_height_metric)
 				req.height = font.height;
+			if (download_font_slot_ == active_font_slot_)
+				sync_active_font_state();
 		}
 		return;
 	}
@@ -2740,8 +2798,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	font.glyphs[soft_char_code_] = std::move(glyph);
 	if (render_payload_control_glyph)
 		draw_soft_glyph_pixels(font.glyphs[soft_char_code_]);
-	if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
-		selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
 }
 
 float PclPrinter::ljii_metric_width_in(uint8_t width, float fallback_in) const
@@ -2949,7 +3005,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	uint8_t glyph_byte = text_glyph_byte_for(*render_req, source_byte);
 	if (glyph_byte == 0)
 		return true;
-	uint32_t context = select_ljii_context(*render_req);
+	uint32_t context = select_ljii_context(*render_req, orientation_);
 	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
 	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
 	bool had_pending = consume_previous_width_adjustment(char_w_in);
@@ -3172,7 +3228,8 @@ void PclPrinter::sync_active_font_state()
 	const LjiiFontRequest &req = active_font_request();
 	int pitch = req.pitch;
 	if (!selected_soft_font()) {
-		int context_pitch = ljii_context_pitch(select_ljii_context(req));
+		int context_pitch = ljii_context_pitch(
+			select_ljii_context(req, orientation_));
 		if (context_pitch > 0)
 			pitch = context_pitch;
 	}

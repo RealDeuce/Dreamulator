@@ -1665,6 +1665,11 @@ def main():
            ppm_sha256(explicit_secondary_line_pdf,
                       tmp / "explicit-secondary-line", dpi=150):
             raise AssertionError("built-in secondary font ID 8 did not select line-printer context")
+        secondary_line_bbox = ppm_bbox(secondary_line_pdf,
+                                       tmp / "secondary-line-shape", dpi=150)
+        if secondary_line_bbox is None or \
+           secondary_line_bbox[3] - secondary_line_bbox[1] + 1 < 12:
+            raise AssertionError("portrait SO selected rotated secondary resident glyph rows")
 
         primary_symbol_miss = write(
             tmp / "primary-symbol-miss.pcl",
@@ -2048,6 +2053,67 @@ def main():
                       tmp / "soft-descriptor-explicit", dpi=300):
             raise AssertionError(
                 "downloaded descriptor pitch/height words were not capped")
+
+        def soft_pitch_header(pitch):
+            header = bytearray(64)
+            header[0x21] = 0
+            header[0x22] = 0x01
+            header[0x23] = 0x15
+            header[0x24] = (pitch >> 8) & 0xff
+            header[0x25] = pitch & 0xff
+            header[0x28] = 0x04
+            header[0x29] = 0xb0
+            header[0x2f] = 0
+            header[0x30] = 0
+            header[0x31] = 3
+            return bytes(header)
+
+        soft_pitch_a = b"\xe0\xe0\xe0"
+        soft_pitch_b = b"\x1c\x1c\x1c"
+        soft_pitch_font_10 = (
+            ESC + b"*c4672D" +
+            ESC + b"*c0E" + ESC + b"(s64W" + soft_pitch_header(1000) +
+            ESC + b"*c65E" + ESC + b"(s3W" + soft_pitch_a)
+        soft_pitch_font_20 = (
+            ESC + b"*c4673D" +
+            ESC + b"*c0E" + ESC + b"(s64W" + soft_pitch_header(2000) +
+            ESC + b"*c65E" + ESC + b"(s3W" + soft_pitch_b)
+        soft_pitch_reference_10 = write(
+            tmp / "soft-pitch-reference-10.pcl",
+            soft_pitch_font_10 + ESC + b"(s10H" + b"A" + FF)
+        soft_pitch_reference_20 = write(
+            tmp / "soft-pitch-reference-20.pcl",
+            soft_pitch_font_20 + ESC + b"(s20H" + b"A" + FF)
+        soft_pitch_select_10 = write(
+            tmp / "soft-pitch-select-10.pcl",
+            soft_pitch_font_10 + soft_pitch_font_20 +
+            ESC + b"(s10H" + b"A" + FF)
+        soft_pitch_select_20 = write(
+            tmp / "soft-pitch-select-20.pcl",
+            soft_pitch_font_10 + soft_pitch_font_20 +
+            ESC + b"(s20H" + b"A" + FF)
+        soft_pitch_reference_10_pdf = tmp / "soft-pitch-reference-10.pdf"
+        soft_pitch_reference_20_pdf = tmp / "soft-pitch-reference-20.pdf"
+        soft_pitch_select_10_pdf = tmp / "soft-pitch-select-10.pdf"
+        soft_pitch_select_20_pdf = tmp / "soft-pitch-select-20.pdf"
+        render(dreamprint, soft_pitch_reference_10,
+               soft_pitch_reference_10_pdf)
+        render(dreamprint, soft_pitch_reference_20,
+               soft_pitch_reference_20_pdf)
+        render(dreamprint, soft_pitch_select_10, soft_pitch_select_10_pdf)
+        render(dreamprint, soft_pitch_select_20, soft_pitch_select_20_pdf)
+        ref10_hash = ppm_sha256(soft_pitch_reference_10_pdf,
+                                tmp / "soft-pitch-reference-10", dpi=300)
+        ref20_hash = ppm_sha256(soft_pitch_reference_20_pdf,
+                                tmp / "soft-pitch-reference-20", dpi=300)
+        if ref10_hash == ref20_hash:
+            raise AssertionError("downloaded pitch selection test is not sensitive")
+        if ppm_sha256(soft_pitch_select_10_pdf,
+                      tmp / "soft-pitch-select-10", dpi=300) != ref10_hash:
+            raise AssertionError("10 cpi request did not select matching downloaded font")
+        if ppm_sha256(soft_pitch_select_20_pdf,
+                      tmp / "soft-pitch-select-20", dpi=300) != ref20_hash:
+            raise AssertionError("20 cpi request did not select matching downloaded font")
 
         partial_descriptor_glyph = bytes.fromhex(
             "00 00 00 00 0c 01 00 03 00 10 00 00 f0 0f aa 55")
