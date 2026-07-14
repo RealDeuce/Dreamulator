@@ -1083,19 +1083,36 @@ void PclPrinter::advance_fixed_space()
 {
 	refresh_pending_cursor_y();
 	float char_w_in = hmi_in_;
+	bool had_pending = consume_previous_width_adjustment(char_w_in);
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
-		if (!wrap_enabled_)
+		if (!wrap_enabled_) {
+			finish_text_advance(char_w_in, char_w_in, had_pending);
 			return;
+		}
 		ljii_carriage_return();
 		ljii_line_feed();
 	}
-	ensure_text_page();
-	text_buf_.push_back({
-		st_.x_pos, st_.y_pos, 0x20, char_w_in,
-		char_w_in * 72.0f / 0.6f, 0
-	});
-	st_.x_pos += char_w_in;
-	clear_pending_cursor_y();
+	if (!ljii_nominal_text_vertical_accepts()) {
+		finish_text_advance(char_w_in, char_w_in, had_pending);
+		return;
+	}
+	start_underline_span();
+	append_ljii_text_glyph(0x20, char_w_in);
+	if (st_.underline) {
+		new_page_if_needed();
+		page_dirty_ = true;
+		int dpi = prof_.render_dpi;
+		int y = (int)std::lround(underline_y_in(st_.y_pos,
+		                                        underline_selector_) *
+		                         (float)dpi);
+		int x0 = (int)std::lround(st_.x_pos * (float)dpi);
+		int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
+		for (int x = x0; x < x1; x++) {
+			page_->set_pixel(x, y, 0);
+			page_->set_pixel(x, y + 1, 0);
+		}
+	}
+	finish_text_advance(char_w_in, char_w_in, had_pending);
 }
 
 void PclPrinter::process_parameter_byte(uint8_t b)

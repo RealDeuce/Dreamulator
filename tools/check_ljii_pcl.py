@@ -3289,6 +3289,19 @@ def main():
         if bbox is None or bbox[3] >= 150:
             raise AssertionError("page-extent rejected glyph leaked pixels")
 
+        fixed_space_extent_reject = write(
+            tmp / "fixed-space-extent-reject.pcl",
+            ESC + b"&l20P" + b"A" + ESC + b"*p9999Y" +
+            ESC + b"&p1X" + b"\x05" + ESC + b"&a1R" + b"C" + FF)
+        fixed_space_extent_reject_pdf = \
+            tmp / "fixed-space-extent-reject.pdf"
+        render(dreamprint, fixed_space_extent_reject,
+               fixed_space_extent_reject_pdf)
+        fixed_space_text = pdftotext(fixed_space_extent_reject_pdf)
+        fixed_space_text = fixed_space_text.replace("\n", "").replace("\x0c", "")
+        if fixed_space_text != "AC":
+            raise AssertionError("page-extent rejected fixed space leaked selectable text")
+
         vmi_positive = write(tmp / "vmi-positive.pcl",
                              ESC + b"&l6C" + b"A\nB" + FF)
         vmi_negative = write(tmp / "vmi-negative.pcl",
