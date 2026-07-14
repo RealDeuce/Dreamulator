@@ -3415,6 +3415,37 @@ def main():
         if macro_control_z_text.count("AB") < 256:
             raise AssertionError("macro Control-Z append lost replayed text")
 
+        macro_transparent_append = write(
+            tmp / "macro-transparent-append.pcl",
+            ESC + b"&f705Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" +
+            ESC + b"&p1X" + bytes([0x1a, 0x58]) + b"B" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_transparent_append_pdf = tmp / "macro-transparent-append.pdf"
+        render(dreamprint, macro_transparent_append,
+               macro_transparent_append_pdf)
+        if pdf_pages(macro_transparent_append_pdf) != 1:
+            raise AssertionError("macro transparent append replayed payload handler")
+        macro_transparent_text = "".join(
+            pdftotext(macro_transparent_append_pdf).split())
+        if macro_transparent_text.count("AB") < 256:
+            raise AssertionError("macro transparent append lost replayed text")
+
+        macro_font_x_payload = write(
+            tmp / "macro-font-x-payload.pcl",
+            ESC + b"&f706Y" +
+            ESC + b"&f0X" +
+            ESC + b"(s1X" + b"B" +
+            ESC + b"&f1X" +
+            b"A" + ESC + b"&f2X" + FF)
+        macro_font_x_payload_pdf = tmp / "macro-font-x-payload.pdf"
+        render(dreamprint, macro_font_x_payload,
+               macro_font_x_payload_pdf)
+        if "AB" not in "".join(pdftotext(macro_font_x_payload_pdf).split()):
+            raise AssertionError("macro capture treated font final-X as stop")
+
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",
             b"A" +
