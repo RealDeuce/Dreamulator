@@ -665,7 +665,7 @@ def build_ljii_text_attributes() -> bytes:
     out += ljii_font("line-printer", False, False, b")")
     out += b"Primary before SO: "
     out += sample_text() + b"\r\n"
-    out += b"\x0eSecondary after SO: "
+    out += b"\x0eSecondary line-printer after SO: "
     out += sample_text() + b"\r\n"
     out += b"\x0fPrimary after SI: "
     out += sample_text() + b"\r\n\r\n"

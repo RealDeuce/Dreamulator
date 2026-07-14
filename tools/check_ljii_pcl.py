@@ -182,6 +182,7 @@ def main():
             "Line-printer 16.66 cpi matrix",
             "Compatibility pitch command ESC &k2S (16.66 cpi)",
             "Primary and secondary font slots",
+            "Secondary line-printer after SO",
             "Font ID selection and default reset",
             "Line termination modes",
             "Cursor stack, relative position, and wrap",
@@ -205,7 +206,7 @@ def main():
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 
-        so_sample = b"Secondary after SO: The quick brown fox jumps 0123456789"
+        so_sample = b"Secondary line-printer after SO: The quick brown fox jumps 0123456789"
         upright_line_sample = write(
             tmp / "upright-line-sample.pcl",
             ESC + b"(0N" + ESC + b"(s0p16.66h8.5v0s0b0T" +
@@ -225,6 +226,15 @@ def main():
            ppm_sha256(secondary_line_sample_pdf,
                       tmp / "secondary-line-sample", dpi=150):
             raise AssertionError("sample SO line rendered rotated resident glyphs")
+        secondary_line_box = ppm_bbox(secondary_line_sample_pdf,
+                                      tmp / "secondary-line-shape",
+                                      dpi=150)
+        if secondary_line_box is None:
+            raise AssertionError("sample SO line rendered no resident glyphs")
+        secondary_line_w = secondary_line_box[2] - secondary_line_box[0] + 1
+        secondary_line_h = secondary_line_box[3] - secondary_line_box[1] + 1
+        if secondary_line_w <= secondary_line_h * 8:
+            raise AssertionError("sample SO line rendered as vertical/rotated text")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
             raise AssertionError("sample SO line lost selectable text")
 
