@@ -246,6 +246,25 @@ uint8_t symbol_glyph_byte(int symbol_set, uint8_t ch)
 	return ch;
 }
 
+bool ljii_symbol_word_has_map(int symbol_set)
+{
+	if (symbol_set == 0 || symbol_set == kSymbolRoman8 ||
+	    symbol_set == 0x0005 || symbol_set == 0x000e ||
+	    symbol_set == 0x0015)
+		return true;
+	for (const auto &patch : kSymbolPatches)
+		if (patch.symbol == symbol_set)
+			return true;
+	return false;
+}
+
+int ljii_effective_map_symbol_word(const LjiiFontRequest &req)
+{
+	if (ljii_symbol_word_has_map(req.symbol_set))
+		return req.symbol_set;
+	return req.secondary ? 0x000e : kSymbolRoman8;
+}
+
 uint16_t expand_raster_2x(uint8_t byte)
 {
 	uint16_t out = 0;
@@ -1081,13 +1100,15 @@ void PclPrinter::emit_display_value(uint8_t b)
 bool PclPrinter::control_filter_routes_printable() const
 {
 	const LjiiFontRequest &req = active_font_request();
-	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
+	int symbol_set = ljii_effective_map_symbol_word(req);
+	return symbol_set != 0 && symbol_set != kSymbolRoman8;
 }
 
 bool PclPrinter::selected_context_routes_parser_printable() const
 {
 	const LjiiFontRequest &req = active_font_request();
-	return req.symbol_set != 0 && req.symbol_set != kSymbolRoman8;
+	int symbol_set = ljii_effective_map_symbol_word(req);
+	return symbol_set != 0 && symbol_set != kSymbolRoman8;
 }
 
 bool PclPrinter::payload_control_normal_branch()
@@ -3149,7 +3170,7 @@ void PclPrinter::ljii_carriage_return()
 
 uint8_t PclPrinter::text_glyph_byte_for(const LjiiFontRequest &req, uint8_t b) const
 {
-	int symbol_set = req.symbol_set;
+	int symbol_set = ljii_effective_map_symbol_word(req);
 	bool routes_printable = symbol_set != 0 && symbol_set != kSymbolRoman8;
 	if (routes_printable && b >= 0x80 && b <= 0x9f) {
 		if (symbol_set == 0x000e)

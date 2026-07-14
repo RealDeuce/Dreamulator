@@ -1714,6 +1714,30 @@ def main():
         if "!!" not in "".join(pdftotext(secondary_symbol_miss_pdf).split()):
             raise AssertionError("secondary symbol miss lost selectable text")
 
+        high_probe = b"A" + bytes([0x85, 0x86, 0x90, 0x9f]) + b"B"
+        primary_symbol_miss_high = write(
+            tmp / "primary-symbol-miss-high.pcl",
+            ESC + b"(1234U" +
+            ESC + b"(s0p10h12v0s0b3T" + high_probe + FF,
+        )
+        primary_symbol_roman8_high = write(
+            tmp / "primary-symbol-roman8-high.pcl",
+            ESC + b"(8U" +
+            ESC + b"(s0p10h12v0s0b3T" + high_probe + FF,
+        )
+        primary_symbol_miss_high_pdf = tmp / "primary-symbol-miss-high.pdf"
+        primary_symbol_roman8_high_pdf = \
+            tmp / "primary-symbol-roman8-high.pdf"
+        render(dreamprint, primary_symbol_miss_high,
+               primary_symbol_miss_high_pdf)
+        render(dreamprint, primary_symbol_roman8_high,
+               primary_symbol_roman8_high_pdf)
+        if ppm_sha256(primary_symbol_miss_high_pdf,
+                      tmp / "primary-symbol-miss-high", dpi=300) != \
+           ppm_sha256(primary_symbol_roman8_high_pdf,
+                      tmp / "primary-symbol-roman8-high", dpi=300):
+            raise AssertionError("primary symbol miss did not use Roman-8 fallback map")
+
         secondary_symbol_probe = \
             b" #\\^~[]{}|`abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
         secondary_symbol_miss_probe = write(
@@ -1743,6 +1767,33 @@ def main():
         if secondary_symbol_probe.decode("ascii") not in \
            pdftotext(secondary_symbol_miss_probe_pdf):
             raise AssertionError("secondary symbol miss probe lost selectable source text")
+
+        secondary_symbol_high_probe = \
+            b"A" + bytes([0x85, 0x86, 0x90, 0x9f]) + b"B"
+        secondary_symbol_miss_high = write(
+            tmp / "secondary-symbol-miss-high.pcl",
+            ESC + b")1234U" +
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" +
+            secondary_symbol_high_probe + FF,
+        )
+        secondary_symbol_0n_high = write(
+            tmp / "secondary-symbol-0n-high.pcl",
+            ESC + b")0N" +
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" +
+            secondary_symbol_high_probe + FF,
+        )
+        secondary_symbol_miss_high_pdf = \
+            tmp / "secondary-symbol-miss-high.pdf"
+        secondary_symbol_0n_high_pdf = tmp / "secondary-symbol-0n-high.pdf"
+        render(dreamprint, secondary_symbol_miss_high,
+               secondary_symbol_miss_high_pdf)
+        render(dreamprint, secondary_symbol_0n_high,
+               secondary_symbol_0n_high_pdf)
+        if ppm_sha256(secondary_symbol_miss_high_pdf,
+                      tmp / "secondary-symbol-miss-high", dpi=300) != \
+           ppm_sha256(secondary_symbol_0n_high_pdf,
+                      tmp / "secondary-symbol-0n-high", dpi=300):
+            raise AssertionError("secondary symbol miss did not use 0N fallback byte map")
 
         typeface_low_priority = write(
             tmp / "typeface-low-priority.pcl",
