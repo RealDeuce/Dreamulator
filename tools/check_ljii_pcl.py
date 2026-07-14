@@ -193,9 +193,12 @@ def main():
                         ESC + b"Y!\x05!" + ESC + b"Z" + FF)
         display_pdf = tmp / "display.pdf"
         render(dreamprint, display, display_pdf)
-        display_text = "".join(pdftotext(display_pdf).split())
+        display_raw_text = pdftotext(display_pdf)
+        display_text = "".join(display_raw_text.split())
         if "!!Z" not in display_text:
             raise AssertionError("display-functions terminator did not route")
+        if not display_raw_text.startswith("! ! Z"):
+            raise AssertionError("display fixed spaces lost selectable text")
 
         display_esc = write(tmp / "display-esc.pcl",
                             ESC + b"YA" + ESC + b"EB" + ESC + b"Z" + FF)
@@ -268,6 +271,24 @@ def main():
             raise AssertionError("transparent controls did not advance as spaces")
         if not pdftotext(transparent_fixed_pdf).startswith("!  !"):
             raise AssertionError("transparent fixed spaces lost selectable text")
+
+        explicit_space_only = write(tmp / "explicit-space-only.pcl",
+                                    b"  " + FF)
+        transparent_space_only = write(
+            tmp / "transparent-space-only.pcl",
+            ESC + b"&p2X" + b"\x05\x85" + FF)
+        explicit_space_only_pdf = tmp / "explicit-space-only.pdf"
+        transparent_space_only_pdf = tmp / "transparent-space-only.pdf"
+        render(dreamprint, explicit_space_only, explicit_space_only_pdf)
+        render(dreamprint, transparent_space_only, transparent_space_only_pdf)
+        if pdf_pages(explicit_space_only_pdf) != 1:
+            raise AssertionError("ordinary space-only text did not publish a page")
+        if pdf_pages(transparent_space_only_pdf) != 1:
+            raise AssertionError("transparent fixed-space text did not publish a page")
+        if not pdftotext(explicit_space_only_pdf).startswith("  "):
+            raise AssertionError("ordinary space-only text did not extract")
+        if not pdftotext(transparent_space_only_pdf).startswith("  "):
+            raise AssertionError("transparent space-only text did not extract")
 
         transparent_nonroman = write(tmp / "transparent-nonroman.pcl",
                                      ESC + b"(0N" + ESC + b"&p3X" +
