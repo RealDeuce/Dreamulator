@@ -251,6 +251,23 @@ def main():
         if "AEBZ" not in display_esc_text:
             raise AssertionError("display-functions embedded ESC became command")
 
+        display_cr = write(tmp / "display-cr.pcl",
+                           ESC + b"YA\rB" + ESC + b"Z" + FF)
+        display_cr_expected = write(
+            tmp / "display-cr-expected.pcl",
+            b"A \r\nB Z" + FF)
+        display_cr_pdf = tmp / "display-cr.pdf"
+        display_cr_expected_pdf = tmp / "display-cr-expected.pdf"
+        render(dreamprint, display_cr, display_cr_pdf)
+        render(dreamprint, display_cr_expected, display_cr_expected_pdf)
+        if ppm_sha256(display_cr_pdf, tmp / "display-cr", dpi=150) != \
+           ppm_sha256(display_cr_expected_pdf,
+                      tmp / "display-cr-expected", dpi=150):
+            raise AssertionError("display-functions CR missed fixed-space CR+LF behavior")
+        display_cr_text = pdftotext(display_cr_pdf)
+        if "A" not in display_cr_text or "B Z" not in display_cr_text:
+            raise AssertionError("display-functions CR lost selectable text")
+
         esc_question_swallow = write(tmp / "esc-question-swallow.pcl",
                                      ESC + b"?\x11" + b"A" + FF)
         esc_question_reparse = write(tmp / "esc-question-reparse.pcl",

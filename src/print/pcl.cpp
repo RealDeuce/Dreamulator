@@ -1088,6 +1088,11 @@ void PclPrinter::emit_display_value(uint8_t b)
 	else
 		process_printable(b);
 
+	if (b == 0x0d) {
+		ljii_carriage_return();
+		ljii_line_feed();
+	}
+
 	if (display_escape_pending_ && b == 'Z') {
 		display_escape_pending_ = false;
 		display_control_pending_ = false;
