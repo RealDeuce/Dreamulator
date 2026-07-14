@@ -221,18 +221,19 @@ def main():
         secondary_line_sample_pdf = tmp / "secondary-line-sample.pdf"
         render(dreamprint, upright_line_sample, upright_line_sample_pdf)
         render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
-        if ppm_sha256(upright_line_sample_pdf, tmp / "upright-line-sample-2",
-                      dpi=150) != \
-           ppm_sha256(secondary_line_sample_pdf,
-                      tmp / "secondary-line-sample", dpi=150):
-            raise AssertionError("sample SO line rendered rotated resident glyphs")
+        primary_line_box = ppm_bbox(upright_line_sample_pdf,
+                                    tmp / "upright-line-shape",
+                                    dpi=150)
         secondary_line_box = ppm_bbox(secondary_line_sample_pdf,
                                       tmp / "secondary-line-shape",
                                       dpi=150)
-        if secondary_line_box is None:
-            raise AssertionError("sample SO line rendered no resident glyphs")
+        if primary_line_box is None or secondary_line_box is None:
+            raise AssertionError("sample primary/SO line rendered no resident glyphs")
+        primary_line_h = primary_line_box[3] - primary_line_box[1] + 1
         secondary_line_w = secondary_line_box[2] - secondary_line_box[0] + 1
         secondary_line_h = secondary_line_box[3] - secondary_line_box[1] + 1
+        if secondary_line_h >= primary_line_h:
+            raise AssertionError("sample SO line did not select the secondary resident class")
         if secondary_line_w <= secondary_line_h * 8:
             raise AssertionError("sample SO line rendered as vertical/rotated text")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
