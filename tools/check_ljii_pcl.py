@@ -3276,6 +3276,19 @@ def main():
         if "AB" not in "".join(pdftotext(page_length_invalid_pdf).split()):
             raise AssertionError("invalid page length changed text output")
 
+        page_extent_reject = write(
+            tmp / "page-extent-reject.pcl",
+            ESC + b"&l20P" + b"A" + ESC + b"*p9999Y" + b"B" +
+            ESC + b"&a1R" + b"C" + FF)
+        page_extent_reject_pdf = tmp / "page-extent-reject.pdf"
+        render(dreamprint, page_extent_reject, page_extent_reject_pdf)
+        if "".join(pdftotext(page_extent_reject_pdf).split()) != "AC":
+            raise AssertionError("page-extent rejected glyph leaked selectable text")
+        bbox = ppm_bbox(page_extent_reject_pdf, tmp / "page-extent-reject",
+                        dpi=150)
+        if bbox is None or bbox[3] >= 150:
+            raise AssertionError("page-extent rejected glyph leaked pixels")
+
         vmi_positive = write(tmp / "vmi-positive.pcl",
                              ESC + b"&l6C" + b"A\nB" + FF)
         vmi_negative = write(tmp / "vmi-negative.pcl",

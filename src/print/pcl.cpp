@@ -523,6 +523,10 @@ private:
 	bool render_ljii_text(uint8_t b);
 	void ensure_text_page();
 	void append_ljii_text_glyph(uint16_t cp, float char_w_in);
+	bool ljii_text_box_accepts(float top_in, float bottom_in) const;
+	bool ljii_nominal_text_vertical_accepts() const;
+	bool ljii_resident_glyph_vertical_accepts(const LjiiGlyphInfo &glyph) const;
+	bool ljii_soft_glyph_vertical_accepts(const SoftGlyph &glyph) const;
 	float ljii_metric_width_in(uint8_t width, float fallback_in) const;
 	bool consume_previous_width_adjustment(float current_width_in);
 	void finish_text_advance(float width_in, float advance_in, bool had_pending);
@@ -2631,10 +2635,16 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	char_w_in = metric_width_in;
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
-		if (!wrap_enabled_)
+		if (!wrap_enabled_) {
+			finish_text_advance(metric_width_in, char_w_in, had_pending);
 			return true;
+		}
 		ljii_carriage_return();
 		ljii_line_feed();
+	}
+	if (!glyph.unresolved_pixels && !ljii_soft_glyph_vertical_accepts(glyph)) {
+		finish_text_advance(metric_width_in, char_w_in, had_pending);
+		return true;
 	}
 	start_underline_span();
 
@@ -2691,6 +2701,33 @@ void PclPrinter::append_ljii_text_glyph(uint16_t cp, float char_w_in)
 	});
 }
 
+bool PclPrinter::ljii_text_box_accepts(float top_in, float bottom_in) const
+{
+	return top_in >= -0.0001f &&
+	       bottom_in <= st_.page_height_in + 0.0001f;
+}
+
+bool PclPrinter::ljii_nominal_text_vertical_accepts() const
+{
+	float top = st_.y_pos - 31.0f / kDotsPerIn;
+	float bottom = top + 32.0f / kDotsPerIn;
+	return ljii_text_box_accepts(top, bottom);
+}
+
+bool PclPrinter::ljii_resident_glyph_vertical_accepts(
+	const LjiiGlyphInfo &glyph) const
+{
+	float top = st_.y_pos - (float)glyph.y_offset / kDotsPerIn;
+	float bottom = top + (float)glyph.rows / kDotsPerIn;
+	return ljii_text_box_accepts(top, bottom);
+}
+
+bool PclPrinter::ljii_soft_glyph_vertical_accepts(const SoftGlyph &glyph) const
+{
+	float top = st_.y_pos - (float)glyph.rows / kDotsPerIn;
+	return ljii_text_box_accepts(top, st_.y_pos);
+}
+
 bool PclPrinter::render_ljii_text(uint8_t b)
 {
 	refresh_pending_cursor_y();
@@ -2699,10 +2736,16 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	if (b == 0x20) {
 		bool had_pending = consume_previous_width_adjustment(char_w_in);
 		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
-			if (!wrap_enabled_)
+			if (!wrap_enabled_) {
+				finish_text_advance(char_w_in, char_w_in, had_pending);
 				return true;
+			}
 			ljii_carriage_return();
 			ljii_line_feed();
+		}
+		if (!ljii_nominal_text_vertical_accepts()) {
+			finish_text_advance(char_w_in, char_w_in, had_pending);
+			return true;
 		}
 		start_underline_span();
 		append_ljii_text_glyph(0x20, char_w_in);
@@ -2741,6 +2784,10 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
 	bool had_pending = consume_previous_width_adjustment(char_w_in);
 	if (!glyph.found || !glyph.data) {
+		if (!ljii_nominal_text_vertical_accepts()) {
+			finish_text_advance(char_w_in, char_w_in, had_pending);
+			return true;
+		}
 		start_underline_span();
 		uint16_t cp = text_unicode(b);
 		if (cp >= 0x20) {
@@ -2752,10 +2799,16 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	}
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
-		if (!wrap_enabled_)
+		if (!wrap_enabled_) {
+			finish_text_advance(char_w_in, char_w_in, had_pending);
 			return true;
+		}
 		ljii_carriage_return();
 		ljii_line_feed();
+	}
+	if (!ljii_resident_glyph_vertical_accepts(glyph)) {
+		finish_text_advance(char_w_in, char_w_in, had_pending);
+		return true;
 	}
 	start_underline_span();
 
