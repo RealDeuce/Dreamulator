@@ -2386,6 +2386,46 @@ def main():
                       tmp / "resource-high-char-baseline-again", dpi=300):
             raise AssertionError("resource header class-1 did not install high downloaded character")
 
+        fixed_record_type0 = bytearray(64)
+        fixed_record_type1 = bytearray(64)
+        fixed_record_type1[0x0e] = 1
+        fixed_record_glyph = bytes.fromhex(
+            "f0 0f aa 55 3c c3 81 7e ff 00 18 e7 "
+            "24 db 42 bd 66 99")
+
+        def fixed_record_high_char_case(name, descriptor, char, include_glyph):
+            stream = (
+                ESC + b"*c4669D" +
+                ESC + b"(s64W" + bytes(descriptor) +
+                ESC + f"*c{char}E".encode("ascii")
+            )
+            if include_glyph:
+                stream += ESC + b"(s18W" + fixed_record_glyph
+            stream += ESC + b"(4669X" + bytes([char]) + FF
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            return pdf
+
+        fixed_type0_reject_pdf = fixed_record_high_char_case(
+            "fixed-record-type0-high-reject", fixed_record_type0, 0xa0, True)
+        fixed_type0_baseline_pdf = fixed_record_high_char_case(
+            "fixed-record-type0-high-baseline", fixed_record_type0, 0xa0, False)
+        fixed_type1_allowed_pdf = fixed_record_high_char_case(
+            "fixed-record-type1-high-allowed", fixed_record_type1, 0xa0, True)
+        fixed_type1_baseline_pdf = fixed_record_high_char_case(
+            "fixed-record-type1-high-baseline", fixed_record_type1, 0xa0, False)
+        if ppm_sha256(fixed_type0_reject_pdf,
+                      tmp / "fixed-record-type0-high-reject", dpi=300) != \
+           ppm_sha256(fixed_type0_baseline_pdf,
+                      tmp / "fixed-record-type0-high-baseline", dpi=300):
+            raise AssertionError("fixed-record type-0 installed high downloaded character")
+        if ppm_sha256(fixed_type1_allowed_pdf,
+                      tmp / "fixed-record-type1-high-allowed", dpi=300) == \
+           ppm_sha256(fixed_type1_baseline_pdf,
+                      tmp / "fixed-record-type1-high-baseline", dpi=300):
+            raise AssertionError("fixed-record type-1 did not install high downloaded character")
+
         bad_char_payload = write(
             tmp / "bad-char-payload.pcl",
             ESC + b"*c4660D" +

@@ -469,6 +469,7 @@ private:
 		bool resource_header_active = false;
 		uint8_t resource_type = 0;
 		bool resource_extended_chars = false;
+		bool fixed_record_extended_chars = false;
 		uint16_t resource_first = 0;
 		uint16_t resource_last = 0x7f;
 		int symbol_set = kSymbolRoman8;
@@ -2380,6 +2381,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	if (payload.size() >= 64 && soft_char_code_ <= 0x20) {
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
+		font.fixed_record_extended_chars = payload[0x0e] != 0;
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
 			if (symbol != 0)
@@ -2424,6 +2426,13 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	bool continuable_descriptor_glyph = false;
 	bool descriptor_row_major_glyph = false;
 	size_t descriptor_bitmap_bytes = 0;
+	auto fixed_record_char_admitted = [&]() {
+		if (soft_char_code_ >= 0x80 && soft_char_code_ < 0xa0)
+			return false;
+		if (soft_char_code_ >= 0xa0 && !font.fixed_record_extended_chars)
+			return false;
+		return true;
+	};
 	if (download_payload_control_seen_ && payload.size() == 18 &&
 	    payload[0] == 0x00) {
 		glyph.width = 136;
@@ -2455,6 +2464,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		glyph.span = 1;
 		glyph.rows = 3;
 	} else if (payload.size() == 18) {
+		if (!fixed_record_char_admitted())
+			return;
 		glyph.width = 144;
 		glyph.span = 18;
 		glyph.rows = 1;
@@ -2462,18 +2473,26 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	           payload.size() == 128 || payload.size() == 256 ||
 	           payload.size() == 258 || payload.size() == 260 ||
 	           payload.size() == 516) {
+		if (!fixed_record_char_admitted())
+			return;
 		glyph.width = 16;
 		glyph.span = 2;
 		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size() / 2);
 	} else if (payload.size() == 387 || payload.size() == 2193) {
+		if (!fixed_record_char_admitted())
+			return;
 		glyph.span = payload.size() == 387 ? 3 : 17;
 		glyph.width = (uint16_t)(glyph.span * 8);
 		glyph.rows = (uint16_t)(payload.size() / glyph.span);
 	} else if ((payload.size() & 1) == 0) {
+		if (!fixed_record_char_admitted())
+			return;
 		glyph.width = 16;
 		glyph.span = 2;
 		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size() / 2);
 	} else {
+		if (!fixed_record_char_admitted())
+			return;
 		glyph.width = 8;
 		glyph.span = 1;
 		glyph.rows = (uint16_t)std::max<size_t>(1, payload.size());
