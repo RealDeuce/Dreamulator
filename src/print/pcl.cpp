@@ -519,6 +519,7 @@ private:
 	const SoftFont *selected_soft_font() const;
 	void delete_soft_font(int id);
 	void refresh_soft_font_request(const SoftFont &font);
+	void release_fixed_record_glyph(SoftFont &font, uint8_t ch);
 	size_t soft_glyph_bitmap_index(const SoftGlyph &glyph, uint16_t row,
 	                               uint16_t byte_col) const;
 	uint8_t soft_glyph_bitmap_byte(const SoftGlyph &glyph, uint16_t row,
@@ -2340,6 +2341,18 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 	}
 }
 
+void PclPrinter::release_fixed_record_glyph(SoftFont &font, uint8_t ch)
+{
+	SoftGlyph replacement;
+	replacement.width = 8;
+	replacement.rows = 2;
+	replacement.span = 1;
+	replacement.bitmap = { 0xfa, 0x00 };
+	font.glyphs[ch] = std::move(replacement);
+	font.continuation_active = false;
+	font.continuation_remaining = 0;
+}
+
 size_t PclPrinter::soft_glyph_bitmap_index(const SoftGlyph &glyph,
                                            uint16_t row,
                                            uint16_t byte_col) const
@@ -2402,6 +2415,13 @@ void PclPrinter::apply_download_descriptor_payload(
 		auto first = payload.begin() +
 		             (std::vector<uint8_t>::difference_type)3;
 		size_t available = (size_t)(payload.end() - first);
+		if (!glyph.split_plane && available >= 2 &&
+		    available < font.continuation_remaining) {
+			release_fixed_record_glyph(font, font.continuation_char);
+			if (selected_soft_font_id_[download_font_slot_ ? 1 : 0] < 0)
+				selected_soft_font_id_[download_font_slot_ ? 1 : 0] = font.id;
+			return;
+		}
 		auto last = first + (std::vector<uint8_t>::difference_type)
 		            std::min(available, font.continuation_remaining);
 		size_t copy = copy_soft_glyph_host_bytes(

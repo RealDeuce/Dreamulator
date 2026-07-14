@@ -2550,6 +2550,22 @@ def main():
             ESC + b")s12w0W" +
             bytes.fromhex("04 00 03 02 04 00 a0 a1 b0 c0 c1 d0") +
             ESC + b"(4669X" + b"!" + FF)
+        fixed_record_descriptor_failed_resume = write(
+            tmp / "fixed-record-descriptor-failed-resume.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c33E" +
+            ESC + b")s8w0W" +
+            bytes.fromhex("04 00 02 03 04 00 aa 55") +
+            ESC + b")s5w0W" +
+            bytes.fromhex("04 01 cc f0 0f") +
+            ESC + b"(4669X" + b"!" + FF)
+        fixed_record_descriptor_failed_expected = write(
+            tmp / "fixed-record-descriptor-failed-expected.pcl",
+            ESC + b"*c4669D" +
+            ESC + b"*c33E" +
+            ESC + b")s8w0W" +
+            bytes.fromhex("04 00 01 02 04 00 fa 00") +
+            ESC + b"(4669X" + b"!" + FF)
         fixed_record_descriptor_expected_pdf = \
             tmp / "fixed-record-descriptor-expected.pdf"
         fixed_record_descriptor_current_pdf = \
@@ -2560,6 +2576,10 @@ def main():
             tmp / "fixed-record-descriptor-split.pdf"
         fixed_record_descriptor_split_expected_pdf = \
             tmp / "fixed-record-descriptor-split-expected.pdf"
+        fixed_record_descriptor_failed_resume_pdf = \
+            tmp / "fixed-record-descriptor-failed-resume.pdf"
+        fixed_record_descriptor_failed_expected_pdf = \
+            tmp / "fixed-record-descriptor-failed-expected.pdf"
         render(dreamprint, fixed_record_descriptor_expected,
                fixed_record_descriptor_expected_pdf)
         render(dreamprint, fixed_record_descriptor_current,
@@ -2570,12 +2590,18 @@ def main():
                fixed_record_descriptor_split_pdf)
         render(dreamprint, fixed_record_descriptor_split_expected,
                fixed_record_descriptor_split_expected_pdf)
+        render(dreamprint, fixed_record_descriptor_failed_resume,
+               fixed_record_descriptor_failed_resume_pdf)
+        render(dreamprint, fixed_record_descriptor_failed_expected,
+               fixed_record_descriptor_failed_expected_pdf)
         if pdftotext(fixed_record_descriptor_current_pdf).strip() != "!":
             raise AssertionError("fixed-record descriptor current path lost text")
         if pdftotext(fixed_record_descriptor_continuation_pdf).strip() != "!":
             raise AssertionError("fixed-record descriptor continuation path lost text")
         if pdftotext(fixed_record_descriptor_split_pdf).strip() != "!":
             raise AssertionError("fixed-record split descriptor continuation path lost text")
+        if pdftotext(fixed_record_descriptor_failed_resume_pdf).strip() != "!":
+            raise AssertionError("fixed-record failed descriptor resume lost text")
         descriptor_hash = ppm_sha256(fixed_record_descriptor_expected_pdf,
                                      tmp / "fixed-record-descriptor-expected",
                                      dpi=300)
@@ -2594,6 +2620,13 @@ def main():
                       tmp / "fixed-record-descriptor-split",
                       dpi=300) != split_descriptor_hash:
             raise AssertionError("fixed-record split descriptor continuation path rendered wrong pixels")
+        failed_descriptor_hash = ppm_sha256(
+            fixed_record_descriptor_failed_expected_pdf,
+            tmp / "fixed-record-descriptor-failed-expected", dpi=300)
+        if ppm_sha256(fixed_record_descriptor_failed_resume_pdf,
+                      tmp / "fixed-record-descriptor-failed-resume",
+                      dpi=300) != failed_descriptor_hash:
+            raise AssertionError("fixed-record failed descriptor resume kept stale pixels")
 
         def descriptor_glyph(rows, span):
             width = span * 8
