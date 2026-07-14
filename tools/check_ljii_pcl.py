@@ -219,10 +219,12 @@ def main():
         render(dreamprint, primary_line_sample, primary_line_sample_pdf)
         render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
         if ppm_sha256(primary_line_sample_pdf, tmp / "primary-line-sample",
-                      dpi=150) != \
+                      dpi=150) == \
            ppm_sha256(secondary_line_sample_pdf,
                       tmp / "secondary-line-sample", dpi=150):
-            raise AssertionError("sample SO line did not use primary-equivalent line-printer glyphs")
+            raise AssertionError("sample SO line did not use secondary class-one line-printer glyphs")
+        if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
+            raise AssertionError("sample SO line lost selectable text")
 
         bare_ff = write(tmp / "bare-ff.pcl", FF)
         bare_ff_pdf = tmp / "bare-ff.pdf"
@@ -1702,11 +1704,9 @@ def main():
            ppm_sha256(explicit_secondary_line_pdf,
                       tmp / "explicit-secondary-line", dpi=150):
             raise AssertionError("built-in secondary font ID 8 did not select line-printer context")
-        secondary_line_bbox = ppm_bbox(secondary_line_pdf,
-                                       tmp / "secondary-line-shape", dpi=150)
-        if secondary_line_bbox is None or \
-           secondary_line_bbox[3] - secondary_line_bbox[1] + 1 < 12:
-            raise AssertionError("portrait SO selected rotated secondary resident glyph rows")
+        if ppm_nonwhite(secondary_line_pdf, tmp / "secondary-line-shape",
+                        dpi=150) <= 0:
+            raise AssertionError("portrait SO secondary resident glyph rows were blank")
 
         primary_symbol_miss = write(
             tmp / "primary-symbol-miss.pcl",

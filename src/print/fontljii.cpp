@@ -34986,7 +34986,7 @@ static uint32_t nearest_height_mask(uint32_t mask, int requested)
 
 uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation)
 {
-	uint8_t class_id = orientation & 1 ? 1 : 0;
+	uint8_t class_id = request.secondary ? 1 : (orientation & 1 ? 1 : 0);
 	uint32_t mask = filter_ljii_records(0x00ffffffu, [class_id](const auto &r) {
 		return r.class_id == class_id;
 	});
