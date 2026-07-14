@@ -3679,14 +3679,58 @@ def main():
                                  ESC + b"&l1L" +
                                  ESC + b"&l4W" + b"\x00\x00\x00\x02" +
                                  bytes(vfc_limit_lines) + FF)
+        vfc_zero_count_default = write(tmp / "vfc-zero-count-default.pcl",
+                                       ESC + b"&l0W" + ESC + b"&l1L" +
+                                       bytes(vfc_limit_lines) + FF)
+        vfc_zero_count_after_custom = write(
+            tmp / "vfc-zero-count-after-custom.pcl",
+            ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+            ESC + b"&l0W" + ESC + b"&l1L" +
+            bytes(vfc_limit_lines) + FF)
+        vfc_zero_vmi_preserve = write(
+            tmp / "vfc-zero-vmi-preserve.pcl",
+            ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+            ESC + b"&l0C" + ESC + b"&l6D" + ESC + b"&l1L" +
+            bytes(vfc_limit_lines) + FF)
+        vfc_zero_vmi_zero_count = write(
+            tmp / "vfc-zero-vmi-zero-count.pcl",
+            ESC + b"&l4W" + b"\x00\x00\x00\x02" +
+            ESC + b"&l0C" + ESC + b"&l0W" +
+            ESC + b"&l6D" + ESC + b"&l1L" +
+            bytes(vfc_limit_lines) + FF)
         vfc_limit_default_pdf = tmp / "vfc-limit-default.pdf"
         vfc_limit_custom_pdf = tmp / "vfc-limit-custom.pdf"
+        vfc_zero_count_default_pdf = tmp / "vfc-zero-count-default.pdf"
+        vfc_zero_count_after_custom_pdf = \
+            tmp / "vfc-zero-count-after-custom.pdf"
+        vfc_zero_vmi_preserve_pdf = tmp / "vfc-zero-vmi-preserve.pdf"
+        vfc_zero_vmi_zero_count_pdf = tmp / "vfc-zero-vmi-zero-count.pdf"
         render(dreamprint, vfc_limit_default, vfc_limit_default_pdf)
         render(dreamprint, vfc_limit_custom, vfc_limit_custom_pdf)
+        render(dreamprint, vfc_zero_count_default,
+               vfc_zero_count_default_pdf)
+        render(dreamprint, vfc_zero_count_after_custom,
+               vfc_zero_count_after_custom_pdf)
+        render(dreamprint, vfc_zero_vmi_preserve, vfc_zero_vmi_preserve_pdf)
+        render(dreamprint, vfc_zero_vmi_zero_count,
+               vfc_zero_vmi_zero_count_pdf)
         if pdf_pages(vfc_limit_custom_pdf) <= pdf_pages(vfc_limit_default_pdf):
             raise AssertionError("custom VFC channel-2 limit did not affect overflow")
         if "V05" not in pdftotext(vfc_limit_custom_pdf):
             raise AssertionError("custom VFC overflow lost trailing text")
+        if pdf_pages(vfc_zero_count_after_custom_pdf) != \
+           pdf_pages(vfc_zero_count_default_pdf):
+            raise AssertionError("zero-count VFC did not restore default text length")
+        if ppm_sha256(vfc_zero_count_after_custom_pdf,
+                      tmp / "vfc-zero-count-after-custom", dpi=150) != \
+           ppm_sha256(vfc_zero_count_default_pdf,
+                      tmp / "vfc-zero-count-default", dpi=150):
+            raise AssertionError("zero-count VFC did not restore default table")
+        if ppm_sha256(vfc_zero_vmi_zero_count_pdf,
+                      tmp / "vfc-zero-vmi-zero-count", dpi=150) != \
+           ppm_sha256(vfc_zero_vmi_preserve_pdf,
+                      tmp / "vfc-zero-vmi-preserve", dpi=150):
+            raise AssertionError("zero-count VFC ignored zero-VMI rejection")
 
         vfc_line63_table = (b"\x00\x00" * 63) + b"\x00\x02"
         vfc_bottom_recovery = write(tmp / "vfc-bottom-recovery.pcl",

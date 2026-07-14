@@ -1323,7 +1323,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				ival = pcl_integer_word(value);
 			}
 			if (ival == 0)
-				rebuild_default_vfc_table();
+				apply_vfc_payload(std::vector<uint8_t>());
 			else
 				begin_payload(State::VfcData, ival);
 			break;
@@ -2146,6 +2146,8 @@ void PclPrinter::update_vfc_bounds()
 void PclPrinter::apply_vfc_payload(const std::vector<uint8_t> &payload)
 {
 	if (payload.empty()) {
+		if (vmi_in_ <= 0.0f)
+			return;
 		restore_default_text_length();
 		update_vfc_bounds();
 		rebuild_default_vfc_table();
