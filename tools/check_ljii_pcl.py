@@ -3379,6 +3379,25 @@ def main():
            expected_lower_payload_hash:
             raise AssertionError("lowercase macro start did not seed auto-prefix")
 
+        macro_display_control = write(
+            tmp / "macro-display-control.pcl",
+            ESC + b"&f703Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" + ESC + b"Y" +
+            bytes([0x1a, 0x58]) +
+            ESC + b"ZB" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_display_control_pdf = tmp / "macro-display-control.pdf"
+        render(dreamprint, macro_display_control,
+               macro_display_control_pdf)
+        if pdf_pages(macro_display_control_pdf) != 1:
+            raise AssertionError("macro display append replayed payload-control side effect")
+        macro_display_text = "".join(
+            pdftotext(macro_display_control_pdf).split())
+        if macro_display_text.count("AZB") < 256:
+            raise AssertionError("macro display append lost replayed text")
+
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",
             b"A" +

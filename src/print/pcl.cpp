@@ -548,6 +548,8 @@ private:
 	void publish_current_page();
 	void start_macro_definition(bool lowercase_final);
 	void finish_macro_definition(size_t keep_size);
+	void append_macro_definition_byte(uint8_t b);
+	void append_macro_display_byte(uint8_t b);
 	bool capture_macro_definition_byte(uint8_t b);
 	MacroPrintEnvironment capture_print_environment() const;
 	void restore_print_environment(const MacroPrintEnvironment &env);
@@ -622,6 +624,9 @@ private:
 	int macro_replay_depth_ = 0;
 	bool overlay_enabled_ = false;
 	bool macro_chain_active_ = false;
+	bool macro_display_capture_ = false;
+	bool macro_display_escape_pending_ = false;
+	bool macro_display_control_pending_ = false;
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
@@ -711,6 +716,9 @@ void PclPrinter::reset_ljii_state()
 	macro_replay_depth_ = 0;
 	overlay_enabled_ = false;
 	macro_chain_active_ = false;
+	macro_display_capture_ = false;
+	macro_display_escape_pending_ = false;
+	macro_display_control_pending_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
@@ -3018,6 +3026,9 @@ void PclPrinter::start_macro_definition(bool lowercase_final)
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	macro_chain_active_ = lowercase_final;
+	macro_display_capture_ = false;
+	macro_display_escape_pending_ = false;
+	macro_display_control_pending_ = false;
 	if (lowercase_final) {
 		macro.bytes.push_back(0x1B);
 		macro.bytes.push_back('&');
@@ -3039,25 +3050,65 @@ void PclPrinter::finish_macro_definition(size_t keep_size)
 	}
 	defining_macro_ = false;
 	macro_chain_active_ = false;
+	macro_display_capture_ = false;
+	macro_display_escape_pending_ = false;
+	macro_display_control_pending_ = false;
 	macro_stop_buf_.clear();
+}
+
+void PclPrinter::append_macro_definition_byte(uint8_t b)
+{
+	macros_[macro_id_].bytes.push_back(b);
+}
+
+void PclPrinter::append_macro_display_byte(uint8_t b)
+{
+	append_macro_definition_byte(b);
+	if (macro_display_escape_pending_ && b == 'Z') {
+		macro_display_capture_ = false;
+		macro_display_escape_pending_ = false;
+		macro_display_control_pending_ = false;
+		return;
+	}
+	macro_display_escape_pending_ = (b == 0x1B);
 }
 
 bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 {
+	if (macro_display_capture_) {
+		macro_stop_buf_.clear();
+		if (macro_display_control_pending_) {
+			macro_display_control_pending_ = false;
+			append_macro_display_byte(b == 0x58 ? 0x7f : b);
+		} else if (b == 0x1A) {
+			macro_display_control_pending_ = true;
+		} else {
+			append_macro_display_byte(b);
+		}
+		return true;
+	}
+
 	if (b == 0x1B) {
 		macro_command_start_ = macros_[macro_id_].bytes.size();
 		macro_stop_buf_.clear();
 		macro_stop_buf_.push_back(b);
-		macros_[macro_id_].bytes.push_back(b);
+		append_macro_definition_byte(b);
 		return true;
 	}
 
-	macros_[macro_id_].bytes.push_back(b);
+	append_macro_definition_byte(b);
 	if (macro_stop_buf_.empty())
 		return true;
 
 	macro_stop_buf_.push_back(b);
 	size_t len = macro_stop_buf_.size();
+	if (len == 2 && macro_stop_buf_[0] == 0x1B && b == 'Y') {
+		macro_display_capture_ = true;
+		macro_display_escape_pending_ = false;
+		macro_display_control_pending_ = false;
+		macro_stop_buf_.clear();
+		return true;
+	}
 	if (len == 2 && macro_stop_buf_[0] == 0x1B && b == 'E') {
 		if (macros_[macro_id_].bytes.size() >= 2)
 			macros_[macro_id_].bytes.resize(macros_[macro_id_].bytes.size() - 2);
