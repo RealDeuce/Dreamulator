@@ -373,6 +373,7 @@ public:
 	using PrinterSim::PrinterSim;
 
 	void apply_config(const PrinterConfig &cfg) override;
+	void flush() override;
 
 protected:
 	void parse_byte(uint8_t b) override;
@@ -2984,7 +2985,7 @@ void PclPrinter::set_page_length(float length_in)
 void PclPrinter::publish_current_page()
 {
 	flush_underline_span();
-	if (overlay_enabled_ && !replaying_macro_) {
+	if (page_ && page_dirty_ && overlay_enabled_ && !replaying_macro_) {
 		auto it = macros_.find(overlay_macro_id_);
 		if (it != macros_.end() && !it->second.bytes.empty())
 			replay_macro(overlay_macro_id_, MacroReplayMode::Overlay);
@@ -3002,6 +3003,11 @@ void PclPrinter::publish_current_page()
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
+}
+
+void PclPrinter::flush()
+{
+	publish_current_page();
 }
 
 void PclPrinter::start_macro_definition(bool lowercase_final)

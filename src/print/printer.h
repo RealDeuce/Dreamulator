@@ -184,7 +184,7 @@ public:
 	PrinterSim &operator=(const PrinterSim &) = delete;
 
 	void feed(const uint8_t *data, size_t len);
-	void flush();
+	virtual void flush();
 	virtual void apply_config(const PrinterConfig &cfg);
 
 	const PrinterState &state() const { return st_; }

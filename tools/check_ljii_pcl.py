@@ -2844,8 +2844,8 @@ def main():
         overflow_pcl = write(tmp / "overflow.pcl", bytes(overflow))
         overflow_pdf = tmp / "overflow.pdf"
         render(dreamprint, overflow_pcl, overflow_pdf)
-        if pdf_pages(overflow_pdf) != 3:
-            raise AssertionError("copy-count overflow did not publish 3 pages")
+        if pdf_pages(overflow_pdf) != 4:
+            raise AssertionError("copy-count overflow did not publish copied EOF page")
 
         perf_lines = bytearray()
         for i in range(60):
@@ -3115,14 +3115,20 @@ def main():
                                 ESC + b"&l-2X" + b"!" + FF)
         copies_fractional = write(tmp / "copies-fractional.pcl",
                                   ESC + b"&l2.9X" + b"!" + FF)
+        copies_eof = write(tmp / "copies-eof.pcl",
+                           ESC + b"&l2X" + b"!")
         copies_negative_pdf = tmp / "copies-negative.pdf"
         copies_fractional_pdf = tmp / "copies-fractional.pdf"
+        copies_eof_pdf = tmp / "copies-eof.pdf"
         render(dreamprint, copies_negative, copies_negative_pdf)
         render(dreamprint, copies_fractional, copies_fractional_pdf)
+        render(dreamprint, copies_eof, copies_eof_pdf)
         if pdf_pages(copies_negative_pdf) != 2:
             raise AssertionError("negative copy count was not absolute")
         if pdf_pages(copies_fractional_pdf) != 2:
             raise AssertionError("fractional copy count rounded")
+        if pdf_pages(copies_eof_pdf) != 2:
+            raise AssertionError("EOF flush did not publish LaserJet copy count")
 
         vfc_negative = write(tmp / "vfc-negative.pcl",
                              ESC + b"&l-4W" + b"\x00\x00\x00\x02" +
@@ -3554,10 +3560,19 @@ def main():
                         ESC + b"&f0X" + b"!\r" +
                         ESC + b"&f1X" +
                         ESC + b"&f4X" + b"Live\r" + FF)
+        overlay_eof = write(tmp / "overlay-eof.pcl",
+                            ESC + b"&f139Y" +
+                            ESC + b"&f0X" + b"!\r" +
+                            ESC + b"&f1X" +
+                            ESC + b"&f4X" + b"Live\r")
         overlay_pdf = tmp / "overlay.pdf"
+        overlay_eof_pdf = tmp / "overlay-eof.pdf"
         render(dreamprint, overlay, overlay_pdf)
+        render(dreamprint, overlay_eof, overlay_eof_pdf)
         if "Live!" not in pdftotext(overlay_pdf):
             raise AssertionError("macro overlay did not replay at publication")
+        if "Live!" not in pdftotext(overlay_eof_pdf):
+            raise AssertionError("EOF flush did not replay macro overlay")
 
         overlay_repeated = write(
             tmp / "overlay-repeated.pcl",
@@ -3696,18 +3711,21 @@ def main():
             ESC + b"*b2W" + bytes([0x0f, 0xf0]) +
             ESC + b"&f1X" +
             ESC + b"&f4X" + ESC + b"*p400X" + b"Live" + FF)
+        overlay_span_rule = \
+            ESC + b"&f0S" + ESC + b"*p400X" + ESC + b"*c64a64b0P" + \
+            ESC + b"&f1S"
         overlay_span_plain = write(
             tmp / "overlay-span-plain.pcl",
             ESC + b"&f137Y" +
             ESC + b"&f0X" + b"!" +
             ESC + b"&f1X" +
-            ESC + b"&f4X" + FF)
+            ESC + b"&f4X" + overlay_span_rule + FF)
         overlay_span_flush = write(
             tmp / "overlay-span-flush.pcl",
             ESC + b"&f138Y" +
             ESC + b"&f0X" + ESC + b"&a6L" + b"!" +
             ESC + b"&f1X" +
-            ESC + b"&f4X" + FF)
+            ESC + b"&f4X" + overlay_span_rule + FF)
         overlay_text_only_pdf = tmp / "overlay-text-only.pdf"
         overlay_raster_pdf = tmp / "overlay-raster.pdf"
         overlay_multi_raster_pdf = tmp / "overlay-multi-raster.pdf"
