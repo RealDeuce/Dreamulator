@@ -1714,6 +1714,36 @@ def main():
         if "!!" not in "".join(pdftotext(secondary_symbol_miss_pdf).split()):
             raise AssertionError("secondary symbol miss lost selectable text")
 
+        secondary_symbol_probe = \
+            b" #\\^~[]{}|`abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        secondary_symbol_miss_probe = write(
+            tmp / "secondary-symbol-miss-probe.pcl",
+            ESC + b")1234U" +
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" +
+            secondary_symbol_probe + FF,
+        )
+        secondary_symbol_0n_probe = write(
+            tmp / "secondary-symbol-0n-probe.pcl",
+            ESC + b")0N" +
+            ESC + b")s0p16h8v0s0b0T" + b"\x0e" +
+            secondary_symbol_probe + FF,
+        )
+        secondary_symbol_miss_probe_pdf = \
+            tmp / "secondary-symbol-miss-probe.pdf"
+        secondary_symbol_0n_probe_pdf = tmp / "secondary-symbol-0n-probe.pdf"
+        render(dreamprint, secondary_symbol_miss_probe,
+               secondary_symbol_miss_probe_pdf)
+        render(dreamprint, secondary_symbol_0n_probe,
+               secondary_symbol_0n_probe_pdf)
+        if ppm_sha256(secondary_symbol_miss_probe_pdf,
+                      tmp / "secondary-symbol-miss-probe", dpi=300) != \
+           ppm_sha256(secondary_symbol_0n_probe_pdf,
+                      tmp / "secondary-symbol-0n-probe", dpi=300):
+            raise AssertionError("secondary symbol miss did not use 0N fallback context")
+        if secondary_symbol_probe.decode("ascii") not in \
+           pdftotext(secondary_symbol_miss_probe_pdf):
+            raise AssertionError("secondary symbol miss probe lost selectable source text")
+
         typeface_low_priority = write(
             tmp / "typeface-low-priority.pcl",
             ESC + b"(s0p10h12v0s0b0T" + b"Stroke sample" + FF,

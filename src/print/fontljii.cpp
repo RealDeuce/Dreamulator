@@ -34994,7 +34994,9 @@ uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation)
 		return r.symbol == request.symbol_set;
 	});
 	if (!symbol)
-		symbol = filter_ljii_records(mask, [](const auto &r) { return r.symbol == 0x0115; });
+		symbol = filter_ljii_records(mask, [&request](const auto &r) {
+			return r.symbol == (request.secondary ? 0x000e : 0x0115);
+		});
 	if (symbol) mask = symbol;
 	uint32_t spacing = filter_ljii_records(mask, [&request](const auto &r) {
 		return r.spacing == request.spacing;
