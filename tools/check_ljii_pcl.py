@@ -205,24 +205,25 @@ def main():
             raise AssertionError("sample render looks blank")
 
         so_sample = b"Secondary after SO: The quick brown fox jumps 0123456789"
-        primary_line_sample = write(
-            tmp / "primary-line-sample.pcl",
-            ESC + b"(s0p16.66h8.5v0s0b0T" + so_sample + FF,
+        upright_line_sample = write(
+            tmp / "upright-line-sample.pcl",
+            ESC + b"(0N" + ESC + b"(s0p16.66h8.5v0s0b0T" +
+            so_sample + FF,
         )
         secondary_line_sample = write(
             tmp / "secondary-line-sample.pcl",
             ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
             so_sample + FF,
         )
-        primary_line_sample_pdf = tmp / "primary-line-sample.pdf"
+        upright_line_sample_pdf = tmp / "upright-line-sample.pdf"
         secondary_line_sample_pdf = tmp / "secondary-line-sample.pdf"
-        render(dreamprint, primary_line_sample, primary_line_sample_pdf)
+        render(dreamprint, upright_line_sample, upright_line_sample_pdf)
         render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
-        if ppm_sha256(primary_line_sample_pdf, tmp / "primary-line-sample",
-                      dpi=150) == \
+        if ppm_sha256(upright_line_sample_pdf, tmp / "upright-line-sample-2",
+                      dpi=150) != \
            ppm_sha256(secondary_line_sample_pdf,
                       tmp / "secondary-line-sample", dpi=150):
-            raise AssertionError("sample SO line did not use secondary class-one line-printer glyphs")
+            raise AssertionError("sample SO line rendered rotated resident glyphs")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
             raise AssertionError("sample SO line lost selectable text")
 
@@ -1371,6 +1372,30 @@ def main():
            default_position_box_for_stack[0] - \
            cursor_stack_page_left_box[0] < 40:
             raise AssertionError("cursor stack pop missed page-left x")
+
+        cursor_stack_orientation = write(
+            tmp / "cursor-stack-orientation.pcl",
+            ESC + b"&a10R" + ESC + b"&f0S" + ESC + b"&l1O" +
+            ESC + b"&f1S" + b"!" + FF)
+        cursor_stack_orientation_expected = write(
+            tmp / "cursor-stack-orientation-expected.pcl",
+            ESC + b"&l1O" + ESC + b"*p50X" + ESC + b"*p506Y" +
+            b"!" + FF)
+        cursor_stack_orientation_pdf = \
+            tmp / "cursor-stack-orientation.pdf"
+        cursor_stack_orientation_expected_pdf = \
+            tmp / "cursor-stack-orientation-expected.pdf"
+        render(dreamprint, cursor_stack_orientation,
+               cursor_stack_orientation_pdf)
+        render(dreamprint, cursor_stack_orientation_expected,
+               cursor_stack_orientation_expected_pdf)
+        if ppm_sha256(cursor_stack_orientation_pdf,
+                      tmp / "cursor-stack-orientation", dpi=300) != \
+           ppm_sha256(cursor_stack_orientation_expected_pdf,
+                      tmp / "cursor-stack-orientation-expected", dpi=300):
+            raise AssertionError("cursor stack pop missed orientation offset")
+        if "!" not in pdftotext(cursor_stack_orientation_pdf):
+            raise AssertionError("cursor stack orientation pop lost selectable text")
 
         same_orientation = write(tmp / "same-orientation.pcl",
                                  b"A" + ESC + b"&l0O" + b"B" + FF)

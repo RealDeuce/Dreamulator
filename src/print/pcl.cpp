@@ -1640,11 +1640,12 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			ival = pcl_integer_word(value);
 			if (ival == 0) {
 				if (cursor_stack_.size() < 20)
-					cursor_stack_.push_back({ st_.x_pos, st_.y_pos });
+					cursor_stack_.push_back({ st_.x_pos,
+					                          st_.y_pos + logical_y0_in_ });
 			} else if (ival == 1 && !cursor_stack_.empty()) {
 				flush_underline_span();
 				st_.x_pos = cursor_stack_.back().first;
-				st_.y_pos = cursor_stack_.back().second;
+				st_.y_pos = cursor_stack_.back().second - logical_y0_in_;
 				cursor_stack_.pop_back();
 				const float guard_in = 1.0f / 12.0f;
 				float max_x = std::max(0.0f,
