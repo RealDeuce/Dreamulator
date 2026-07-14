@@ -599,6 +599,9 @@ private:
 	                                      int &count,
 	                                      bool &lowercase_final,
 	                                      char &expected_final) const;
+	bool parse_macro_generic_drain_command(const std::vector<uint8_t> &cmd,
+	                                       int &count,
+	                                       bool &lowercase_final) const;
 	bool capture_macro_payload_chain_byte(uint8_t b);
 	bool capture_macro_definition_byte(uint8_t b);
 	MacroPrintEnvironment capture_print_environment() const;
@@ -681,7 +684,10 @@ private:
 	bool macro_control_pending_ = false;
 	int macro_payload_echo_remaining_ = 0;
 	bool macro_payload_echo_control_pending_ = false;
+	int macro_payload_drain_remaining_ = 0;
+	bool macro_payload_drain_control_pending_ = false;
 	bool macro_payload_chain_active_ = false;
+	bool macro_payload_chain_drain_ = false;
 	int macro_payload_chain_count_ = -1;
 	char macro_payload_chain_final_ = 0;
 	std::string macro_payload_chain_param_;
@@ -781,7 +787,10 @@ void PclPrinter::reset_ljii_state()
 	macro_control_pending_ = false;
 	macro_payload_echo_remaining_ = 0;
 	macro_payload_echo_control_pending_ = false;
+	macro_payload_drain_remaining_ = 0;
+	macro_payload_drain_control_pending_ = false;
 	macro_payload_chain_active_ = false;
+	macro_payload_chain_drain_ = false;
 	macro_payload_chain_count_ = -1;
 	macro_payload_chain_final_ = 0;
 	macro_payload_chain_param_.clear();
@@ -3409,7 +3418,10 @@ void PclPrinter::start_macro_definition(bool lowercase_final)
 	macro_control_pending_ = false;
 	macro_payload_echo_remaining_ = 0;
 	macro_payload_echo_control_pending_ = false;
+	macro_payload_drain_remaining_ = 0;
+	macro_payload_drain_control_pending_ = false;
 	macro_payload_chain_active_ = false;
+	macro_payload_chain_drain_ = false;
 	macro_payload_chain_count_ = -1;
 	macro_payload_chain_final_ = 0;
 	macro_payload_chain_param_.clear();
@@ -3513,6 +3525,38 @@ bool PclPrinter::parse_macro_payload_echo_command(const std::vector<uint8_t> &cm
 	return true;
 }
 
+bool PclPrinter::parse_macro_generic_drain_command(
+	const std::vector<uint8_t> &cmd, int &count, bool &lowercase_final) const
+{
+	if (cmd.size() < 4 || cmd[0] != 0x1B)
+		return false;
+
+	char final = static_cast<char>(cmd.back());
+	lowercase_final = final == 'w';
+	if (final != 'W' && !lowercase_final)
+		return false;
+
+	if (cmd[1] < 0x21 || cmd[1] > 0x2f)
+		return false;
+
+	size_t param_start = 2;
+	if (cmd.size() >= 5 && cmd[2] >= 0x60 && cmd[2] <= 0x7e)
+		param_start = 3;
+
+	std::string param;
+	for (size_t i = param_start; i + 1 < cmd.size(); i++) {
+		uint8_t ch = cmd[i];
+		if (!((ch >= '0' && ch <= '9') || ch == '.' ||
+		      ch == '-' || ch == '+'))
+			return false;
+		param.push_back(static_cast<char>(ch));
+	}
+	double value = param.empty() ? 0.0 : std::atof(param.c_str());
+	count = lowercase_final ? pcl_integer_word(value)
+	                        : std::abs(pcl_signed_integer_word(value));
+	return true;
+}
+
 bool PclPrinter::capture_macro_payload_chain_byte(uint8_t b)
 {
 	if (is_param_byte(b)) {
@@ -3530,11 +3574,17 @@ bool PclPrinter::capture_macro_payload_chain_byte(uint8_t b)
 			macro_payload_chain_param_.clear();
 			return true;
 		}
-		macro_payload_echo_remaining_ =
-			std::max(0, macro_payload_chain_count_ >= 0 ?
-			         macro_payload_chain_count_ : count);
-		macro_payload_echo_control_pending_ = false;
+		int chained_count = macro_payload_chain_count_ >= 0 ?
+		                    macro_payload_chain_count_ : count;
+		if (macro_payload_chain_drain_) {
+			macro_payload_drain_remaining_ = std::max(0, chained_count);
+			macro_payload_drain_control_pending_ = false;
+		} else {
+			macro_payload_echo_remaining_ = std::max(0, chained_count);
+			macro_payload_echo_control_pending_ = false;
+		}
 		macro_payload_chain_active_ = false;
+		macro_payload_chain_drain_ = false;
 		macro_payload_chain_count_ = -1;
 		macro_payload_chain_final_ = 0;
 		macro_payload_chain_param_.clear();
@@ -3542,6 +3592,7 @@ bool PclPrinter::capture_macro_payload_chain_byte(uint8_t b)
 	}
 
 	macro_payload_chain_active_ = false;
+	macro_payload_chain_drain_ = false;
 	macro_payload_chain_count_ = -1;
 	macro_payload_chain_final_ = 0;
 	macro_payload_chain_param_.clear();
@@ -3550,6 +3601,20 @@ bool PclPrinter::capture_macro_payload_chain_byte(uint8_t b)
 
 bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 {
+	if (macro_payload_drain_remaining_ > 0) {
+		macro_stop_buf_.clear();
+		macro_control_pending_ = false;
+		if (macro_payload_drain_control_pending_) {
+			macro_payload_drain_control_pending_ = false;
+			macro_payload_drain_remaining_--;
+		} else if (b == 0x1A) {
+			macro_payload_drain_control_pending_ = true;
+		} else {
+			macro_payload_drain_remaining_--;
+		}
+		return true;
+	}
+
 	if (macro_payload_echo_remaining_ > 0) {
 		macro_stop_buf_.clear();
 		macro_control_pending_ = false;
@@ -3636,12 +3701,29 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 		macros_[macro_id_].bytes.resize(macro_command_start_);
 		if (lowercase_payload_final) {
 			macro_payload_chain_active_ = true;
+			macro_payload_chain_drain_ = false;
 			macro_payload_chain_count_ = payload_count;
 			macro_payload_chain_final_ = payload_final;
 			macro_payload_chain_param_.clear();
 		} else {
 			macro_payload_echo_remaining_ = std::max(0, payload_count);
 			macro_payload_echo_control_pending_ = false;
+		}
+		macro_stop_buf_.clear();
+		return true;
+	}
+	if (parse_macro_generic_drain_command(macro_stop_buf_, payload_count,
+	                                      lowercase_payload_final)) {
+		macros_[macro_id_].bytes.resize(macro_command_start_);
+		if (lowercase_payload_final) {
+			macro_payload_chain_active_ = true;
+			macro_payload_chain_drain_ = true;
+			macro_payload_chain_count_ = payload_count;
+			macro_payload_chain_final_ = 'W';
+			macro_payload_chain_param_.clear();
+		} else {
+			macro_payload_drain_remaining_ = std::max(0, payload_count);
+			macro_payload_drain_control_pending_ = false;
 		}
 		macro_stop_buf_.clear();
 		return true;
@@ -3654,24 +3736,10 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 		return true;
 	}
 	if (len == 2 && b != '&') {
-		if (b != '*' && b != '(' && b != ')') {
+		if (b < 0x21 || b > 0x2f) {
 			macro_stop_buf_.clear();
 			return true;
 		}
-	}
-	if (len == 3 && macro_stop_buf_[1] == '&' && b != 'f' &&
-	    b != 'p' && b != 'l') {
-		macro_stop_buf_.clear();
-		return true;
-	}
-	if (len == 3 && macro_stop_buf_[1] == '*' && b != 'b') {
-		macro_stop_buf_.clear();
-		return true;
-	}
-	if (len == 3 && (macro_stop_buf_[1] == '(' || macro_stop_buf_[1] == ')') &&
-	    b != 's') {
-		macro_stop_buf_.clear();
-		return true;
 	}
 	if (len >= 4) {
 		if (macro_stop_buf_[1] == '&' && macro_stop_buf_[2] == 'f' &&

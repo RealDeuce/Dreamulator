@@ -4177,6 +4177,29 @@ def main():
         if macro_control_z_text.count("AB") < 256:
             raise AssertionError("macro Control-Z append lost replayed text")
 
+        macro_generic_drain = write(
+            tmp / "macro-generic-drain.pcl",
+            ESC + b"&f711Y" +
+            ESC + b"&f0X" +
+            b"A" + ESC + b"&z5W" + ESC + b"&f1X" + b"B" +
+            ESC + b"&f1X" + ESC + b"&f2X" + FF)
+        macro_generic_lower_drain = write(
+            tmp / "macro-generic-lower-drain.pcl",
+            ESC + b"&f712Y" +
+            ESC + b"&f0X" +
+            b"A" + ESC + b"&z5w9W" + ESC + b"&f1X" + b"B" +
+            ESC + b"&f1X" + ESC + b"&f2X" + FF)
+        macro_generic_drain_pdf = tmp / "macro-generic-drain.pdf"
+        macro_generic_lower_drain_pdf = \
+            tmp / "macro-generic-lower-drain.pdf"
+        render(dreamprint, macro_generic_drain, macro_generic_drain_pdf)
+        render(dreamprint, macro_generic_lower_drain,
+               macro_generic_lower_drain_pdf)
+        if "".join(pdftotext(macro_generic_drain_pdf).split()) != "AB":
+            raise AssertionError("macro generic W drain did not hide stop-looking payload")
+        if "".join(pdftotext(macro_generic_lower_drain_pdf).split()) != "AB":
+            raise AssertionError("macro generic lowercase w drain did not preserve count")
+
         macro_transparent_append = write(
             tmp / "macro-transparent-append.pcl",
             ESC + b"&f705Y" +
