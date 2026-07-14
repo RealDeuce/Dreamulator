@@ -1446,7 +1446,9 @@ def main():
         render(dreamprint, style_request, style_request_pdf)
         if ppm_sha256(upright_pdf, tmp / "upright", dpi=150) != \
            ppm_sha256(style_request_pdf, tmp / "style-request", dpi=150):
-            raise AssertionError("style request synthesized non-ROM glyph pixels")
+            raise AssertionError("style fallback changed resident Courier pixels")
+        if pdftotext(style_request_pdf).strip() != "Style sample":
+            raise AssertionError("style fallback lost selectable input text")
 
         medium = write(tmp / "medium.pcl",
                        ESC + b"(s0p10h12v0s0b3TStroke sample" + FF)
@@ -1773,6 +1775,8 @@ def main():
         if ppm_sha256(style_positive_pdf, tmp / "style-positive", dpi=150) != \
            ppm_sha256(style_fractional_pdf, tmp / "style-fractional", dpi=150):
             raise AssertionError("fractional style request rounded")
+        if pdftotext(style_positive_pdf).strip() != "Italic sample":
+            raise AssertionError("style selector lost selectable input text")
 
         underline_fixed = write(tmp / "underline-fixed.pcl",
                                 ESC + b"&d0D" + b"A\tB" +
@@ -1780,14 +1784,21 @@ def main():
         underline_span = write(tmp / "underline-span.pcl",
                                ESC + b"&d3D" + b"A\tB" +
                                ESC + b"&d@" + FF)
+        underline_space = write(tmp / "underline-space.pcl",
+                                ESC + b"&d0D" + b"A B" +
+                                ESC + b"&d@" + FF)
         underline_fixed_pdf = tmp / "underline-fixed.pdf"
         underline_span_pdf = tmp / "underline-span.pdf"
+        underline_space_pdf = tmp / "underline-space.pdf"
         render(dreamprint, underline_fixed, underline_fixed_pdf)
         render(dreamprint, underline_span, underline_span_pdf)
+        render(dreamprint, underline_space, underline_space_pdf)
         if "AB" not in "".join(pdftotext(underline_fixed_pdf).split()):
             raise AssertionError("fixed underline span text did not extract")
         if "AB" not in "".join(pdftotext(underline_span_pdf).split()):
             raise AssertionError("floating underline span text did not extract")
+        if pdftotext(underline_space_pdf).strip() != "A B":
+            raise AssertionError("underlined space did not remain selectable")
         if ppm_rect_nonwhite(underline_fixed_pdf, tmp / "underline-fixed",
                              130, 113, 180, 118, dpi=300) == 0:
             raise AssertionError("fixed underline span did not cover tab gap")

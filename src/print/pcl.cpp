@@ -521,6 +521,7 @@ private:
 	bool render_soft_glyph(uint8_t b, float char_w_in);
 	bool render_ljii_text(uint8_t b);
 	void ensure_text_page();
+	void append_ljii_text_glyph(uint16_t cp, float char_w_in);
 	float ljii_metric_width_in(uint8_t width, float fallback_in) const;
 	bool consume_previous_width_adjustment(float current_width_in);
 	void finish_text_advance(float width_in, float advance_in, bool had_pending);
@@ -2649,13 +2650,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 
 	uint16_t cp = text_unicode(b);
 	if (cp >= 0x20) {
-		uint8_t sty = 0;
-		if (st_.bold) sty |= TextGlyph::BOLD;
-		if (st_.underline) sty |= TextGlyph::UNDERLINE;
-		text_buf_.push_back({
-			st_.x_pos, st_.y_pos, cp, char_w_in,
-			char_w_in * 72.0f / 0.6f, sty
-		});
+		append_ljii_text_glyph(cp, char_w_in);
 	}
 	finish_text_advance(metric_width_in, char_w_in, had_pending);
 	mark_line_output(true);
@@ -2666,6 +2661,15 @@ void PclPrinter::ensure_text_page()
 {
 	new_page_if_needed();
 	page_dirty_ = true;
+}
+
+void PclPrinter::append_ljii_text_glyph(uint16_t cp, float char_w_in)
+{
+	ensure_text_page();
+	text_buf_.push_back({
+		st_.x_pos, st_.y_pos, cp, char_w_in,
+		char_w_in * 72.0f / 0.6f, 0
+	});
 }
 
 bool PclPrinter::render_ljii_text(uint8_t b)
@@ -2682,11 +2686,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			ljii_line_feed();
 		}
 		start_underline_span();
-		ensure_text_page();
-		text_buf_.push_back({
-			st_.x_pos, st_.y_pos, 0x20, char_w_in,
-			char_w_in * 72.0f / 0.6f, 0
-		});
+		append_ljii_text_glyph(0x20, char_w_in);
 		if (st_.underline) {
 			new_page_if_needed();
 			page_dirty_ = true;
@@ -2725,14 +2725,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		start_underline_span();
 		uint16_t cp = text_unicode(b);
 		if (cp >= 0x20) {
-			uint8_t sty = 0;
-			if (st_.bold) sty |= TextGlyph::BOLD;
-			if (st_.underline) sty |= TextGlyph::UNDERLINE;
-			ensure_text_page();
-			text_buf_.push_back({
-				st_.x_pos, st_.y_pos, cp, char_w_in,
-				char_w_in * 72.0f / 0.6f, sty
-			});
+			append_ljii_text_glyph(cp, char_w_in);
 		}
 		finish_text_advance(char_w_in, char_w_in, had_pending);
 		mark_line_output(true);
@@ -2775,13 +2768,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 
 	uint16_t cp = text_unicode(b);
 	if (cp >= 0x20) {
-		uint8_t sty = 0;
-		if (st_.bold) sty |= TextGlyph::BOLD;
-		if (st_.underline) sty |= TextGlyph::UNDERLINE;
-		text_buf_.push_back({
-			st_.x_pos, st_.y_pos, cp, char_w_in,
-			char_w_in * 72.0f / 0.6f, sty
-		});
+		append_ljii_text_glyph(cp, char_w_in);
 	}
 	finish_text_advance(char_w_in, char_w_in, had_pending);
 	mark_line_output(true);
