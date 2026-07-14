@@ -84,6 +84,12 @@ def ppm_nonwhite(pdf, stem, dpi=72):
                if pixels[i:i + 3] != b"\xff\xff\xff")
 
 
+def ppm_dark_pixels(pdf, stem, dpi=72):
+    pixels = ppm_pixels(pdf, stem, dpi)
+    return sum(1 for i in range(0, len(pixels), 3)
+               if sum(pixels[i:i + 3]) < 384)
+
+
 def ppm_sha256(pdf, stem, dpi=72):
     return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
 
@@ -197,6 +203,14 @@ def main():
             raise AssertionError("sample matrix lost complete selectable text rows")
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
+
+        bare_ff = write(tmp / "bare-ff.pcl", FF)
+        bare_ff_pdf = tmp / "bare-ff.pdf"
+        render(dreamprint, bare_ff, bare_ff_pdf)
+        if pdf_pages(bare_ff_pdf) != 1:
+            raise AssertionError("bare form feed did not publish a blank page")
+        if ppm_dark_pixels(bare_ff_pdf, tmp / "bare-ff", dpi=72) != 0:
+            raise AssertionError("bare form feed page was not blank")
 
         display = write(tmp / "display.pcl",
                         ESC + b"Y!\x05!" + ESC + b"Z" + FF)

@@ -554,6 +554,7 @@ private:
 	void set_orientation(int orientation);
 	void apply_page_geometry();
 	void set_page_length(float length_in);
+	void ensure_page_root();
 	void publish_current_page();
 	void start_macro_definition(bool lowercase_final);
 	void finish_macro_definition(size_t keep_size);
@@ -610,6 +611,7 @@ private:
 	int pending_raster_count_ = -1;
 	int pending_drain_count_ = -1;
 	int pending_download_count_ = -1;
+	bool page_root_active_ = false;
 	bool underline_span_active_ = false;
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
@@ -711,6 +713,7 @@ void PclPrinter::reset_ljii_state()
 	pending_raster_count_ = -1;
 	pending_drain_count_ = -1;
 	pending_download_count_ = -1;
+	page_root_active_ = false;
 	underline_span_active_ = false;
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
@@ -946,6 +949,7 @@ void PclPrinter::process_control(uint8_t b)
 	case 0x0C:
 		if (line_term_ == 2 || line_term_ == 3)
 			ljii_carriage_return();
+		ensure_page_root();
 		publish_current_page();
 		break;
 	case 0x0D:
@@ -3121,23 +3125,31 @@ void PclPrinter::set_page_length(float length_in)
 	sync_active_font_state();
 }
 
+void PclPrinter::ensure_page_root()
+{
+	new_page_if_needed();
+	page_root_active_ = true;
+}
+
 void PclPrinter::publish_current_page()
 {
 	flush_underline_span();
-	if (page_ && page_dirty_ && overlay_enabled_ && !replaying_macro_) {
+	if (page_ && (page_dirty_ || page_root_active_) &&
+	    overlay_enabled_ && !replaying_macro_) {
 		auto it = macros_.find(overlay_macro_id_);
 		if (it != macros_.end() && !it->second.bytes.empty())
 			replay_macro(overlay_macro_id_, MacroReplayMode::Overlay);
 	}
 	flush_underline_span();
 	flush_pending_line();
-	if (page_ && page_dirty_) {
+	if (page_ && (page_dirty_ || page_root_active_)) {
 		int copies = std::max(1, copy_count_);
 		for (int i = 0; i < copies; i++)
 			pdf_.add_page(*page_, prof_.render_dpi, text_buf_);
 		text_buf_.clear();
 		page_dirty_ = false;
 	}
+	page_root_active_ = false;
 	page_.reset();
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
