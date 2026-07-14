@@ -2493,6 +2493,7 @@ def main():
                 raise AssertionError(f"{name} invented unresolved glyph pixels")
 
         unresolved_glyph_case("download-high-row-short-boundary", 0x0102, 2)
+        unresolved_glyph_case("download-wrapped-width-boundary", 1, 0x0102)
         unresolved_glyph_case("download-span31-source-boundary", 0x0181, 31)
 
         bad_char_payload = write(

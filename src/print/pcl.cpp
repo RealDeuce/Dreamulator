@@ -2455,6 +2455,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		descriptor_row_major_glyph = payload[5] == 2;
 		descriptor_bitmap_bytes = glyph.bitmap.size();
 		glyph.unresolved_pixels =
+			(glyph.span > 0xff && (glyph.span & 0xff) <= 0x10) ||
 			(glyph.span == 2 && glyph.rows >= 0x0101 &&
 			 glyph.rows <= 0x0103) ||
 			(glyph.span == 31 && glyph.rows >= 0x0181);
