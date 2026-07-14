@@ -204,6 +204,26 @@ def main():
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 
+        so_sample = b"Secondary after SO: The quick brown fox jumps 0123456789"
+        primary_line_sample = write(
+            tmp / "primary-line-sample.pcl",
+            ESC + b"(s0p16.66h8.5v0s0b0T" + so_sample + FF,
+        )
+        secondary_line_sample = write(
+            tmp / "secondary-line-sample.pcl",
+            ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
+            so_sample + FF,
+        )
+        primary_line_sample_pdf = tmp / "primary-line-sample.pdf"
+        secondary_line_sample_pdf = tmp / "secondary-line-sample.pdf"
+        render(dreamprint, primary_line_sample, primary_line_sample_pdf)
+        render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
+        if ppm_sha256(primary_line_sample_pdf, tmp / "primary-line-sample",
+                      dpi=150) != \
+           ppm_sha256(secondary_line_sample_pdf,
+                      tmp / "secondary-line-sample", dpi=150):
+            raise AssertionError("sample SO line did not use primary-equivalent line-printer glyphs")
+
         bare_ff = write(tmp / "bare-ff.pcl", FF)
         bare_ff_pdf = tmp / "bare-ff.pdf"
         render(dreamprint, bare_ff, bare_ff_pdf)
