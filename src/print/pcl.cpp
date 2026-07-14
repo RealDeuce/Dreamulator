@@ -548,6 +548,9 @@ private:
 	                               uint16_t byte_col) const;
 	uint8_t soft_glyph_bitmap_byte(const SoftGlyph &glyph, uint16_t row,
 	                               uint16_t byte_col) const;
+	bool soft_glyph_uses_selected_segment(const SoftGlyph &glyph) const;
+	uint16_t soft_glyph_source_row_offset(const SoftGlyph &glyph) const;
+	uint16_t soft_glyph_visible_rows(const SoftGlyph &glyph) const;
 	size_t copy_soft_glyph_host_bytes(SoftGlyph &glyph, size_t host_offset,
 	                                  std::vector<uint8_t>::const_iterator first,
 	                                  std::vector<uint8_t>::const_iterator last);
@@ -2456,6 +2459,30 @@ uint8_t PclPrinter::soft_glyph_bitmap_byte(const SoftGlyph &glyph,
 	return glyph.bitmap[byte_off];
 }
 
+bool PclPrinter::soft_glyph_uses_selected_segment(
+	const SoftGlyph &glyph) const
+{
+	if (glyph.unresolved_pixels || glyph.span < 17 || glyph.rows <= 0x80)
+		return false;
+	return (glyph.rows & 0xff) >= 0x81;
+}
+
+uint16_t PclPrinter::soft_glyph_source_row_offset(
+	const SoftGlyph &glyph) const
+{
+	return soft_glyph_uses_selected_segment(glyph) ? 0x80 : 0;
+}
+
+uint16_t PclPrinter::soft_glyph_visible_rows(const SoftGlyph &glyph) const
+{
+	uint16_t row_offset = soft_glyph_source_row_offset(glyph);
+	if (row_offset >= glyph.rows)
+		return 0;
+	uint16_t available = (uint16_t)(glyph.rows - row_offset);
+	return soft_glyph_uses_selected_segment(glyph) ?
+		std::min<uint16_t>(available, 0x80) : available;
+}
+
 size_t PclPrinter::copy_soft_glyph_host_bytes(
 	SoftGlyph &glyph, size_t host_offset,
 	std::vector<uint8_t>::const_iterator first,
@@ -2870,15 +2897,21 @@ void PclPrinter::draw_soft_glyph_pixels(const SoftGlyph &glyph)
 		return;
 	if (glyph.unresolved_pixels)
 		return;
+	uint16_t visible_rows = soft_glyph_visible_rows(glyph);
+	if (visible_rows == 0)
+		return;
+	uint16_t source_row_offset = soft_glyph_source_row_offset(glyph);
 	new_page_if_needed();
 	page_dirty_ = true;
 
 	int dpi = prof_.render_dpi;
 	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
-	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
-	for (uint16_t row = 0; row < glyph.rows; row++) {
+	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)visible_rows;
+	for (uint16_t row = 0; row < visible_rows; row++) {
+		uint16_t source_row = (uint16_t)(source_row_offset + row);
 		for (uint16_t col = 0; col < glyph.width; col++) {
-			uint8_t byte = soft_glyph_bitmap_byte(glyph, row, col >> 3);
+			uint8_t byte =
+				soft_glyph_bitmap_byte(glyph, source_row, col >> 3);
 			if (byte & (0x80u >> (col & 7)))
 				page_->set_pixel(base_x + col, base_y + row, 0);
 		}
@@ -2927,12 +2960,16 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	new_page_if_needed();
 	page_dirty_ = true;
 
+	uint16_t visible_rows = soft_glyph_visible_rows(glyph);
+	uint16_t source_row_offset = soft_glyph_source_row_offset(glyph);
 	int dpi = prof_.render_dpi;
 	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
-	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)glyph.rows;
-	for (uint16_t row = 0; row < glyph.rows; row++) {
+	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)visible_rows;
+	for (uint16_t row = 0; row < visible_rows; row++) {
+		uint16_t source_row = (uint16_t)(source_row_offset + row);
 		for (uint16_t col = 0; col < glyph.width; col++) {
-			uint8_t byte = soft_glyph_bitmap_byte(glyph, row, col >> 3);
+			uint8_t byte =
+				soft_glyph_bitmap_byte(glyph, source_row, col >> 3);
 			if (byte & (0x80u >> (col & 7)))
 				page_->set_pixel(base_x + col, base_y + row, 0);
 		}
@@ -2985,7 +3022,10 @@ bool PclPrinter::ljii_resident_glyph_vertical_accepts(
 
 bool PclPrinter::ljii_soft_glyph_vertical_accepts(const SoftGlyph &glyph) const
 {
-	float top = st_.y_pos - (float)glyph.rows / kDotsPerIn;
+	uint16_t visible_rows = soft_glyph_visible_rows(glyph);
+	if (visible_rows == 0)
+		return false;
+	float top = st_.y_pos - (float)visible_rows / kDotsPerIn;
 	return ljii_text_box_accepts(top, st_.y_pos);
 }
 

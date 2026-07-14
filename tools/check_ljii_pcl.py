@@ -2872,10 +2872,10 @@ def main():
                       dpi=300) != failed_descriptor_hash:
             raise AssertionError("fixed-record failed descriptor resume kept stale pixels")
 
-        def descriptor_glyph(rows, span):
+        def descriptor_glyph(rows, span, mode=1):
             width = span * 8
             return (
-                bytes([0, 0, 0, 0, 0x0c, 1]) +
+                bytes([0, 0, 0, 0, 0x0c, mode]) +
                 rows.to_bytes(2, "big") +
                 width.to_bytes(2, "big") +
                 b"\x00\x00" +
@@ -2903,6 +2903,31 @@ def main():
         unresolved_glyph_case("download-high-row-short-boundary", 0x0102, 2)
         unresolved_glyph_case("download-wrapped-width-boundary", 1, 0x0102)
         unresolved_glyph_case("download-span31-source-boundary", 0x0181, 31)
+
+        segmented_payload = descriptor_glyph(0x0181, 17, mode=2)
+        segmented_visible = write(
+            tmp / "download-high-row-segment-visible.pcl",
+            ESC + b"*c4670D" +
+            ESC + b"*c33E" +
+            ESC + b")s" + str(len(segmented_payload)).encode("ascii") + b"W" +
+            segmented_payload +
+            ESC + b"*p300Y" +
+            ESC + b"(4670X" +
+            b"!" + FF,
+        )
+        segmented_visible_pdf = tmp / "download-high-row-segment-visible.pdf"
+        render(dreamprint, segmented_visible, segmented_visible_pdf)
+        if pdftotext(segmented_visible_pdf).strip() != "!":
+            raise AssertionError("high-row selected segment lost selectable text")
+        segmented_bbox = ppm_bbox(segmented_visible_pdf,
+                                  tmp / "download-high-row-segment-visible",
+                                  dpi=300)
+        if segmented_bbox is None:
+            raise AssertionError("high-row selected segment did not render pixels")
+        segmented_h = segmented_bbox[3] - segmented_bbox[1] + 1
+        segmented_w = segmented_bbox[2] - segmented_bbox[0] + 1
+        if segmented_h < 120 or segmented_h > 136 or segmented_w < 130:
+            raise AssertionError("high-row selected segment used wrong visible bounds")
 
         bad_char_payload = write(
             tmp / "bad-char-payload.pcl",
