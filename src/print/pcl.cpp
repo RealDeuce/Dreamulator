@@ -867,6 +867,7 @@ void PclPrinter::parse_byte(uint8_t b)
 	if (defining_macro_ && !replaying_macro_) {
 		if (macro_chain_active_ && state_ == State::Parameterized) {
 			bool chain_byte = is_param_byte(b) ||
+			                  b == ':' || b == ';' ||
 			                  (b >= '@' && b <= '^') ||
 			                  (b >= 'a' && b <= 'z');
 			if (chain_byte) {

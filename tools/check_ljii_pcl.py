@@ -4308,17 +4308,31 @@ def main():
                                     ESC + b"&f0x" + b"!\r" +
                                     ESC + b"&f1x" +
                                     ESC + b"&f2x" + b"Z" + FF)
+        macro_lower_semicolon = write(
+            tmp / "macro-lower-semicolon.pcl",
+            ESC + b"&f731Y" +
+            ESC + b"&f0x1;1X" +
+            ESC + b"&f2X" + b"Z" + FF)
+        macro_lower_colon = write(
+            tmp / "macro-lower-colon.pcl",
+            ESC + b"&f732Y" +
+            ESC + b"&f0x1:1X" +
+            ESC + b"&f2X" + b"Z" + FF)
         macro_lower_expected = write(tmp / "macro-lower-expected.pcl",
                                      b"Z" + FF)
         macro_lower_payload_expected = write(
             tmp / "macro-lower-payload-expected.pcl", b"\rZ" + FF)
         macro_lower_chain_pdf = tmp / "macro-lower-chain.pdf"
         macro_lower_payload_pdf = tmp / "macro-lower-payload.pdf"
+        macro_lower_semicolon_pdf = tmp / "macro-lower-semicolon.pdf"
+        macro_lower_colon_pdf = tmp / "macro-lower-colon.pdf"
         macro_lower_expected_pdf = tmp / "macro-lower-expected.pdf"
         macro_lower_payload_expected_pdf = \
             tmp / "macro-lower-payload-expected.pdf"
         render(dreamprint, macro_lower_chain, macro_lower_chain_pdf)
         render(dreamprint, macro_lower_payload, macro_lower_payload_pdf)
+        render(dreamprint, macro_lower_semicolon, macro_lower_semicolon_pdf)
+        render(dreamprint, macro_lower_colon, macro_lower_colon_pdf)
         render(dreamprint, macro_lower_expected, macro_lower_expected_pdf)
         render(dreamprint, macro_lower_payload_expected,
                macro_lower_payload_expected_pdf)
@@ -4336,6 +4350,14 @@ def main():
                       tmp / "macro-lower-payload", dpi=300) != \
            expected_lower_payload_hash:
             raise AssertionError("lowercase macro start did not seed auto-prefix")
+        if ppm_sha256(macro_lower_semicolon_pdf,
+                      tmp / "macro-lower-semicolon", dpi=300) != \
+           expected_lower_hash:
+            raise AssertionError("lowercase macro semicolon continuation escaped auto-prefix parsing")
+        if ppm_sha256(macro_lower_colon_pdf,
+                      tmp / "macro-lower-colon", dpi=300) != \
+           expected_lower_hash:
+            raise AssertionError("lowercase macro colon continuation escaped auto-prefix parsing")
 
         macro_display_control = write(
             tmp / "macro-display-control.pcl",
