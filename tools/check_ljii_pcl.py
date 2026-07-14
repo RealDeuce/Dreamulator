@@ -2526,6 +2526,26 @@ def main():
         if pdftotext(fractional_download_pdf).strip() != "!":
             raise AssertionError("fractional downloaded-font count rounded")
 
+        capped_payload = (
+            bytes([0, 0, 0, 0, 0x0c, 1]) +
+            (0x0788).to_bytes(2, "big") +
+            (17 * 8).to_bytes(2, "big") +
+            b"\x00\x00" +
+            bytes(0x7fff - 12)
+        )
+        payload_count_cap = write(tmp / "payload-count-cap.pcl",
+                                  ESC + b"*c4671D" +
+                                  ESC + b"*c33E" +
+                                  ESC + b")s32768W" + capped_payload +
+                                  b"!" + FF)
+        payload_count_cap_pdf = tmp / "payload-count-cap.pdf"
+        render(dreamprint, payload_count_cap, payload_count_cap_pdf)
+        if pdftotext(payload_count_cap_pdf).strip() != "!":
+            raise AssertionError("downloaded-font payload count cap consumed following text")
+        if ppm_bbox(payload_count_cap_pdf, tmp / "payload-count-cap",
+                    dpi=150) is None:
+            raise AssertionError("downloaded-font payload count cap lost visible text")
+
         raster_control = write(tmp / "raster-control.pcl",
                                ESC + b"*t300R" +
                                ESC + b"*r0A" +

@@ -1465,6 +1465,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival == 0) {
 				payload_buf_.clear();
 				apply_download_payload(payload_buf_);
+			} else if (ival > 0x7fff) {
+				begin_payload(State::DrainData, 0x7fff);
 			} else {
 				begin_payload(State::DownloadData, ival);
 			}
