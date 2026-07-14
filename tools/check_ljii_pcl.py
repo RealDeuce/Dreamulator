@@ -3398,6 +3398,23 @@ def main():
         if macro_display_text.count("AZB") < 256:
             raise AssertionError("macro display append lost replayed text")
 
+        macro_control_z_append = write(
+            tmp / "macro-control-z-append.pcl",
+            ESC + b"&f704Y" +
+            ESC + b"&f0X" +
+            ESC + b"*p0X" + b"A" + bytes([0x1a, 0x58]) + b"B" +
+            ESC + b"&f1X" +
+            (ESC + b"&f2X") * 256 + FF)
+        macro_control_z_append_pdf = tmp / "macro-control-z-append.pdf"
+        render(dreamprint, macro_control_z_append,
+               macro_control_z_append_pdf)
+        if pdf_pages(macro_control_z_append_pdf) != 1:
+            raise AssertionError("macro Control-Z append replayed payload-control side effect")
+        macro_control_z_text = "".join(
+            pdftotext(macro_control_z_append_pdf).split())
+        if macro_control_z_text.count("AB") < 256:
+            raise AssertionError("macro Control-Z append lost replayed text")
+
         macro_call_restore = write(
             tmp / "macro-call-restore.pcl",
             b"A" +

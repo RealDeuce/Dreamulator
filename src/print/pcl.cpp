@@ -627,6 +627,7 @@ private:
 	bool macro_display_capture_ = false;
 	bool macro_display_escape_pending_ = false;
 	bool macro_display_control_pending_ = false;
+	bool macro_control_pending_ = false;
 	size_t macro_command_start_ = 0;
 	std::vector<uint8_t> macro_stop_buf_;
 	std::map<int, Macro> macros_;
@@ -719,6 +720,7 @@ void PclPrinter::reset_ljii_state()
 	macro_display_capture_ = false;
 	macro_display_escape_pending_ = false;
 	macro_display_control_pending_ = false;
+	macro_control_pending_ = false;
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
@@ -3029,6 +3031,7 @@ void PclPrinter::start_macro_definition(bool lowercase_final)
 	macro_display_capture_ = false;
 	macro_display_escape_pending_ = false;
 	macro_display_control_pending_ = false;
+	macro_control_pending_ = false;
 	if (lowercase_final) {
 		macro.bytes.push_back(0x1B);
 		macro.bytes.push_back('&');
@@ -3053,6 +3056,7 @@ void PclPrinter::finish_macro_definition(size_t keep_size)
 	macro_display_capture_ = false;
 	macro_display_escape_pending_ = false;
 	macro_display_control_pending_ = false;
+	macro_control_pending_ = false;
 	macro_stop_buf_.clear();
 }
 
@@ -3077,6 +3081,7 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 {
 	if (macro_display_capture_) {
 		macro_stop_buf_.clear();
+		macro_control_pending_ = false;
 		if (macro_display_control_pending_) {
 			macro_display_control_pending_ = false;
 			append_macro_display_byte(b == 0x58 ? 0x7f : b);
@@ -3085,6 +3090,26 @@ bool PclPrinter::capture_macro_definition_byte(uint8_t b)
 		} else {
 			append_macro_display_byte(b);
 		}
+		return true;
+	}
+
+	if (macro_control_pending_) {
+		macro_control_pending_ = false;
+		macro_stop_buf_.clear();
+		if (b == 0x1A) {
+			append_macro_definition_byte(0x1a);
+			return true;
+		}
+		if (b == 0x58) {
+			append_macro_definition_byte(0x7f);
+			return true;
+		}
+		append_macro_definition_byte(0x1a);
+	}
+
+	if (b == 0x1A) {
+		macro_stop_buf_.clear();
+		macro_control_pending_ = true;
 		return true;
 	}
 
