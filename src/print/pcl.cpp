@@ -1069,6 +1069,10 @@ void PclPrinter::advance_fixed_space()
 		ljii_carriage_return();
 		ljii_line_feed();
 	}
+	text_buf_.push_back({
+		st_.x_pos, st_.y_pos, 0x20, char_w_in,
+		char_w_in * 72.0f / 0.6f, 0
+	});
 	st_.x_pos += char_w_in;
 	clear_pending_cursor_y();
 }

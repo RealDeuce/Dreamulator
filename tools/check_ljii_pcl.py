@@ -266,6 +266,8 @@ def main():
                       dpi=150) != \
            ppm_sha256(explicit_spaces_pdf, tmp / "explicit-spaces", dpi=150):
             raise AssertionError("transparent controls did not advance as spaces")
+        if not pdftotext(transparent_fixed_pdf).startswith("!  !"):
+            raise AssertionError("transparent fixed spaces lost selectable text")
 
         transparent_nonroman = write(tmp / "transparent-nonroman.pcl",
                                      ESC + b"(0N" + ESC + b"&p3X" +
