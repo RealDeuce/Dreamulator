@@ -727,12 +727,22 @@ def main():
 
         hmi_zero_plain = write(tmp / "hmi-zero-plain.pcl",
                                ESC + b"&k0H" + b"!" + FF)
+        hmi_zero_pair = write(tmp / "hmi-zero-pair.pcl",
+                              ESC + b"&k0H" + b"!!" + FF)
         hmi_zero_tab = write(tmp / "hmi-zero-tab.pcl",
                              ESC + b"&k0H\t!" + FF)
         hmi_zero_plain_pdf = tmp / "hmi-zero-plain.pdf"
+        hmi_zero_pair_pdf = tmp / "hmi-zero-pair.pdf"
         hmi_zero_tab_pdf = tmp / "hmi-zero-tab.pdf"
         render(dreamprint, hmi_zero_plain, hmi_zero_plain_pdf)
+        render(dreamprint, hmi_zero_pair, hmi_zero_pair_pdf)
         render(dreamprint, hmi_zero_tab, hmi_zero_tab_pdf)
+        if ppm_sha256(hmi_zero_plain_pdf, tmp / "hmi-zero-plain",
+                      dpi=300) != \
+           ppm_sha256(hmi_zero_pair_pdf, tmp / "hmi-zero-pair", dpi=300):
+            raise AssertionError("zero HMI printable pair changed pixels")
+        if pdftotext(hmi_zero_pair_pdf).strip() != "!!":
+            raise AssertionError("zero HMI printable pair lost selectable text")
         if ppm_sha256(hmi_zero_plain_pdf, tmp / "hmi-zero-plain",
                       dpi=300) != \
            ppm_sha256(hmi_zero_tab_pdf, tmp / "hmi-zero-tab", dpi=300):
@@ -856,6 +866,23 @@ def main():
             raise AssertionError("proportional BS still matched HMI backspace")
         if "WiX" not in "".join(pdftotext(prop_prev_width_pdf).split()):
             raise AssertionError("proportional BS lost selectable text")
+
+        prop_bs_cr_flush = write(tmp / "prop-bs-cr-flush.pcl",
+                                 ESC + b"(s1P" + b"Wi\b\rX" + FF)
+        prop_cr_flush = write(tmp / "prop-cr-flush.pcl",
+                              ESC + b"(s1P" + b"Wi\rX" + FF)
+        prop_bs_cr_flush_pdf = tmp / "prop-bs-cr-flush.pdf"
+        prop_cr_flush_pdf = tmp / "prop-cr-flush.pdf"
+        render(dreamprint, prop_bs_cr_flush, prop_bs_cr_flush_pdf)
+        render(dreamprint, prop_cr_flush, prop_cr_flush_pdf)
+        if ppm_sha256(prop_bs_cr_flush_pdf, tmp / "prop-bs-cr-flush",
+                      dpi=300) != \
+           ppm_sha256(prop_cr_flush_pdf, tmp / "prop-cr-flush", dpi=300):
+            raise AssertionError(
+                "CR flush did not clear pending previous-width latch")
+        if "WiX" not in "".join(pdftotext(prop_bs_cr_flush_pdf).split()):
+            raise AssertionError(
+                "CR previous-width flush lost selectable text")
 
         left_margin_positive = write(tmp / "left-margin-positive.pcl",
                                      ESC + b"&a6L" + b"!" + FF)
