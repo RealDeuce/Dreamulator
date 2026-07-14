@@ -2464,6 +2464,37 @@ def main():
                       tmp / "fixed-record-type1-high-baseline", dpi=300):
             raise AssertionError("fixed-record type-1 did not install high downloaded character")
 
+        def descriptor_glyph(rows, span):
+            width = span * 8
+            return (
+                bytes([0, 0, 0, 0, 0x0c, 1]) +
+                rows.to_bytes(2, "big") +
+                width.to_bytes(2, "big") +
+                b"\x00\x00" +
+                bytes([0xff]) * (rows * span)
+            )
+
+        def unresolved_glyph_case(name, rows, span):
+            payload = descriptor_glyph(rows, span)
+            stream = (
+                ESC + b"*c4670D" +
+                ESC + b"*c33E" +
+                ESC + b")s" + str(len(payload)).encode("ascii") + b"W" +
+                payload +
+                ESC + b"(4670X" +
+                b"!" + FF
+            )
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            if pdftotext(pdf).strip() != "!":
+                raise AssertionError(f"{name} lost selectable text")
+            if ppm_bbox(pdf, tmp / name, dpi=150) is not None:
+                raise AssertionError(f"{name} invented unresolved glyph pixels")
+
+        unresolved_glyph_case("download-high-row-short-boundary", 0x0102, 2)
+        unresolved_glyph_case("download-span31-source-boundary", 0x0181, 31)
+
         bad_char_payload = write(
             tmp / "bad-char-payload.pcl",
             ESC + b"*c4660D" +

@@ -451,6 +451,7 @@ private:
 		uint16_t width = 0;
 		uint16_t rows = 0;
 		uint16_t span = 0;
+		bool unresolved_pixels = false;
 		std::vector<uint8_t> bitmap;
 	};
 
@@ -2453,6 +2454,10 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		continuable_descriptor_glyph = true;
 		descriptor_row_major_glyph = payload[5] == 2;
 		descriptor_bitmap_bytes = glyph.bitmap.size();
+		glyph.unresolved_pixels =
+			(glyph.span == 2 && glyph.rows >= 0x0101 &&
+			 glyph.rows <= 0x0103) ||
+			(glyph.span == 31 && glyph.rows >= 0x0181);
 	} else if (payload.size() >= 6 && payload[4] == 0x0c &&
 	           payload[5] != 1 && payload[5] != 2) {
 		font.continuation_active = false;
@@ -2583,6 +2588,8 @@ void PclPrinter::draw_soft_glyph_pixels(const SoftGlyph &glyph)
 {
 	if (glyph.width == 0 || glyph.rows == 0 || glyph.span == 0)
 		return;
+	if (glyph.unresolved_pixels)
+		return;
 	new_page_if_needed();
 	page_dirty_ = true;
 
@@ -2627,6 +2634,15 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		ljii_line_feed();
 	}
 	start_underline_span();
+
+	if (glyph.unresolved_pixels) {
+		uint16_t cp = text_unicode(b);
+		if (cp >= 0x20)
+			append_ljii_text_glyph(cp, char_w_in);
+		finish_text_advance(metric_width_in, char_w_in, had_pending);
+		mark_line_output(true);
+		return true;
+	}
 
 	new_page_if_needed();
 	page_dirty_ = true;
