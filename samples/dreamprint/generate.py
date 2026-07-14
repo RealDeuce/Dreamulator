@@ -559,7 +559,7 @@ def pcl_param(prefix: bytes, body: bytes) -> bytes:
     return ESC + prefix + body
 
 
-def ljii_font(pitch: str, italic: bool, bold: bool) -> bytes:
+def ljii_font(pitch: str, italic: bool, bold: bool, slot: bytes = b"(") -> bytes:
     if pitch == "line-printer":
         pitch_body = b"16.66h8.5v"
         typeface = b"0T"
@@ -571,7 +571,7 @@ def ljii_font(pitch: str, italic: bool, bold: bool) -> bytes:
         typeface = b"3T"
     style = b"1s" if italic else b"0s"
     weight = b"3b" if bold else b"0b"
-    return pcl_param(b"(s", b"0p" + pitch_body + style + weight + typeface)
+    return pcl_param(slot + b"s", b"0p" + pitch_body + style + weight + typeface)
 
 
 def ljii_underline(mode: str) -> bytes:
@@ -589,20 +589,20 @@ def ljii_plain() -> bytes:
 def build_ljii_text_attributes() -> bytes:
     out = bytearray()
     out += ESC + b"E"
-    out += b"LaserJet II text capability sample\r\n\r\n"
+    out += b"LaserJet II text attribute matrix\r\n\r\n"
 
-    out += b"Resident font and text attribute matrix\r\n"
+    out += b"Resident font selection requests\r\n"
     pitch_rows = [
-        ("10 cpi", "10cpi"),
-        ("12 cpi request", "12cpi"),
-        ("16.66 cpi line-printer", "line-printer"),
+        ("Courier 10 cpi", "10cpi"),
+        ("Courier 12 cpi request", "12cpi"),
+        ("Line-printer 16.66 cpi", "line-printer"),
     ]
     for index, (title, pitch_mode) in enumerate(pitch_rows):
         if index:
             out += FF
             out += ljii_plain()
-            out += b"LaserJet II text capability sample continued\r\n\r\n"
-        out += (title + " resident selection matrix\r\n").encode("ascii")
+            out += b"LaserJet II text attribute matrix continued\r\n\r\n"
+        out += (title + " matrix\r\n").encode("ascii")
         if pitch_mode == "12cpi":
             out += b"ROM pitch fallback selects the nearest resident window above 12 cpi\r\n"
         for underline in ("off", "fixed", "floating"):
@@ -625,7 +625,7 @@ def build_ljii_text_attributes() -> bytes:
 
     out += FF
     out += ljii_plain()
-    out += b"LaserJet II text capability sample continued\r\n\r\n"
+    out += b"LaserJet II text attribute matrix continued\r\n\r\n"
 
     out += ljii_plain()
     out += pcl_param(b"&k", b"2S")
@@ -633,7 +633,34 @@ def build_ljii_text_attributes() -> bytes:
     out += sample_text() + b"\r\n\r\n"
 
     out += ljii_plain()
-    out += b"Underline includes spaces\r\n"
+    out += b"Primary and secondary font slots\r\n"
+    out += ljii_font("10cpi", False, False, b"(")
+    out += ljii_font("line-printer", False, False, b")")
+    out += b"Primary before SO: "
+    out += sample_text() + b"\r\n"
+    out += b"\x0eSecondary after SO: "
+    out += sample_text() + b"\r\n"
+    out += b"\x0fPrimary after SI: "
+    out += sample_text() + b"\r\n\r\n"
+
+    out += ljii_plain()
+    out += b"Font ID selection and default reset\r\n"
+    out += pcl_param(b"*c", b"42D")
+    out += pcl_param(b"(s", b"0p16.66h8.5v0s0b0T")
+    out += pcl_param(b"*c", b"43D")
+    out += pcl_param(b"(s", b"0p10h12v0s0b3T")
+    out += pcl_param(b"(", b"42X")
+    out += b"Selected font ID 42 line-printer: "
+    out += sample_text() + b"\r\n"
+    out += pcl_param(b"(", b"43X")
+    out += b"Selected font ID 43 Courier: "
+    out += sample_text() + b"\r\n"
+    out += pcl_param(b"(", b"3@")
+    out += b"Default primary font restored: "
+    out += sample_text() + b"\r\n\r\n"
+
+    out += ljii_plain()
+    out += b"Underline spans include spaces\r\n"
     out += ljii_underline("fixed")
     out += b"fixed underline covers visible space gaps\r\n"
     out += ljii_plain()
@@ -653,11 +680,48 @@ def build_ljii_text_attributes() -> bytes:
     out += pcl_param(b"(", b"8U")
     out += b"\r\n"
 
+    out += b"Roman-8 high bytes remain selectable\r\n"
+    out += bytes([0xa1, 0xa2, 0xa3, 0xb0, 0xba, 0xbf, 0xc0, 0xd0])
+    out += b"\r\n"
+    out += b"USASCII high bytes route through printable symbol mapping\r\n"
+    out += pcl_param(b"(", b"0U")
+    out += b"A\x80\x81B\r\n"
+    out += pcl_param(b"(", b"8U")
+    out += b"\r\n"
+
     out += b"Roman Extension 0E lower half\r\n"
     out += pcl_param(b"(", b"0E")
     out += b" !\"#$%&'()*+,-./\r\n"
     out += pcl_param(b"(", b"8U")
     out += b"\r\n"
+
+    out += b"Line termination modes\r\n"
+    out += pcl_param(b"&k", b"0G")
+    out += b"0G:A\nB\r\n"
+    out += pcl_param(b"&k", b"1G")
+    out += b"1G:A\rB\r\n"
+    out += pcl_param(b"&k", b"2G")
+    out += b"2G:A\nB\r\n"
+    out += pcl_param(b"&k", b"3G")
+    out += b"3G:A\rB\nC\r\n"
+    out += pcl_param(b"&k", b"0G")
+    out += b"\r\n"
+
+    out += b"Cursor stack, relative position, and wrap\r\n"
+    out += b"A"
+    out += pcl_param(b"&f", b"0S")
+    out += pcl_param(b"&a", b"8c+1R")
+    out += b"B"
+    out += pcl_param(b"&f", b"1S")
+    out += b"C\r\n"
+    out += pcl_param(b"&s", b"1C")
+    out += b"wrap disabled: "
+    out += b"0123456789" * 9
+    out += b"\r\n"
+    out += pcl_param(b"&s", b"0C")
+    out += b"wrap enabled: "
+    out += b"0123456789" * 9
+    out += b"\r\n\r\n"
 
     out += b"Transparent text payload\r\n"
     out += pcl_param(b"&p", b"19XTransparent payload")
@@ -667,10 +731,25 @@ def build_ljii_text_attributes() -> bytes:
     out += ESC + b"YDisplay " + ESC + b"Z"
     out += b"\r\n\r\n"
 
-    out += b"Relative cursor movement\r\n"
-    out += b"A"
-    out += pcl_param(b"&a", b"2c+1R")
-    out += b"B\r\n\r\n"
+    out += b"Macro execute and overlay text\r\n"
+    out += pcl_param(b"&f", b"201Y")
+    out += pcl_param(b"&f", b"0X")
+    out += b"macro-body "
+    out += pcl_param(b"&f", b"1X")
+    out += b"execute: "
+    out += pcl_param(b"&f", b"2X")
+    out += b"\r\n"
+    out += pcl_param(b"&f", b"202Y")
+    out += pcl_param(b"&f", b"0X")
+    out += b"overlay-body "
+    out += pcl_param(b"&f", b"1X")
+    out += pcl_param(b"&f", b"202Y")
+    out += pcl_param(b"&f", b"4X")
+    out += b"base page with overlay enabled"
+    out += FF
+    out += pcl_param(b"&f", b"5X")
+    out += ljii_plain()
+    out += b"LaserJet II text attribute matrix continued\r\n\r\n"
 
     out += ljii_plain()
     out += b"Downloaded glyph selected by font id\r\n"
@@ -680,6 +759,21 @@ def build_ljii_text_attributes() -> bytes:
     out += bytes.fromhex("f0 0f aa 55 3c c3 81 7e ff 00 18 e7 24 db 42 bd 66 99")
     out += pcl_param(b"(", b"4660X")
     out += b")\r\n"
+
+    out += ljii_plain()
+    out += b"\r\nText-facing raster and rule placement smoke\r\n"
+    out += pcl_param(b"*p", b"300x2500Y")
+    out += pcl_param(b"*c", b"900a30b0P")
+    out += pcl_param(b"*p", b"330x2580Y")
+    out += b"Rule above came from ESC *c0P\r\n"
+    out += pcl_param(b"*t", b"300R")
+    out += pcl_param(b"*p", b"330x2700Y")
+    out += pcl_param(b"*r", b"1A")
+    for row in (b"\xff\x00", b"\x81\x00", b"\xff\x00"):
+        out += pcl_param(b"*b", str(len(row)).encode("ascii") + b"W") + row
+    out += pcl_param(b"*r", b"0B")
+    out += pcl_param(b"*p", b"330x2820Y")
+    out += b"Raster icon above came from ESC *b#W\r\n"
 
     out += ljii_plain()
     out += FF

@@ -169,20 +169,29 @@ def main():
         render(dreamprint, sample, sample_pdf)
         text = pdftotext(sample_pdf)
         for needle in (
-            "LaserJet II text capability sample",
-            "10 cpi resident selection matrix",
-            "12 cpi request resident selection matrix",
+            "LaserJet II text attribute matrix",
+            "Courier 10 cpi matrix",
+            "Courier 12 cpi request matrix",
             "ROM pitch fallback selects the nearest resident window above 12 cpi",
-            "16.66 cpi line-printer resident selection matrix",
+            "Line-printer 16.66 cpi matrix",
             "Compatibility pitch command ESC &k2S (16.66 cpi)",
+            "Primary and secondary font slots",
+            "Font ID selection and default reset",
+            "Line termination modes",
+            "Cursor stack, relative position, and wrap",
             "# \\ ^ ~",
             "Transparent payload",
+            "Macro execute and overlay text",
+            "execute: macro-body",
             "Downloaded glyph selected by font id",
+            "Text-facing raster and rule placement smoke",
+            "Rule above came from ESC *c0P",
+            "Raster icon above came from ESC *b#W",
             ")",
         ):
             if needle not in text:
                 raise AssertionError(f"sample text missing {needle!r}")
-        if pdf_pages(sample_pdf) != 4:
+        if pdf_pages(sample_pdf) != 5:
             raise AssertionError("sample pitch sections did not stay page-bounded")
         if text.count("The quick brown fox jumps 0123456789") < 36:
             raise AssertionError("sample matrix lost complete selectable text rows")
