@@ -574,6 +574,33 @@ def ljii_font(pitch: str, italic: bool, bold: bool, slot: bytes = b"(") -> bytes
     return pcl_param(slot + b"s", b"0p" + pitch_body + style + weight + typeface)
 
 
+def ljii_soft_font_header(style: int) -> bytes:
+    header = bytearray(64)
+    header[0] = 0x00
+    header[1] = 0x01
+    header[0x21] = 0
+    header[0x22] = 0x01
+    header[0x23] = 0x15
+    header[0x24] = 0x03
+    header[0x25] = 0xe8
+    header[0x28] = 0x04
+    header[0x29] = 0xb0
+    header[0x2f] = style
+    header[0x30] = 0
+    header[0x31] = 3
+    return bytes(header)
+
+
+def ljii_download_style_font(font_id: int, style: int, char: int,
+                             glyph: bytes) -> bytes:
+    return (
+        pcl_param(b"*c", f"{font_id}D".encode("ascii"))
+        + pcl_param(b"(s", b"64W") + ljii_soft_font_header(style)
+        + pcl_param(b"*c", f"{char}E".encode("ascii"))
+        + pcl_param(b"(s", str(len(glyph)).encode("ascii") + b"W") + glyph
+    )
+
+
 def ljii_underline(mode: str) -> bytes:
     if mode == "fixed":
         return pcl_param(b"&d", b"0D")
@@ -609,7 +636,7 @@ def build_ljii_text_attributes() -> bytes:
             for style_request in (False, True):
                 for bold in (False, True):
                     attrs = [title]
-                    attrs.append("style-1 request (upright resident fallback)"
+                    attrs.append("style-1 selector (resident fallback)"
                                  if style_request else "style-0 request")
                     attrs.append("stroke-3B" if bold else "stroke-0B")
                     if underline != "off":
@@ -672,6 +699,20 @@ def build_ljii_text_attributes() -> bytes:
     out += b"Stroke request 3B selects resident fallback when no bold face exists\r\n"
     out += ljii_font("10cpi", False, True)
     out += sample_text() + b"\r\n\r\n"
+
+    upright_i = bytes([0xff] * 3 + [0x18] * 25 + [0xff] * 3)
+    italic_i = bytes(
+        [0x1f] * 3 + [0x0c] * 7 + [0x18] * 8 + [0x30] * 7 +
+        [0x60] * 3 + [0xf8] * 3
+    )
+    out += ljii_plain()
+    out += b"Downloaded soft font style selection\r\n"
+    out += ljii_download_style_font(4662, 0, ord("I"), upright_i)
+    out += ljii_download_style_font(4663, 1, ord("I"), italic_i)
+    out += pcl_param(b"(s", b"0S")
+    out += b"style-0 downloaded I: I\r\n"
+    out += pcl_param(b"(s", b"1S")
+    out += b"style-1 downloaded I: I\r\n\r\n"
 
     out += ljii_plain()
     out += b"UK symbol set remaps # \\ ^ ~\r\n"

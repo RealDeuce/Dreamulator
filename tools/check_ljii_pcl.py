@@ -186,6 +186,7 @@ def main():
             "Line termination modes",
             "Cursor stack, relative position, and wrap",
             "# \\ ^ ~",
+            "Downloaded soft font style selection",
             "Transparent payload",
             "Macro execute and overlay text",
             "execute: macro-body",
@@ -197,8 +198,8 @@ def main():
         ):
             if needle not in text:
                 raise AssertionError(f"sample text missing {needle!r}")
-        if pdf_pages(sample_pdf) != 5:
-            raise AssertionError("sample pitch sections did not stay page-bounded")
+        if pdf_pages(sample_pdf) != 6:
+            raise AssertionError("sample sections did not stay page-bounded")
         if text.count("The quick brown fox jumps 0123456789") < 36:
             raise AssertionError("sample matrix lost complete selectable text rows")
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
@@ -2152,6 +2153,44 @@ def main():
                       tmp / "soft-metric-housekeeping", dpi=150):
             raise AssertionError(
                 "downloaded font housekeeping did not refresh active HMI")
+
+        def styled_soft_header(style):
+            header = bytearray(soft_metric_header)
+            header[0x22] = 0x01
+            header[0x23] = 0x15
+            header[0x2f] = style
+            header[0x30] = 0
+            header[0x31] = 3
+            return bytes(header)
+
+        styled_soft_fonts = (
+            ESC + b"*c4662D" +
+            ESC + b"(s64W" + styled_soft_header(0) +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + b"\xe0\xe0\xe0" +
+            ESC + b"*c4663D" +
+            ESC + b"(s64W" + styled_soft_header(1) +
+            ESC + b"*c65E" +
+            ESC + b"(s3W" + b"\x80\x40\x20"
+        )
+        styled_soft_upright = write(
+            tmp / "styled-soft-upright.pcl",
+            styled_soft_fonts + ESC + b"(s0S" + b"A" + FF)
+        styled_soft_italic = write(
+            tmp / "styled-soft-italic.pcl",
+            styled_soft_fonts + ESC + b"(s1S" + b"A" + FF)
+        styled_soft_upright_pdf = tmp / "styled-soft-upright.pdf"
+        styled_soft_italic_pdf = tmp / "styled-soft-italic.pdf"
+        render(dreamprint, styled_soft_upright, styled_soft_upright_pdf)
+        render(dreamprint, styled_soft_italic, styled_soft_italic_pdf)
+        if pdftotext(styled_soft_italic_pdf).strip() != "A":
+            raise AssertionError("downloaded style-1 font lost selectable text")
+        if ppm_sha256(styled_soft_upright_pdf,
+                      tmp / "styled-soft-upright", dpi=300) == \
+           ppm_sha256(styled_soft_italic_pdf,
+                      tmp / "styled-soft-italic", dpi=300):
+            raise AssertionError(
+                "downloaded style-1 font selected style-0 bitmap")
 
         soft_descriptor_oversized = bytearray(64)
         soft_descriptor_capped = bytearray(64)

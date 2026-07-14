@@ -385,6 +385,21 @@ uint16_t be16_at(const std::vector<uint8_t> &payload, size_t off)
 	return (uint16_t)(((uint16_t)payload[off] << 8) | payload[off + 1]);
 }
 
+bool valid_ljii_font_resource_header(const std::vector<uint8_t> &payload)
+{
+	if (!looks_like_ljii_font_resource_header(payload) || payload.size() < 64)
+		return false;
+	uint8_t resource_type = payload[3];
+	uint16_t first = be16_at(payload, 6);
+	uint16_t line_count = be16_at(payload, 8);
+	uint16_t last = be16_at(payload, 10);
+	uint8_t font_class = payload[12];
+	return resource_type <= 2 && first <= 0x1067 &&
+	       line_count != 0 && line_count <= 0x1068 &&
+	       last != 0 && last <= 0x1068 &&
+	       first <= (uint16_t)(last - 1) && font_class <= 1;
+}
+
 } // namespace
 
 class PclPrinter : public PrinterSim {
@@ -461,6 +476,7 @@ private:
 		bool wrap_enabled = false;
 		int selected_soft_font_id[2] = { -1, -1 };
 		int download_font_slot = 1;
+		bool soft_font_descriptor_pending = true;
 		std::vector<std::pair<float, float>> cursor_stack;
 		bool previous_width_pending = false;
 		float previous_text_width_in = 0.0f;
@@ -700,6 +716,7 @@ private:
 
 	int soft_font_id_ = 0;
 	uint8_t soft_char_code_ = 0;
+	bool soft_font_descriptor_pending_ = true;
 	int selected_soft_font_id_[2] = { -1, -1 };
 	int download_font_slot_ = 1;
 	std::map<int, SoftFont> soft_fonts_;
@@ -801,6 +818,7 @@ void PclPrinter::reset_ljii_state()
 	macro_stop_buf_.clear();
 	soft_font_id_ = 0;
 	soft_char_code_ = 0;
+	soft_font_descriptor_pending_ = true;
 	selected_soft_font_id_[0] = -1;
 	selected_soft_font_id_[1] = -1;
 	download_font_slot_ = 1;
@@ -1816,11 +1834,13 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		}
 		case 'D':
 			soft_font_id_ = std::min(0x7fff, pcl_integer_word(value));
+			soft_font_descriptor_pending_ = true;
 			current_soft_font();
 			break;
 		case 'E':
 			soft_char_code_ =
 				(uint8_t)(std::min(0x7fff, pcl_integer_word(value)) & 0xff);
+			soft_font_descriptor_pending_ = false;
 			break;
 		case 'F':
 			ival = pcl_signed_integer_word(value);
@@ -2607,21 +2627,17 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
-	if (looks_like_ljii_font_resource_header(payload)) {
+	bool resource_header = looks_like_ljii_font_resource_header(payload);
+	bool valid_resource_header = valid_ljii_font_resource_header(payload);
+	if (resource_header &&
+	    (valid_resource_header || !soft_font_descriptor_pending_)) {
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
-		if (payload.size() < 64)
+		if (!valid_resource_header)
 			return;
 		uint8_t resource_type = payload[3];
 		uint16_t first = be16_at(payload, 6);
-		uint16_t line_count = be16_at(payload, 8);
-		uint16_t last = be16_at(payload, 10);
 		uint8_t font_class = payload[12];
-		if (resource_type > 2 || first > 0x1067 ||
-		    line_count == 0 || line_count > 0x1068 ||
-		    last == 0 || last > 0x1068 || first > (uint16_t)(last - 1) ||
-		    font_class > 1)
-			return;
 
 		font.resource_header_active = true;
 		font.resource_type = resource_type;
@@ -2672,7 +2688,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
-	if (payload.size() >= 64 && soft_char_code_ <= 0x20) {
+	if (payload.size() >= 64 &&
+	    (soft_font_descriptor_pending_ || soft_char_code_ <= 0x20)) {
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
 		font.fixed_record_extended_chars = payload[0x0e] != 0;
@@ -3875,6 +3892,7 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.selected_soft_font_id[0] = selected_soft_font_id_[0];
 	env.selected_soft_font_id[1] = selected_soft_font_id_[1];
 	env.download_font_slot = download_font_slot_;
+	env.soft_font_descriptor_pending = soft_font_descriptor_pending_;
 	env.cursor_stack = cursor_stack_;
 	env.previous_width_pending = previous_width_pending_;
 	env.previous_text_width_in = previous_text_width_in_;
@@ -3920,6 +3938,7 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	selected_soft_font_id_[0] = env.selected_soft_font_id[0];
 	selected_soft_font_id_[1] = env.selected_soft_font_id[1];
 	download_font_slot_ = env.download_font_slot;
+	soft_font_descriptor_pending_ = env.soft_font_descriptor_pending;
 	cursor_stack_ = env.cursor_stack;
 	previous_width_pending_ = env.previous_width_pending;
 	previous_text_width_in_ = env.previous_text_width_in;

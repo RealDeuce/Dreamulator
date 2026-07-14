@@ -8,10 +8,10 @@ Courier 10 cpi matrix
 (s0p10h12v0s0b3T&d@Courier 10 cpi / style-0 request / stroke-3B
 (s0p10h12v0s3b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-0B
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-0B
 (s0p10h12v1s0b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-3B
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-3B
 (s0p10h12v1s3b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Courier 10 cpi / style-0 request / stroke-0B / fixed underline
@@ -20,10 +20,10 @@ Courier 10 cpi matrix
 (s0p10h12v0s0b3T&d@Courier 10 cpi / style-0 request / stroke-3B / fixed underline
 (s0p10h12v0s3b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-0B / fixed underline
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-0B / fixed underline
 (s0p10h12v1s0b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-3B / fixed underline
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-3B / fixed underline
 (s0p10h12v1s3b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Courier 10 cpi / style-0 request / stroke-0B / floating underline
@@ -32,10 +32,10 @@ Courier 10 cpi matrix
 (s0p10h12v0s0b3T&d@Courier 10 cpi / style-0 request / stroke-3B / floating underline
 (s0p10h12v0s3b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-0B / floating underline
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-0B / floating underline
 (s0p10h12v1s0b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 request (upright resident fallback) / stroke-3B / floating underline
+(s0p10h12v0s0b3T&d@Courier 10 cpi / style-1 selector (resident fallback) / stroke-3B / floating underline
 (s0p10h12v1s3b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 
@@ -49,10 +49,10 @@ ROM pitch fallback selects the nearest resident window above 12 cpi
 (s0p10h12v0s0b3T&d@Courier 12 cpi request / style-0 request / stroke-3B
 (s0p12h12v0s3b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-0B
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-0B
 (s0p12h12v1s0b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-3B
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-3B
 (s0p12h12v1s3b3T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Courier 12 cpi request / style-0 request / stroke-0B / fixed underline
@@ -61,10 +61,10 @@ ROM pitch fallback selects the nearest resident window above 12 cpi
 (s0p10h12v0s0b3T&d@Courier 12 cpi request / style-0 request / stroke-3B / fixed underline
 (s0p12h12v0s3b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-0B / fixed underline
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-0B / fixed underline
 (s0p12h12v1s0b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-3B / fixed underline
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-3B / fixed underline
 (s0p12h12v1s3b3T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Courier 12 cpi request / style-0 request / stroke-0B / floating underline
@@ -73,10 +73,10 @@ ROM pitch fallback selects the nearest resident window above 12 cpi
 (s0p10h12v0s0b3T&d@Courier 12 cpi request / style-0 request / stroke-3B / floating underline
 (s0p12h12v0s3b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-0B / floating underline
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-0B / floating underline
 (s0p12h12v1s0b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 request (upright resident fallback) / stroke-3B / floating underline
+(s0p10h12v0s0b3T&d@Courier 12 cpi request / style-1 selector (resident fallback) / stroke-3B / floating underline
 (s0p12h12v1s3b3T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 
@@ -89,10 +89,10 @@ Line-printer 16.66 cpi matrix
 (s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-0 request / stroke-3B
 (s0p16.66h8.5v0s3b0T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-0B
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-0B
 (s0p16.66h8.5v1s0b0T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-3B
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-3B
 (s0p16.66h8.5v1s3b0T&d@The quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-0 request / stroke-0B / fixed underline
@@ -101,10 +101,10 @@ Line-printer 16.66 cpi matrix
 (s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-0 request / stroke-3B / fixed underline
 (s0p16.66h8.5v0s3b0T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-0B / fixed underline
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-0B / fixed underline
 (s0p16.66h8.5v1s0b0T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-3B / fixed underline
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-3B / fixed underline
 (s0p16.66h8.5v1s3b0T&d0DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 (s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-0 request / stroke-0B / floating underline
@@ -113,10 +113,10 @@ Line-printer 16.66 cpi matrix
 (s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-0 request / stroke-3B / floating underline
 (s0p16.66h8.5v0s3b0T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-0B / floating underline
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-0B / floating underline
 (s0p16.66h8.5v1s0b0T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
-(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 request (upright resident fallback) / stroke-3B / floating underline
+(s0p10h12v0s0b3T&d@Line-printer 16.66 cpi / style-1 selector (resident fallback) / stroke-3B / floating underline
 (s0p16.66h8.5v1s3b0T&d3DThe quick brown fox jumps 0123456789
 (s0p10h12v0s0b3T&d@
 
@@ -140,6 +140,10 @@ Line-printer 16.66 cpi matrix
 (s0p10h12v0s0b3T&d@
 Stroke request 3B selects resident fallback when no bold face exists
 (s0p10h12v0s3b3TThe quick brown fox jumps 0123456789
+
+(s0p10h12v0s0b3T&d@Downloaded soft font style selection
+*c4662D(s64W                                 è  °                     *c73E(s31Wÿÿÿÿÿÿ*c4663D(s64W                                 è  °                    *c73E(s31W0000000```øøø(s0Sstyle-0 downloaded I: I
+(s1Sstyle-1 downloaded I: I
 
 (s0p10h12v0s0b3T&d@UK symbol set remaps # \ ^ ~
 (1E# \ ^ ~
