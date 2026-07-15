@@ -217,10 +217,20 @@ def main():
             ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
             so_sample + FF,
         )
+        mixed_so_sample = b"Secondary line-printer after SO: "
+        mixed_so_payload = b"The quick brown fox jumps 0123456789"
+        mixed_line_sample = write(
+            tmp / "mixed-secondary-line-sample.pcl",
+            ESC + b"(s0p10h12v0s0b3T" + mixed_so_sample +
+            ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
+            mixed_so_payload + b"\x0f" + FF,
+        )
         upright_line_sample_pdf = tmp / "upright-line-sample.pdf"
         secondary_line_sample_pdf = tmp / "secondary-line-sample.pdf"
+        mixed_line_sample_pdf = tmp / "mixed-secondary-line-sample.pdf"
         render(dreamprint, upright_line_sample, upright_line_sample_pdf)
         render(dreamprint, secondary_line_sample, secondary_line_sample_pdf)
+        render(dreamprint, mixed_line_sample, mixed_line_sample_pdf)
         primary_line_hash = ppm_sha256(upright_line_sample_pdf,
                                        tmp / "upright-line-sample",
                                        dpi=150)
@@ -244,6 +254,18 @@ def main():
             raise AssertionError("sample SO line rendered as vertical/rotated text")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
             raise AssertionError("sample SO line lost selectable text")
+        mixed_line_box = ppm_bbox(mixed_line_sample_pdf,
+                                  tmp / "mixed-secondary-line-shape",
+                                  dpi=150)
+        if mixed_line_box is None:
+            raise AssertionError("sample mixed SO line rendered no resident glyphs")
+        mixed_line_w = mixed_line_box[2] - mixed_line_box[0] + 1
+        mixed_line_h = mixed_line_box[3] - mixed_line_box[1] + 1
+        if mixed_line_w <= mixed_line_h * 10:
+            raise AssertionError("sample mixed SO line rendered as vertical/rotated text")
+        mixed_text = pdftotext(mixed_line_sample_pdf)
+        if (mixed_so_sample + mixed_so_payload).decode("ascii") not in mixed_text:
+            raise AssertionError("sample mixed SO line lost selectable text")
 
         bare_ff = write(tmp / "bare-ff.pcl", FF)
         bare_ff_pdf = tmp / "bare-ff.pdf"
@@ -3559,6 +3581,14 @@ def main():
         rule_decipoint_fraction_expected = write(
             tmp / "rule-decipoint-fraction-expected.pcl",
             ESC + b"*c31a2b0P" + FF)
+        rule_decipoint_clear = write(
+            tmp / "rule-decipoint-clear.pcl",
+            ESC + b"*c64A" + ESC + b"*c64B" +
+            ESC + b"*c-72H" + ESC + b"*c0V" + ESC + b"*c0P" +
+            ESC + b"*p200X" + ESC + b"*p200Y" + b"!" + FF)
+        rule_decipoint_clear_expected = write(
+            tmp / "rule-decipoint-clear-expected.pcl",
+            ESC + b"*p200X" + ESC + b"*p200Y" + b"!" + FF)
         rule_gray = write(tmp / "rule-gray.pcl",
                           ESC + b"*c64a64b50g2P" + FF)
         rule_gray_integer_id = write(tmp / "rule-gray-integer-id.pcl",
@@ -3603,6 +3633,9 @@ def main():
         rule_decipoint_fraction_pdf = tmp / "rule-decipoint-fraction.pdf"
         rule_decipoint_fraction_expected_pdf = \
             tmp / "rule-decipoint-fraction-expected.pdf"
+        rule_decipoint_clear_pdf = tmp / "rule-decipoint-clear.pdf"
+        rule_decipoint_clear_expected_pdf = \
+            tmp / "rule-decipoint-clear-expected.pdf"
         rule_gray_pdf = tmp / "rule-gray.pdf"
         rule_gray_integer_id_pdf = tmp / "rule-gray-integer-id.pdf"
         rule_gray_fractional_id_pdf = tmp / "rule-gray-fractional-id.pdf"
@@ -3626,6 +3659,9 @@ def main():
                rule_decipoint_fraction_pdf)
         render(dreamprint, rule_decipoint_fraction_expected,
                rule_decipoint_fraction_expected_pdf)
+        render(dreamprint, rule_decipoint_clear, rule_decipoint_clear_pdf)
+        render(dreamprint, rule_decipoint_clear_expected,
+               rule_decipoint_clear_expected_pdf)
         render(dreamprint, rule_gray, rule_gray_pdf)
         render(dreamprint, rule_gray_integer_id, rule_gray_integer_id_pdf)
         render(dreamprint, rule_gray_fractional_id,
@@ -3670,6 +3706,12 @@ def main():
            ppm_sha256(rule_decipoint_fraction_expected_pdf,
                       tmp / "rule-decipoint-fraction-expected", dpi=300):
             raise AssertionError("rectangle decipoint size did not round up")
+        if ppm_sha256(rule_decipoint_clear_pdf,
+                      tmp / "rule-decipoint-clear", dpi=300) != \
+           ppm_sha256(rule_decipoint_clear_expected_pdf,
+                      tmp / "rule-decipoint-clear-expected", dpi=300):
+            raise AssertionError(
+                "invalid rectangle decipoint size did not clear dimension")
         if ppm_sha256(rule_gray_fractional_id_pdf,
                       tmp / "rule-gray-fractional-id", dpi=300) != \
            ppm_sha256(rule_gray_integer_id_pdf,
