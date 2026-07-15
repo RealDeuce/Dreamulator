@@ -2304,6 +2304,33 @@ def main():
                       tmp / "public-soft-italic", dpi=300):
             raise AssertionError("public style-1 soft font did not select italic bitmap")
 
+        public_download_unselected = write(
+            tmp / "public-soft-download-unselected.pcl",
+            public_style_fonts + b"I" + FF)
+        public_resident_i = write(tmp / "public-soft-resident-i.pcl", b"I" + FF)
+        public_id_then_style = write(
+            tmp / "public-soft-id-then-style.pcl",
+            public_style_fonts + ESC + b"(4701X" + ESC + b"(s0S" + b"I" + FF)
+        public_download_unselected_pdf = \
+            tmp / "public-soft-download-unselected.pdf"
+        public_resident_i_pdf = tmp / "public-soft-resident-i.pdf"
+        public_id_then_style_pdf = tmp / "public-soft-id-then-style.pdf"
+        render(dreamprint, public_download_unselected,
+               public_download_unselected_pdf)
+        render(dreamprint, public_resident_i, public_resident_i_pdf)
+        render(dreamprint, public_id_then_style, public_id_then_style_pdf)
+        resident_i_hash = ppm_sha256(public_resident_i_pdf,
+                                     tmp / "public-soft-resident-i", dpi=300)
+        if ppm_sha256(public_download_unselected_pdf,
+                      tmp / "public-soft-download-unselected", dpi=300) != \
+           resident_i_hash:
+            raise AssertionError("font download selected a matching soft font")
+        if ppm_sha256(public_id_then_style_pdf,
+                      tmp / "public-soft-id-then-style", dpi=300) != \
+           ppm_sha256(public_style_upright_pdf,
+                      tmp / "public-soft-upright-after-id", dpi=300):
+            raise AssertionError("characteristic command did not clear font ID selection")
+
         resident_symbol_reference = write(
             tmp / "public-soft-symbol-reference.pcl",
             ESC + b"(0N" + ESC + b"(s1S" + b"I" + FF)

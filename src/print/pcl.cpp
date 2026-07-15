@@ -513,6 +513,7 @@ private:
 		bool has_style_metric = false;
 		bool has_stroke_metric = false;
 		bool has_typeface_metric = false;
+		bool characteristic_eligible[2] = { false, false };
 		bool continuation_active = false;
 		uint8_t continuation_char = 0;
 		size_t continuation_offset = 0;
@@ -577,6 +578,7 @@ private:
 	const SoftFont *selected_soft_font_candidate() const;
 	void delete_soft_font(int id);
 	void refresh_soft_font_request(const SoftFont &font);
+	void refresh_characteristic_selection(int slot);
 	void release_fixed_record_glyph(SoftFont &font, uint8_t ch);
 	size_t soft_glyph_bitmap_index(const SoftGlyph &glyph, uint16_t row,
 	                               uint16_t byte_col) const;
@@ -1554,7 +1556,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			active_font_request().pitch =
 				(int)std::lround(st_.pitch_cpi * 100.0f);
-			sync_active_font_state();
+			refresh_characteristic_selection(active_font_slot_);
 			break;
 		default:
 			break;
@@ -1562,29 +1564,37 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 	} else if ((group == '(' || group == ')') && subgroup == 's') {
 		int slot = group == ')' ? 1 : 0;
 		LjiiFontRequest &req = font_request(slot);
+		bool selection_changed = false;
 		switch (term) {
 		case 'B':
 			req.stroke = std::max(-7, std::min(7,
 			                                   pcl_signed_integer_word(value)));
+			selection_changed = true;
 			break;
 		case 'H':
 			value = std::abs(value);
 			req.pitch = (int)std::lround(std::min(655.0, value) * 100.0);
+			selection_changed = true;
 			break;
 		case 'P':
 			ival = pcl_integer_word(value);
-			if (ival < 2)
+			if (ival < 2) {
 				req.spacing = ival;
+				selection_changed = true;
+			}
 			break;
 		case 'S':
 			req.style = std::min(255, pcl_integer_word(value));
+			selection_changed = true;
 			break;
 		case 'T':
 			req.typeface = std::min(255, pcl_integer_word(value));
+			selection_changed = true;
 			break;
 		case 'V':
 			value = std::abs(value);
 			req.height = (int)std::lround(std::min(655.0, value) * 100.0);
+			selection_changed = true;
 			break;
 		case 'W':
 			download_font_slot_ = slot;
@@ -1609,8 +1619,8 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		default:
 			break;
 		}
-		if (slot == active_font_slot_)
-			sync_active_font_state();
+		if (selection_changed)
+			refresh_characteristic_selection(slot);
 	} else if ((group == '(' || group == ')') && subgroup == 0) {
 		int slot = group == ')' ? 1 : 0;
 		if (term == '@') {
@@ -1618,31 +1628,23 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			if (ival == 0) {
 				font_request(slot).symbol_set =
 					ljii_default_symbol_word(slot, orientation_);
-				selected_soft_font_id_[slot] = -1;
-				if (slot == active_font_slot_)
-					sync_active_font_state();
+				refresh_characteristic_selection(slot);
 			} else if (ival == 1) {
 				font_request(slot).symbol_set =
 					ljii_default_symbol_word(0, orientation_);
-				selected_soft_font_id_[slot] = -1;
-				if (slot == active_font_slot_)
-					sync_active_font_state();
+				refresh_characteristic_selection(slot);
 			} else if (ival == 2) {
 				if (slot != 0) {
 					font_request(slot).symbol_set =
 						font_request(0).symbol_set;
-					selected_soft_font_id_[slot] = -1;
-					if (slot == active_font_slot_)
-						sync_active_font_state();
+					refresh_characteristic_selection(slot);
 				}
 			} else if (ival == 3) {
 				font_request(slot) = LjiiFontRequest{};
 				font_request(slot).secondary = (slot != 0);
 				font_request(slot).symbol_set =
 					ljii_default_font_symbol_word();
-				selected_soft_font_id_[slot] = -1;
-				if (slot == active_font_slot_)
-					sync_active_font_state();
+				refresh_characteristic_selection(slot);
 			}
 		} else if (term == 'X') {
 			ival = pcl_integer_word(value);
@@ -1661,9 +1663,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			ival = pcl_integer_word(value);
 			if (ival <= 0x07ff) {
 				font_request(slot).symbol_set = pcl_symbol_value(ival, term);
-				selected_soft_font_id_[slot] = -1;
-				if (slot == active_font_slot_)
-					sync_active_font_state();
+				refresh_characteristic_selection(slot);
 			}
 		}
 	} else if (group == '&' && subgroup == 'p') {
@@ -2421,6 +2421,8 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
 			continue;
 		if (entry.second.glyphs.empty())
 			continue;
+		if (!entry.second.characteristic_eligible[active_font_slot_ ? 1 : 0])
+			continue;
 		if (entry.second.orientation >= 0 &&
 		    entry.second.orientation != orientation_)
 			continue;
@@ -2574,6 +2576,16 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 		if (slot == active_font_slot_)
 			sync_active_font_state();
 	}
+}
+
+void PclPrinter::refresh_characteristic_selection(int slot)
+{
+	selected_soft_font_id_[slot ? 1 : 0] = -1;
+	for (auto &entry : soft_fonts_)
+		if (entry.second.active && !entry.second.glyphs.empty())
+			entry.second.characteristic_eligible[slot ? 1 : 0] = true;
+	if ((slot ? 1 : 0) == active_font_slot_)
+		sync_active_font_state();
 }
 
 void PclPrinter::release_fixed_record_glyph(SoftFont &font, uint8_t ch)
@@ -2820,6 +2832,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 
 		font.glyphs.clear();
 		font.active = true;
+		font.characteristic_eligible[0] = false;
+		font.characteristic_eligible[1] = false;
 		font.host_descriptor_valid = true;
 		font.resource_header_active = legacy_resource_descriptor &&
 			!public_font_descriptor;
@@ -2862,6 +2876,8 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.continuation_remaining = 0;
 		font.active = true;
 		font.host_descriptor_valid = false;
+		font.characteristic_eligible[0] = false;
+		font.characteristic_eligible[1] = false;
 		font.fixed_record_extended_chars = payload[0x0e] != 0;
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
