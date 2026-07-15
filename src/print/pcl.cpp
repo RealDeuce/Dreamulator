@@ -2268,6 +2268,7 @@ void PclPrinter::vfc_channel_jump(int selector)
 	if (vfc_table_.size() != 128)
 		rebuild_default_vfc_table();
 
+	refresh_pending_cursor_y();
 	float vmi = std::max(1.0f / 300.0f, vmi_in_);
 	int current = (int)std::floor((st_.y_pos - vfc_line_y(0)) / vmi + 0.0001f);
 	int start = std::max(0, current + 1);
@@ -2276,10 +2277,17 @@ void PclPrinter::vfc_channel_jump(int selector)
 
 	if (selector <= 0) {
 		flush_underline_span();
+		float target_y = vfc_line_y(0);
+		if (std::fabs(st_.y_pos - target_y) <= 0.0001f &&
+		    !(page_ && page_dirty_)) {
+			clear_pending_cursor_y();
+			restart_underline_span();
+			return;
+		}
 		if (current >= 0 && current <= text_last && page_ && page_dirty_)
 			publish_current_page();
 		st_.x_pos = st_.left_margin_in;
-		st_.y_pos = vfc_line_y(0);
+		st_.y_pos = target_y;
 		clear_pending_cursor_y();
 		restart_underline_span();
 		return;

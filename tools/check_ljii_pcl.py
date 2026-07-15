@@ -4200,17 +4200,37 @@ def main():
         vfc_selector_zero_start_after_text = write(
             tmp / "vfc-selector-zero-start-after-text.pcl",
             b"A" + ESC + b"&a64R" + ESC + b"&l0V" + b"B" + FF)
+        vfc_selector_zero_target_equal = write(
+            tmp / "vfc-selector-zero-target-equal.pcl",
+            ESC + b"&a5C" + ESC + b"&a1R" + ESC + b"&l0V" + b"!" + FF)
+        vfc_selector_zero_target_equal_expected = write(
+            tmp / "vfc-selector-zero-target-equal-expected.pcl",
+            ESC + b"&a5C" + ESC + b"&a1R" + b"!" + FF)
         vfc_selector_zero_eject_pdf = tmp / "vfc-selector-zero-eject.pdf"
         vfc_selector_zero_start_after_text_pdf = \
             tmp / "vfc-selector-zero-start-after-text.pdf"
+        vfc_selector_zero_target_equal_pdf = \
+            tmp / "vfc-selector-zero-target-equal.pdf"
+        vfc_selector_zero_target_equal_expected_pdf = \
+            tmp / "vfc-selector-zero-target-equal-expected.pdf"
         render(dreamprint, vfc_selector_zero_eject,
                vfc_selector_zero_eject_pdf)
         render(dreamprint, vfc_selector_zero_start_after_text,
                vfc_selector_zero_start_after_text_pdf)
+        render(dreamprint, vfc_selector_zero_target_equal,
+               vfc_selector_zero_target_equal_pdf)
+        render(dreamprint, vfc_selector_zero_target_equal_expected,
+               vfc_selector_zero_target_equal_expected_pdf)
         if pdf_pages(vfc_selector_zero_eject_pdf) != 2:
             raise AssertionError("VFC selector-zero did not publish old page")
         if pdf_pages(vfc_selector_zero_start_after_text_pdf) != 1:
             raise AssertionError("VFC selector-zero start-after-text published")
+        if ppm_sha256(vfc_selector_zero_target_equal_pdf,
+                      tmp / "vfc-selector-zero-target-equal", dpi=150) != \
+           ppm_sha256(vfc_selector_zero_target_equal_expected_pdf,
+                      tmp / "vfc-selector-zero-target-equal-expected",
+                      dpi=150):
+            raise AssertionError("VFC selector-zero target-equal moved the cursor")
         if "AB" not in "".join(pdftotext(vfc_selector_zero_eject_pdf).split()):
             raise AssertionError("VFC selector-zero eject lost selectable text")
         if "AB" not in "".join(
