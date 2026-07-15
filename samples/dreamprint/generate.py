@@ -635,9 +635,8 @@ def build_ljii_text_attributes() -> bytes:
         for underline in ("off", "fixed", "floating"):
             for style_request in (False, True):
                 for bold in (False, True):
-                    attrs = [title]
-                    attrs.append("style-1 selector (resident fallback)"
-                                 if style_request else "style-0 request")
+                    attrs = ["style-1 request -> resident upright"
+                             if style_request else "style-0 upright"]
                     attrs.append("stroke-3B" if bold else "stroke-0B")
                     if underline != "off":
                         attrs.append(underline + " underline")
@@ -696,7 +695,7 @@ def build_ljii_text_attributes() -> bytes:
     out += ljii_plain()
     out += b"\r\n"
 
-    out += b"Stroke request 3B selects resident fallback when no bold face exists\r\n"
+    out += b"Stroke request 3B selects the resident bold Courier face\r\n"
     out += ljii_font("10cpi", False, True)
     out += sample_text() + b"\r\n\r\n"
 

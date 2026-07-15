@@ -188,6 +188,9 @@ def main():
             "Cursor stack, relative position, and wrap",
             "# \\ ^ ~",
             "Downloaded soft font style selection",
+            "style-1 request -> resident upright / stroke-3B / fixed underline",
+            "style-1 request -> resident upright / stroke-3B / floating underline",
+            "Stroke request 3B selects the resident bold Courier face",
             "Transparent payload",
             "Macro execute and overlay text",
             "execute: macro-body",
@@ -203,6 +206,10 @@ def main():
             raise AssertionError("sample sections did not stay page-bounded")
         if text.count("The quick brown fox jumps 0123456789") < 36:
             raise AssertionError("sample matrix lost complete selectable text rows")
+        if text.count(
+                "style-1 request -> resident upright / stroke-3B / "
+                "floating underline") != 3:
+            raise AssertionError("sample matrix clipped a longest attribute caption")
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 
