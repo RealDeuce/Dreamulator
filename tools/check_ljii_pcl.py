@@ -439,6 +439,31 @@ def main():
         if "\x80" not in pdftotext(transparent_secondary_high_pdf):
             raise AssertionError("secondary transparent high-control lost selectable byte")
 
+        escape_status_plain = write(tmp / "escape-status-plain.pcl",
+                                    b"AB" + FF)
+        escape_status_upper = write(tmp / "escape-status-upper.pcl",
+                                    ESC + b"ZAB" + FF)
+        escape_status_lower = write(tmp / "escape-status-lower.pcl",
+                                    ESC + b"zAB" + FF)
+        escape_status_plain_pdf = tmp / "escape-status-plain.pdf"
+        escape_status_upper_pdf = tmp / "escape-status-upper.pdf"
+        escape_status_lower_pdf = tmp / "escape-status-lower.pdf"
+        render(dreamprint, escape_status_plain, escape_status_plain_pdf)
+        render(dreamprint, escape_status_upper, escape_status_upper_pdf)
+        render(dreamprint, escape_status_lower, escape_status_lower_pdf)
+        status_plain_hash = ppm_sha256(escape_status_plain_pdf,
+                                       tmp / "escape-status-plain", dpi=300)
+        if ppm_sha256(escape_status_upper_pdf,
+                      tmp / "escape-status-upper", dpi=300) != status_plain_hash:
+            raise AssertionError("standalone ESC Z changed page pixels")
+        if ppm_sha256(escape_status_lower_pdf,
+                      tmp / "escape-status-lower", dpi=300) != status_plain_hash:
+            raise AssertionError("standalone ESC z changed page pixels")
+        if pdftotext(escape_status_upper_pdf).strip() != "AB":
+            raise AssertionError("standalone ESC Z changed selectable text")
+        if pdftotext(escape_status_lower_pdf).strip() != "AB":
+            raise AssertionError("standalone ESC z changed selectable text")
+
         transparent_probe_x = write(tmp / "transparent-probe-x.pcl",
                                     ESC + b"&p3X" + b"A\x1aXB" + FF)
         transparent_probe_del = write(tmp / "transparent-probe-del.pcl",
