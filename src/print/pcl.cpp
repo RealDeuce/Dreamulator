@@ -419,6 +419,8 @@ private:
 		EscQuestion,
 		SubGroup,
 		Parameterized,
+		AngleSpan,
+		AngleSpanSkip,
 		RasterData,
 		TransparentData,
 		VfcData,
@@ -922,6 +924,15 @@ void PclPrinter::parse_byte(uint8_t b)
 	case State::Parameterized:
 		process_parameter_byte(b);
 		return;
+	case State::AngleSpan:
+		if (b == '<')
+			state_ = State::AngleSpanSkip;
+		else if (b == '>')
+			state_ = State::Parameterized;
+		return;
+	case State::AngleSpanSkip:
+		state_ = State::AngleSpan;
+		return;
 	case State::RasterData:
 	case State::TransparentData:
 	case State::VfcData:
@@ -1195,6 +1206,11 @@ void PclPrinter::advance_fixed_space()
 
 void PclPrinter::process_parameter_byte(uint8_t b)
 {
+	if (b == '<') {
+		state_ = State::AngleSpan;
+		return;
+	}
+
 	if (is_param_byte(b)) {
 		if (param_pos_ == 0 && (b == '+' || b == '-'))
 			param_relative_ = true;

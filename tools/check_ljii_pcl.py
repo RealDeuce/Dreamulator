@@ -655,6 +655,45 @@ def main():
         if pdftotext(colon_continuation_pdf).strip() != "A":
             raise AssertionError("colon continuation leaked selectable text")
 
+        angle_continuation = write(
+            tmp / "angle-continuation.pcl",
+            ESC + b"&a<ignored>2C" + b"A" + FF)
+        angle_adjacent = write(
+            tmp / "angle-adjacent.pcl",
+            ESC + b"&a<ignored><also>2C" + b"A" + FF)
+        angle_lower_continuation = write(
+            tmp / "angle-lower-continuation.pcl",
+            ESC + b"&a1c<ignored>2R" + b"A" + FF)
+        angle_lower_expected = write(
+            tmp / "angle-lower-expected.pcl",
+            ESC + b"&a1c2R" + b"A" + FF)
+        angle_continuation_pdf = tmp / "angle-continuation.pdf"
+        angle_adjacent_pdf = tmp / "angle-adjacent.pdf"
+        angle_lower_continuation_pdf = tmp / "angle-lower-continuation.pdf"
+        angle_lower_expected_pdf = tmp / "angle-lower-expected.pdf"
+        render(dreamprint, angle_continuation, angle_continuation_pdf)
+        render(dreamprint, angle_adjacent, angle_adjacent_pdf)
+        render(dreamprint, angle_lower_continuation,
+               angle_lower_continuation_pdf)
+        render(dreamprint, angle_lower_expected, angle_lower_expected_pdf)
+        if ppm_sha256(angle_continuation_pdf,
+                      tmp / "angle-continuation", dpi=300) != expected_hash:
+            raise AssertionError("angle span before parameter changed pixels")
+        if ppm_sha256(angle_adjacent_pdf,
+                      tmp / "angle-adjacent", dpi=300) != expected_hash:
+            raise AssertionError("adjacent angle spans changed pixels")
+        angle_lower_expected_hash = ppm_sha256(angle_lower_expected_pdf,
+                                               tmp / "angle-lower-expected",
+                                               dpi=300)
+        if ppm_sha256(angle_lower_continuation_pdf,
+                      tmp / "angle-lower-continuation",
+                      dpi=300) != angle_lower_expected_hash:
+            raise AssertionError("angle span after lowercase continuation changed pixels")
+        for angle_pdf in (angle_continuation_pdf, angle_adjacent_pdf,
+                          angle_lower_continuation_pdf):
+            if pdftotext(angle_pdf).strip() != "A":
+                raise AssertionError("angle span leaked selectable text")
+
         dot_position_zero = write(tmp / "dot-position-zero.pcl",
                                   ESC + b"*p0X" + b"!" + FF)
         column_position_zero = write(tmp / "column-position-zero.pcl",
