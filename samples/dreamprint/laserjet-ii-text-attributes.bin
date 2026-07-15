@@ -126,7 +126,7 @@ Line-printer 16.66 cpi matrix
 
 (s0p10h12v0s0b3T&d@Primary and secondary font slots
 (s0p10h12v0s0b3T)s0p16.66h8.5v0s0b0TPrimary before SO: The quick brown fox jumps 0123456789
-Secondary line-printer after SO: The quick brown fox jumps 0123456789
+Secondary class-one Line Printer after SO: The quick brown fox jumps 0123456789
 Primary after SI: The quick brown fox jumps 0123456789
 
 (s0p10h12v0s0b3T&d@Font ID selection and default reset

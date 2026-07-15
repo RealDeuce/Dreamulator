@@ -182,7 +182,7 @@ def main():
             "Line-printer 16.66 cpi matrix",
             "Compatibility pitch command ESC &k2S (16.66 cpi)",
             "Primary and secondary font slots",
-            "Secondary line-printer after SO",
+            "Secondary class-one Line Printer after SO",
             "Font ID selection and default reset",
             "Line termination modes",
             "Cursor stack, relative position, and wrap",
@@ -206,7 +206,7 @@ def main():
         if ppm_nonwhite(sample_pdf, tmp / "sample") < 100:
             raise AssertionError("sample render looks blank")
 
-        so_sample = b"Secondary line-printer after SO: The quick brown fox jumps 0123456789"
+        so_sample = b"Secondary class-one Line Printer after SO: The quick brown fox jumps 0123456789"
         upright_line_sample = write(
             tmp / "upright-line-sample.pcl",
             ESC + b"(0N" + ESC + b"(s0p16.66h8.5v0s0b0T" +
@@ -217,7 +217,7 @@ def main():
             ESC + b")s0p16.66h8.5v0s0b0T" + b"\x0e" +
             so_sample + FF,
         )
-        mixed_so_sample = b"Secondary line-printer after SO: "
+        mixed_so_sample = b"Secondary class-one Line Printer after SO: "
         mixed_so_payload = b"The quick brown fox jumps 0123456789"
         mixed_line_sample = write(
             tmp / "mixed-secondary-line-sample.pcl",
@@ -237,9 +237,9 @@ def main():
         secondary_line_hash = ppm_sha256(secondary_line_sample_pdf,
                                          tmp / "secondary-line-sample",
                                          dpi=150)
-        if primary_line_hash != secondary_line_hash:
+        if primary_line_hash == secondary_line_hash:
             raise AssertionError(
-                "portrait SO line did not match the primary Line Printer raster")
+                "portrait SO line incorrectly matched the primary Line Printer raster")
         primary_line_box = ppm_bbox(upright_line_sample_pdf,
                                     tmp / "upright-line-shape",
                                     dpi=150)
@@ -250,8 +250,11 @@ def main():
             raise AssertionError("sample primary/SO line rendered no resident glyphs")
         secondary_line_w = secondary_line_box[2] - secondary_line_box[0] + 1
         secondary_line_h = secondary_line_box[3] - secondary_line_box[1] + 1
+        primary_line_h = primary_line_box[3] - primary_line_box[1] + 1
         if secondary_line_w <= secondary_line_h * 8:
-            raise AssertionError("sample SO line rendered as vertical/rotated text")
+            raise AssertionError("sample SO line rendered as a vertical text line")
+        if secondary_line_h >= primary_line_h:
+            raise AssertionError("sample SO line did not use the class-one Line Printer context")
         if so_sample.decode("ascii") not in pdftotext(secondary_line_sample_pdf):
             raise AssertionError("sample SO line lost selectable text")
         mixed_line_box = ppm_bbox(mixed_line_sample_pdf,

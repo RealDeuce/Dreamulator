@@ -34913,13 +34913,25 @@ static constexpr LjiiGlyphEntry ljii_glyphs[] = {
 	{ 23u, 0xffu, 29u, -22, 17, 17u, 4u, 472828u, 68u },
 };
 
-uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set)
+uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set, int class_id)
 {
 	if (pitch_cpi > 14.0f) {
+		if (class_id) {
+			if (symbol_set == 0x0155) return 0x440ad87au;
+			if (symbol_set == 0x0175) return 0x440adcceu;
+			if (symbol_set == 0x000e) return 0x400ae122u;
+			return 0x400ad4aau;
+		}
 		if (symbol_set == 0x0155) return 0x440946b4u;
 		if (symbol_set == 0x0175) return 0x44094b08u;
 		if (symbol_set == 0x000e) return 0x40094f5cu;
 		return 0x400942e4u;
+	}
+	if (class_id) {
+		if (symbol_set == 0x0155) return 0x440a3850u;
+		if (symbol_set == 0x0175) return 0x440a3ca0u;
+		if (symbol_set == 0x000e) return 0x400a40f0u;
+		return 0x400a3484u;
 	}
 	if (symbol_set == 0x0155) return 0x4408a37cu;
 	if (symbol_set == 0x0175) return 0x4408a7ccu;
@@ -34986,7 +34998,7 @@ static uint32_t nearest_height_mask(uint32_t mask, int requested)
 
 uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation)
 {
-	uint8_t class_id = (uint8_t)(orientation & 1);
+	uint8_t class_id = request.secondary ? 1u : (uint8_t)(orientation & 1);
 	uint32_t mask = filter_ljii_records(0x00ffffffu, [class_id](const auto &r) {
 		return r.class_id == class_id;
 	});
@@ -35026,7 +35038,7 @@ uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation)
 		if (!(mask & (1u << (&record - ljii_records)))) continue;
 		if (!best || ljii_better_record(record, *best)) best = &record;
 	}
-	return best ? best->context : default_ljii_context_for_pitch((float)request.pitch / 100.0f, request.symbol_set);
+	return best ? best->context : default_ljii_context_for_pitch((float)request.pitch / 100.0f, request.symbol_set, class_id);
 }
 
 int ljii_context_pitch(uint32_t context_longword)
