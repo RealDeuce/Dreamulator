@@ -66,11 +66,18 @@ struct PrinterConfig {
 	bool double_width = false;
 	bool double_high = false;
 	bool proportional = false;
+	// HP LaserJet II user-default environment.
+	int  copies = 1;
+	int  pcl_orientation = 0;  // 0=portrait, 1=landscape
+	int  pcl_symbol_set = 0x0115;  // Roman-8 (8U)
+	int  pcl_font = 0;  // 0=Courier, 1=Courier Bold, 2=Line Printer
 };
 
 PrinterConfig default_config_for(PrinterModel model);
 PrinterConfig load_printer_config(const char *path, PrinterModel model);
 float parse_pitch(const char *val, PrinterModel model);
+int parse_pcl_symbol_set(const char *val);
+int parse_pcl_font(const char *val);
 
 struct Bj10eUserFont {
 	bool defined[256] = {};

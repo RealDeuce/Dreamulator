@@ -117,9 +117,28 @@ dreamprint [options] input.bin output.pdf
 Options:
   --model MODEL    Printer model (default: FX)
   --config PATH    Printer config file
-  --font MODE      Initial font: draft, standard, nlq (ImageWriter)
+  --font MODE      Initial font (JET: courier, courier-bold, line-printer)
   --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)
+  --orientation O  JET default orientation: portrait or landscape
+  --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)
+  --copies N       JET default copies (1-99)
+  --form-lines N   JET default form length (5-128 lines)
 ```
+
+LaserJet II user defaults are also accepted in a config file:
+
+```ini
+copies=1
+orientation=portrait
+font=courier
+symbol_set=8U
+form_length=60
+```
+
+The GUI persists the same effective defaults under **Printer -> Settings ->
+HP LaserJet II Settings**. On the original HP 33440, orientation was selected
+implicitly by the default resident font; the emulator exposes font and
+orientation separately while selecting the corresponding resident font data.
 
 Sample input streams are provided in `samples/dreamprint/`.
 

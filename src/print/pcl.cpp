@@ -546,6 +546,8 @@ private:
 	};
 
 	void reset_ljii_state();
+	float user_default_vmi() const;
+	void reset_user_default_fonts();
 	void software_reset();
 	void process_normal(uint8_t b);
 	void process_control(uint8_t b);
@@ -758,6 +760,7 @@ private:
 
 void PclPrinter::apply_config(const PrinterConfig &cfg)
 {
+	publish_current_page();
 	PrinterSim::apply_config(cfg);
 	reset_ljii_state();
 }
@@ -781,23 +784,21 @@ void PclPrinter::reset_ljii_state()
 	display_control_pending_ = false;
 	payload_buf_.clear();
 	line_term_ = 0;
-	orientation_ = 0;
+	orientation_ = cfg_.pcl_orientation == 1 ? 1 : 0;
 	page_size_code_ = 2;
-	physical_w_in_ = 8.5f;
-	physical_h_in_ = 11.0f;
-	logical_x0_in_ = 50.0f / kDotsPerIn;
-	logical_y0_in_ = 60.0f / kDotsPerIn;
-	logical_w_in_ = 8.0f;
-	logical_h_in_ = 11.0f;
+	PageGeometry geom = pcl_page_geometry(page_size_code_, orientation_);
+	physical_w_in_ = dots_to_in(geom.physical_w);
+	physical_h_in_ = dots_to_in(geom.physical_h);
+	logical_x0_in_ = dots_to_in(geom.left);
+	logical_y0_in_ = dots_to_in(geom.top);
+	logical_w_in_ = dots_to_in(geom.logical_w);
+	logical_h_in_ = dots_to_in(geom.logical_h);
 	hmi_in_ = 1.0f / 10.0f;
-	vmi_in_ = 1.0f / 6.0f;
-	text_length_in_ = 10.0f;
+	vmi_in_ = user_default_vmi();
+	text_length_in_ = std::max(0.0f, physical_h_in_ - 1.0f);
 	text_length_custom_ = false;
 	vfc_limit_in_ = logical_y0_in_ + text_length_in_;
-	font_req_[0] = LjiiFontRequest{};
-	font_req_[1] = LjiiFontRequest{};
-	font_req_[1].secondary = true;
-	font_req_[1].symbol_set = 0x000e;
+	reset_user_default_fonts();
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_transparent_count_ = -1;
@@ -824,7 +825,7 @@ void PclPrinter::reset_ljii_state()
 	rect_w_in_ = 0.0f;
 	rect_h_in_ = 0.0f;
 	fill_pattern_ = 0;
-	copy_count_ = 1;
+	copy_count_ = std::max(1, std::min(99, cfg_.copies));
 	wrap_enabled_ = false;
 	st_.perf_skip_lines = 6;
 	macro_id_ = 0;
@@ -858,8 +859,6 @@ void PclPrinter::reset_ljii_state()
 	soft_fonts_.clear();
 	cursor_stack_.clear();
 	previous_width_pending_ = false;
-	previous_text_width_in_ = hmi_in_;
-	previous_text_advance_in_ = hmi_in_;
 
 	st_.pitch_cpi = 10.0f;
 	st_.line_spacing_in = vmi_in_;
@@ -872,8 +871,37 @@ void PclPrinter::reset_ljii_state()
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
 	sync_active_font_state();
+	previous_text_width_in_ = hmi_in_;
+	previous_text_advance_in_ = hmi_in_;
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
+}
+
+float PclPrinter::user_default_vmi() const
+{
+	int orientation = cfg_.pcl_orientation == 1 ? 1 : 0;
+	PageGeometry geom = pcl_page_geometry(2, orientation);
+	// The control-panel FORM value divides the page's one-inch-trimmed text area.
+	float text_height = std::max(1.0f / kDotsPerIn,
+	                             dots_to_in(geom.physical_h) - 1.0f);
+	int form_lines = std::max(5, std::min(128, cfg_.page_length_lines));
+	return text_height / (float)form_lines;
+}
+
+void PclPrinter::reset_user_default_fonts()
+{
+	font_req_[0] = LjiiFontRequest{};
+	font_req_[0].symbol_set = cfg_.pcl_symbol_set;
+	if (cfg_.pcl_font == 1) {
+		font_req_[0].stroke = 3;
+	} else if (cfg_.pcl_font == 2) {
+		font_req_[0].pitch = 1666;
+		font_req_[0].height = 850;
+		font_req_[0].typeface = 0;
+	}
+	font_req_[1] = LjiiFontRequest{};
+	font_req_[1].secondary = true;
+	font_req_[1].symbol_set = 0x000e;
 }
 
 void PclPrinter::software_reset()
@@ -3678,7 +3706,7 @@ void PclPrinter::set_orientation(int orientation)
 	publish_current_page();
 	overlay_enabled_ = false;
 	orientation_ = orientation;
-	vmi_in_ = 1.0f / 6.0f;
+	vmi_in_ = user_default_vmi();
 	st_.line_spacing_in = vmi_in_;
 	refresh_characteristic_selection(0);
 	refresh_characteristic_selection(1);
@@ -4212,11 +4240,8 @@ void PclPrinter::apply_overlay_environment()
 	flush_underline_span();
 	line_term_ = 0;
 	hmi_in_ = 1.0f / 10.0f;
-	vmi_in_ = 1.0f / 6.0f;
-	font_req_[0] = LjiiFontRequest{};
-	font_req_[1] = LjiiFontRequest{};
-	font_req_[1].secondary = true;
-	font_req_[1].symbol_set = 0x000e;
+	vmi_in_ = user_default_vmi();
+	reset_user_default_fonts();
 	active_font_slot_ = 0;
 	selected_soft_font_id_[0] = -1;
 	selected_soft_font_id_[1] = -1;
@@ -4247,12 +4272,12 @@ void PclPrinter::apply_overlay_environment()
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
 	pending_cursor_y_ = true;
 	previous_width_pending_ = false;
-	previous_text_width_in_ = hmi_in_;
-	previous_text_advance_in_ = hmi_in_;
 	restore_default_text_length();
 	update_vfc_bounds();
 	rebuild_default_vfc_table();
 	sync_active_font_state();
+	previous_text_width_in_ = hmi_in_;
+	previous_text_advance_in_ = hmi_in_;
 	restart_underline_span();
 }
 

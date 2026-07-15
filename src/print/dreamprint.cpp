@@ -1,7 +1,9 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd
 #include "printer.h"
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -14,8 +16,12 @@ static void usage(const char *argv0)
 		"Options:\n"
 		"  --model MODEL    Printer model (default: FX)\n"
 		"  --config PATH    Printer config file\n"
-		"  --font MODE      Initial font: draft, standard, nlq (ImageWriter)\n"
+		"  --font MODE      Initial font (JET: courier, courier-bold, line-printer)\n"
 		"  --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)\n"
+		"  --orientation O  JET default orientation: portrait or landscape\n"
+		"  --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)\n"
+		"  --copies N       JET default copies (1-99)\n"
+		"  --form-lines N   JET default form length (5-128 lines)\n"
 		"\n"
 		"Models:\n"
 		"  X24E      IBM Proprinter X24E (24-pin)\n"
@@ -50,6 +56,10 @@ int main(int argc, char *argv[])
 	const char *config_path = nullptr;
 	const char *font_arg = nullptr;
 	const char *pitch_arg = nullptr;
+	const char *orientation_arg = nullptr;
+	const char *symbol_arg = nullptr;
+	int copies_arg = -1;
+	int form_lines_arg = -1;
 
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--model") && i + 1 < argc) {
@@ -60,6 +70,14 @@ int main(int argc, char *argv[])
 			font_arg = argv[++i];
 		} else if (!strcmp(argv[i], "--pitch") && i + 1 < argc) {
 			pitch_arg = argv[++i];
+		} else if (!strcmp(argv[i], "--orientation") && i + 1 < argc) {
+			orientation_arg = argv[++i];
+		} else if (!strcmp(argv[i], "--symbol-set") && i + 1 < argc) {
+			symbol_arg = argv[++i];
+		} else if (!strcmp(argv[i], "--copies") && i + 1 < argc) {
+			copies_arg = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--form-lines") && i + 1 < argc) {
+			form_lines_arg = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			usage(argv[0]);
 			return 0;
@@ -96,12 +114,41 @@ int main(int argc, char *argv[])
 		    : default_config_for(model);
 
 		if (font_arg) {
-			if (!strcasecmp(font_arg, "draft"))         cfg.font_mode = 2;
+			if (model == PrinterModel::HpJet) {
+				int font = parse_pcl_font(font_arg);
+				if (font < 0) {
+					fprintf(stderr, "Invalid JET font: %s\n", font_arg);
+					return 1;
+				}
+				cfg.pcl_font = font;
+			} else if (!strcasecmp(font_arg, "draft"))  cfg.font_mode = 2;
 			else if (!strcasecmp(font_arg, "standard")) cfg.font_mode = 0;
 			else if (!strcasecmp(font_arg, "nlq"))      cfg.font_mode = 1;
 		}
 		if (pitch_arg)
 			cfg.pitch_cpi = parse_pitch(pitch_arg, model);
+		if (orientation_arg) {
+			if (!strcasecmp(orientation_arg, "portrait"))
+				cfg.pcl_orientation = 0;
+			else if (!strcasecmp(orientation_arg, "landscape"))
+				cfg.pcl_orientation = 1;
+			else {
+				fprintf(stderr, "Invalid orientation: %s\n", orientation_arg);
+				return 1;
+			}
+		}
+		if (symbol_arg) {
+			int symbol = parse_pcl_symbol_set(symbol_arg);
+			if (symbol < 0) {
+				fprintf(stderr, "Invalid symbol set: %s\n", symbol_arg);
+				return 1;
+			}
+			cfg.pcl_symbol_set = symbol;
+		}
+		if (copies_arg >= 0)
+			cfg.copies = std::max(1, std::min(99, copies_arg));
+		if (form_lines_arg >= 0)
+			cfg.page_length_lines = std::max(5, std::min(128, form_lines_arg));
 
 		printer->apply_config(cfg);
 	}

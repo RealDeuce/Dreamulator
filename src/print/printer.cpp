@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static constexpr PrinterProfile profiles[] = {
@@ -794,8 +795,59 @@ PrinterConfig default_config_for(PrinterModel model)
 		cfg.page_length_lines = 66;
 		cfg.dip_switches = 0;
 		cfg.font_mode = 0;
+	} else if (model == PrinterModel::HpJet) {
+		cfg.copies = 1;
+		cfg.pcl_orientation = 0;
+		cfg.pcl_symbol_set = 0x0115;
+		cfg.pcl_font = 0;
+		cfg.page_length_lines = 60;
 	}
 	return cfg;
+}
+
+int parse_pcl_symbol_set(const char *val)
+{
+	if (!val || !*val)
+		return -1;
+	if (strcasecmp(val, "roman-8") == 0 || strcasecmp(val, "roman8") == 0)
+		return 0x0115;
+	if (strcasecmp(val, "ecma-94") == 0 || strcasecmp(val, "latin1") == 0)
+		return 0x000e;
+	if (strcasecmp(val, "ascii") == 0)
+		return 0x0015;
+	if (strcasecmp(val, "pc-8") == 0 || strcasecmp(val, "pc8") == 0)
+		return 0x0155;
+	if (strcasecmp(val, "pc-8-dn") == 0 || strcasecmp(val, "pc8dn") == 0)
+		return 0x0175;
+
+	char *end = nullptr;
+	long number = strtol(val, &end, 10);
+	if (end == val || number < 0 || number > 999 || !end[0] || end[1])
+		return -1;
+	char term = end[0];
+	if (term >= 'a' && term <= 'z')
+		term = (char)(term - 'a' + 'A');
+	if (term < '@' || term > '^')
+		return -1;
+	return (int)number * 32 + (term - '@');
+}
+
+int parse_pcl_font(const char *val)
+{
+	if (!val)
+		return -1;
+	if (strcasecmp(val, "courier") == 0 ||
+	    strcasecmp(val, "courier-medium") == 0)
+		return 0;
+	if (strcasecmp(val, "courier-bold") == 0 ||
+	    strcasecmp(val, "courier_bold") == 0 ||
+	    strcasecmp(val, "bold") == 0)
+		return 1;
+	if (strcasecmp(val, "line-printer") == 0 ||
+	    strcasecmp(val, "line_printer") == 0 ||
+	    strcasecmp(val, "lineprinter") == 0)
+		return 2;
+	return -1;
 }
 
 float parse_pitch(const char *val, PrinterModel model)
@@ -864,11 +916,34 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 				else if (strcasecmp(val, "hq") == 0 ||
 				         strcasecmp(val, "high_quality") == 0)
 					cfg.font_mode = 0;
+			} else if (model == PrinterModel::HpJet) {
+				int font = parse_pcl_font(val);
+				if (font >= 0)
+					cfg.pcl_font = font;
 			}
 		} else if (strcasecmp(key, "page_length") == 0) {
-			if (strcasecmp(val, "11") == 0) cfg.page_length_lines = 66;
+			if (model == PrinterModel::HpJet)
+				cfg.page_length_lines = std::max(5, std::min(128, atoi(val)));
+			else if (strcasecmp(val, "11") == 0) cfg.page_length_lines = 66;
 			else if (strcasecmp(val, "12") == 0) cfg.page_length_lines = 72;
 			else cfg.page_length_lines = atoi(val);
+		} else if (strcasecmp(key, "form_length") == 0 &&
+		           model == PrinterModel::HpJet) {
+			cfg.page_length_lines = std::max(5, std::min(128, atoi(val)));
+		} else if (strcasecmp(key, "copies") == 0 &&
+		           model == PrinterModel::HpJet) {
+			cfg.copies = std::max(1, std::min(99, atoi(val)));
+		} else if (strcasecmp(key, "orientation") == 0 &&
+		           model == PrinterModel::HpJet) {
+			if (strcasecmp(val, "portrait") == 0)
+				cfg.pcl_orientation = 0;
+			else if (strcasecmp(val, "landscape") == 0)
+				cfg.pcl_orientation = 1;
+		} else if (strcasecmp(key, "symbol_set") == 0 &&
+		           model == PrinterModel::HpJet) {
+			int symbol = parse_pcl_symbol_set(val);
+			if (symbol >= 0)
+				cfg.pcl_symbol_set = symbol;
 		} else if (strcasecmp(key, "quality") == 0 &&
 		           model == PrinterModel::EpsonLQ500) {
 			if (strcasecmp(val, "draft") == 0) cfg.font_mode = 0;

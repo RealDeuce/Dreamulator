@@ -10,6 +10,7 @@
 #include <FL/fl_draw.H>
 #include <FL/Fl_Check_Button.H>
 #include <FL/Fl_Choice.H>
+#include <FL/Fl_Spinner.H>
 #include <FL/Fl_Return_Button.H>
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Group.H>
@@ -892,9 +893,103 @@ static bool show_bj_settings_dialog(PrinterConfig &cfg)
 	return true;
 }
 
+struct LjiiSymbolChoice {
+	const char *label;
+	int value;
+};
+
+static constexpr LjiiSymbolChoice kLjiiSymbolChoices[] = {
+	{"Roman-8 (8U)", 0x0115},
+	{"ECMA-94 Latin 1 (0N)", 0x000e},
+	{"PC-8 (10U)", 0x0155},
+	{"PC-8 Denmark/Norway (11U)", 0x0175},
+	{"ISO 2 International (2U)", 0x0055},
+	{"ISO 4 United Kingdom (1E)", 0x0025},
+	{"ISO 6 ASCII (0U)", 0x0015},
+	{"ISO 10 Swedish (3S)", 0x0073},
+	{"ISO 11 Swedish (0S)", 0x0013},
+	{"ISO 14 JIS ASCII (0K)", 0x000b},
+	{"ISO 15 Italian (0I)", 0x0009},
+	{"ISO 16 Portuguese (4S)", 0x0093},
+	{"ISO 17 Spanish (2S)", 0x0053},
+	{"ISO 21 German (1G)", 0x0027},
+	{"ISO 25 French (0F)", 0x0006},
+	{"ISO 57 Chinese (2K)", 0x004b},
+	{"ISO 60 Danish/Norwegian (0D)", 0x0004},
+	{"ISO 61 Norwegian V2 (1D)", 0x0024},
+	{"ISO 69 French (1F)", 0x0026},
+};
+
+static int ljii_symbol_choice_index(int symbol)
+{
+	for (size_t i = 0; i < sizeof(kLjiiSymbolChoices) /
+	                              sizeof(kLjiiSymbolChoices[0]); i++)
+		if (kLjiiSymbolChoices[i].value == symbol)
+			return (int)i;
+	return 0;
+}
+
+static bool show_jet_settings_dialog(PrinterConfig &cfg)
+{
+	Fl_Window win(540, 285, "HP LaserJet II Settings");
+	win.set_modal();
+
+	Fl_Spinner copies(210, 25, 250, 25, "Copies:");
+	copies.type(FL_INT_INPUT);
+	copies.range(1, 99);
+	copies.step(1);
+	copies.value(cfg.copies);
+
+	Fl_Choice orientation(210, 60, 250, 25, "Orientation:");
+	orientation.add("Portrait");
+	orientation.add("Landscape");
+	orientation.value(cfg.pcl_orientation == 1 ? 1 : 0);
+
+	Fl_Choice font(210, 95, 250, 25, "Font:");
+	font.add("Courier 10 CPI Medium");
+	font.add("Courier 10 CPI Bold");
+	font.add("Line Printer 16.66 CPI");
+	font.value(cfg.pcl_font >= 0 && cfg.pcl_font <= 2 ? cfg.pcl_font : 0);
+
+	Fl_Choice symbol(210, 130, 250, 25, "Symbol Set:");
+	for (const auto &choice : kLjiiSymbolChoices)
+		symbol.add(choice.label);
+	symbol.value(ljii_symbol_choice_index(cfg.pcl_symbol_set));
+
+	Fl_Spinner form(210, 165, 250, 25, "Form Length (lines):");
+	form.type(FL_INT_INPUT);
+	form.range(5, 128);
+	form.step(1);
+	form.value(cfg.page_length_lines);
+
+	bool ok = false;
+	Fl_Return_Button btn_ok(350, 235, 80, 30, "OK");
+	btn_ok.callback([](Fl_Widget *w, void *d) {
+		*static_cast<bool *>(d) = true;
+		w->window()->hide();
+	}, &ok);
+	Fl_Button btn_cancel(440, 235, 80, 30, "Cancel");
+	btn_cancel.callback([](Fl_Widget *w, void *) {
+		w->window()->hide();
+	});
+
+	win.end();
+	win.show();
+	while (win.shown()) Fl::wait();
+	if (!ok) return false;
+
+	cfg.copies = (int)copies.value();
+	cfg.pcl_orientation = orientation.value() == 1 ? 1 : 0;
+	cfg.pcl_font = font.value();
+	cfg.pcl_symbol_set = kLjiiSymbolChoices[symbol.value()].value;
+	cfg.page_length_lines = (int)form.value();
+	return true;
+}
+
 static PrinterConfig g_iw_cfg;
 static PrinterConfig g_fx_cfg;
 static PrinterConfig g_bj_cfg;
+static PrinterConfig g_jet_cfg;
 static bool g_printer_cfg_loaded = false;
 
 static void printer_cfg_load()
@@ -904,6 +999,7 @@ static void printer_cfg_load()
 	g_iw_cfg = default_config_for(PrinterModel::ImageWriter);
 	g_fx_cfg = default_config_for(PrinterModel::EpsonFX);
 	g_bj_cfg = default_config_for(PrinterModel::CanonBJ10e);
+	g_jet_cfg = default_config_for(PrinterModel::HpJet);
 
 	g_iw_cfg.charset           = prefs_get_int("printer_iw", "charset", g_iw_cfg.charset);
 	int iw_pitch_x100          = prefs_get_int("printer_iw", "pitch", static_cast<int>(g_iw_cfg.pitch_cpi * 100.0f));
@@ -936,6 +1032,23 @@ static void printer_cfg_load()
 	g_bj_cfg.proportional      = prefs_get_int("printer_bj10e", "proportional", g_bj_cfg.proportional ? 1 : 0);
 	g_bj_cfg.auto_lf           = (g_bj_cfg.dip_switches & (1 << 2)) != 0;
 	g_bj_cfg.page_length_lines = (g_bj_cfg.dip_switches & (1 << 3)) ? 72 : 66;
+
+	g_jet_cfg.copies = prefs_get_int("printer_jet", "copies", g_jet_cfg.copies);
+	if (g_jet_cfg.copies < 1) g_jet_cfg.copies = 1;
+	if (g_jet_cfg.copies > 99) g_jet_cfg.copies = 99;
+	g_jet_cfg.pcl_orientation = prefs_get_int(
+		"printer_jet", "orientation", g_jet_cfg.pcl_orientation) == 1 ? 1 : 0;
+	g_jet_cfg.pcl_font = prefs_get_int("printer_jet", "font", g_jet_cfg.pcl_font);
+	if (g_jet_cfg.pcl_font < 0 || g_jet_cfg.pcl_font > 2) g_jet_cfg.pcl_font = 0;
+	g_jet_cfg.pcl_symbol_set = prefs_get_int(
+		"printer_jet", "symbol_set", g_jet_cfg.pcl_symbol_set);
+	if (ljii_symbol_choice_index(g_jet_cfg.pcl_symbol_set) == 0 &&
+	    g_jet_cfg.pcl_symbol_set != kLjiiSymbolChoices[0].value)
+		g_jet_cfg.pcl_symbol_set = kLjiiSymbolChoices[0].value;
+	g_jet_cfg.page_length_lines = prefs_get_int(
+		"printer_jet", "form_lines", g_jet_cfg.page_length_lines);
+	if (g_jet_cfg.page_length_lines < 5) g_jet_cfg.page_length_lines = 5;
+	if (g_jet_cfg.page_length_lines > 128) g_jet_cfg.page_length_lines = 128;
 }
 
 static void printer_cfg_save_iw()
@@ -974,6 +1087,15 @@ static void printer_cfg_save_bj()
 	prefs_set_int("printer_bj10e", "proportional", g_bj_cfg.proportional ? 1 : 0);
 }
 
+static void printer_cfg_save_jet()
+{
+	prefs_set_int("printer_jet", "copies", g_jet_cfg.copies);
+	prefs_set_int("printer_jet", "orientation", g_jet_cfg.pcl_orientation);
+	prefs_set_int("printer_jet", "font", g_jet_cfg.pcl_font);
+	prefs_set_int("printer_jet", "symbol_set", g_jet_cfg.pcl_symbol_set);
+	prefs_set_int("printer_jet", "form_lines", g_jet_cfg.page_length_lines);
+}
+
 static void cb_iw_dip_switches(Fl_Widget *, void *) {
 	printer_cfg_load();
 	if (show_iw_dip_dialog(g_iw_cfg)) {
@@ -1004,11 +1126,22 @@ static void cb_bj_dip_switches(Fl_Widget *, void *) {
 	}
 }
 
+static void cb_jet_settings(Fl_Widget *, void *) {
+	printer_cfg_load();
+	if (show_jet_settings_dialog(g_jet_cfg)) {
+		printer_cfg_save_jet();
+		if (g_mach.pdf_printer &&
+		    g_mach.pdf_model == static_cast<int>(PrinterModel::HpJet))
+			g_mach.pdf_printer->apply_config(g_jet_cfg);
+	}
+}
+
 static PrinterConfig &config_for_model(PrinterModel pm)
 {
 	printer_cfg_load();
 	if (pm == PrinterModel::ImageWriter) return g_iw_cfg;
 	if (pm == PrinterModel::CanonBJ10e) return g_bj_cfg;
+	if (pm == PrinterModel::HpJet) return g_jet_cfg;
 	return g_fx_cfg;
 }
 
@@ -1298,6 +1431,7 @@ int main(int argc, char *argv[])
 	menu->add("&Printer/Settings/ImageWriter II DIP Switches...", 0, cb_iw_dip_switches);
 	menu->add("&Printer/Settings/Epson FX-80 DIP Switches...",   0, cb_fx_dip_switches);
 	menu->add("&Printer/Settings/Canon BJ-10e Settings...",      0, cb_bj_dip_switches);
+	menu->add("&Printer/Settings/HP LaserJet II Settings...",   0, cb_jet_settings);
 
 	menu->add("&Serial/Connect PTY",       0, cb_serial_pty);
 	menu->add("&Serial/Connect TCP...",    0, cb_serial_tcp);

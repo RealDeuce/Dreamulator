@@ -24,8 +24,9 @@ def require_tool(name):
     return path
 
 
-def render(dreamprint, source, pdf):
-    run([str(dreamprint), "--model", "JET", str(source), str(pdf)])
+def render(dreamprint, source, pdf, *extra_args):
+    run([str(dreamprint), "--model", "JET", *map(str, extra_args),
+         str(source), str(pdf)])
 
 
 def pdftotext(pdf):
@@ -41,8 +42,11 @@ def pdf_pages(pdf):
     raise AssertionError("pdfinfo did not report page count")
 
 
-def ppm_image(pdf, stem, dpi=72):
-    run(["pdftoppm", "-r", str(dpi), "-singlefile", str(pdf), str(stem)])
+def ppm_image(pdf, stem, dpi=72, page=None):
+    cmd = ["pdftoppm", "-r", str(dpi)]
+    if page is not None:
+        cmd += ["-f", str(page), "-l", str(page)]
+    run(cmd + ["-singlefile", str(pdf), str(stem)])
     data = Path(f"{stem}.ppm").read_bytes()
     if not data.startswith(b"P6"):
         raise AssertionError("pdftoppm did not emit binary PPM")
@@ -74,8 +78,8 @@ def ppm_image(pdf, stem, dpi=72):
     return width, height, pixels[:width * height * 3]
 
 
-def ppm_pixels(pdf, stem, dpi=72):
-    return ppm_image(pdf, stem, dpi)[2]
+def ppm_pixels(pdf, stem, dpi=72, page=None):
+    return ppm_image(pdf, stem, dpi, page)[2]
 
 
 def ppm_nonwhite(pdf, stem, dpi=72):
@@ -90,8 +94,8 @@ def ppm_dark_pixels(pdf, stem, dpi=72):
                if sum(pixels[i:i + 3]) < 384)
 
 
-def ppm_sha256(pdf, stem, dpi=72):
-    return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
+def ppm_sha256(pdf, stem, dpi=72, page=None):
+    return hashlib.sha256(ppm_pixels(pdf, stem, dpi, page)).hexdigest()
 
 
 def ppm_pages_sha256(pdf, stem, dpi=72):
@@ -252,6 +256,93 @@ def main():
 
     with tempfile.TemporaryDirectory(prefix="ljii-check-") as tmp_s:
         tmp = Path(tmp_s)
+
+        defaults_probe = write(tmp / "defaults-probe.pcl", b"MMMMMMMM" + FF)
+        defaults_pdf = tmp / "defaults.pdf"
+        bold_pdf = tmp / "defaults-bold.pdf"
+        line_printer_pdf = tmp / "defaults-line-printer.pdf"
+        landscape_pdf = tmp / "defaults-landscape.pdf"
+        render(dreamprint, defaults_probe, defaults_pdf)
+        render(dreamprint, defaults_probe, bold_pdf,
+               "--font", "courier-bold")
+        render(dreamprint, defaults_probe, line_printer_pdf,
+               "--font", "line-printer")
+        render(dreamprint, defaults_probe, landscape_pdf,
+               "--orientation", "landscape")
+        default_hash = ppm_sha256(defaults_pdf, tmp / "defaults", dpi=150)
+        if ppm_sha256(bold_pdf, tmp / "defaults-bold", dpi=150) == default_hash:
+            raise AssertionError("configured Courier Bold did not change resident pixels")
+        if ppm_sha256(line_printer_pdf, tmp / "defaults-line-printer",
+                      dpi=150) == default_hash:
+            raise AssertionError("configured Line Printer font did not change resident pixels")
+        landscape_w, landscape_h, _ = ppm_image(
+            landscape_pdf, tmp / "defaults-landscape", dpi=72)
+        if landscape_w <= landscape_h:
+            raise AssertionError("configured landscape orientation stayed portrait")
+
+        copies_pdf = tmp / "defaults-copies.pdf"
+        render(dreamprint, defaults_probe, copies_pdf, "--copies", "2")
+        if pdf_pages(copies_pdf) != 2:
+            raise AssertionError("configured copy count did not duplicate the page")
+
+        form_probe = write(tmp / "form-probe.pcl", b"A\nB" + FF)
+        form_60_pdf = tmp / "form-60.pdf"
+        form_30_pdf = tmp / "form-30.pdf"
+        render(dreamprint, form_probe, form_60_pdf, "--form-lines", "60")
+        render(dreamprint, form_probe, form_30_pdf, "--form-lines", "30")
+        form_60_box = ppm_bbox(form_60_pdf, tmp / "form-60", dpi=300)
+        form_30_box = ppm_bbox(form_30_pdf, tmp / "form-30", dpi=300)
+        if form_60_box is None or form_30_box is None or \
+           form_30_box[3] - form_30_box[1] <= form_60_box[3] - form_60_box[1]:
+            raise AssertionError("configured form length did not change the user VMI")
+
+        symbol_probe = write(tmp / "symbol-probe.pcl", b"#[]^`{|}~" + FF)
+        symbol_config_pdf = tmp / "symbol-config.pdf"
+        symbol_command_pdf = tmp / "symbol-command.pdf"
+        render(dreamprint, symbol_probe, symbol_config_pdf,
+               "--symbol-set", "1E")
+        symbol_command = write(tmp / "symbol-command.pcl",
+                               ESC + b"(1E" + b"#[]^`{|}~" + FF)
+        render(dreamprint, symbol_command, symbol_command_pdf)
+        if ppm_sha256(symbol_config_pdf, tmp / "symbol-config", dpi=300) != \
+           ppm_sha256(symbol_command_pdf, tmp / "symbol-command", dpi=300):
+            raise AssertionError("configured symbol set did not match PCL selection")
+
+        config_file = tmp / "laserjet.conf"
+        config_file.write_text(
+            "copies=2\norientation=landscape\nfont=line-printer\n"
+            "symbol_set=1E\nform_length=45\n", encoding="ascii")
+        config_file_pdf = tmp / "config-file.pdf"
+        config_cli_pdf = tmp / "config-cli.pdf"
+        render(dreamprint, defaults_probe, config_file_pdf,
+               "--config", config_file)
+        render(dreamprint, defaults_probe, config_cli_pdf,
+               "--copies", "2", "--orientation", "landscape",
+               "--font", "line-printer", "--symbol-set", "1E",
+               "--form-lines", "45")
+        if pdf_pages(config_file_pdf) != 2 or \
+           ppm_pages_sha256(config_file_pdf, tmp / "config-file", dpi=150) != \
+           ppm_pages_sha256(config_cli_pdf, tmp / "config-cli", dpi=150):
+            raise AssertionError("JET config file did not match command-line defaults")
+
+        reset_probe = write(
+            tmp / "reset-defaults.pcl",
+            ESC + b"&l0O" + ESC + b"(s0B" + b"A" + ESC + b"E" + b"B" + FF)
+        reset_pdf = tmp / "reset-defaults.pdf"
+        reset_expected = write(tmp / "reset-defaults-expected.pcl", b"B" + FF)
+        reset_expected_pdf = tmp / "reset-defaults-expected.pdf"
+        render(dreamprint, reset_probe, reset_pdf,
+               "--orientation", "landscape", "--font", "courier-bold")
+        render(dreamprint, reset_expected, reset_expected_pdf,
+               "--orientation", "landscape", "--font", "courier-bold")
+        if pdf_pages(reset_pdf) != 2 or "A" not in pdftotext(reset_pdf) or \
+           "B" not in pdftotext(reset_pdf):
+            raise AssertionError("ESC E did not restore configured user defaults")
+        if ppm_sha256(reset_pdf, tmp / "reset-defaults-page-2", dpi=150,
+                      page=2) != \
+           ppm_sha256(reset_expected_pdf, tmp / "reset-defaults-expected",
+                      dpi=150):
+            raise AssertionError("ESC E restored factory rather than configured defaults")
 
         sample = root / "samples/dreamprint/laserjet-ii-text-attributes.bin"
         sample_bytes = sample.read_bytes()
