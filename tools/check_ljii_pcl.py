@@ -1139,6 +1139,17 @@ def main():
                       dpi=150):
             raise AssertionError("invalid top margin changed placement")
 
+        top_margin_default_bottom = write(
+            tmp / "top-margin-default-bottom.pcl",
+            ESC + b"&l3E" + b"A" + b"\n" * 61 + FF)
+        top_margin_default_bottom_pdf = \
+            tmp / "top-margin-default-bottom.pdf"
+        render(dreamprint, top_margin_default_bottom,
+               top_margin_default_bottom_pdf)
+        if pdf_pages(top_margin_default_bottom_pdf) != 1:
+            raise AssertionError(
+                "top margin restored text length one VMI above the page bottom")
+
         text_length_short = write(tmp / "text-length-short.pcl",
                                   ESC + b"&l2F" + ESC + b"&l2V" + b"A" + FF)
         text_length_invalid = write(tmp / "text-length-invalid.pcl",
@@ -1672,6 +1683,38 @@ def main():
            pdf_pages(orientation_positive_pdf):
             raise AssertionError("fractional orientation selector rounded")
 
+        portrait_resident_glyphs = write(
+            tmp / "portrait-resident-glyphs.pcl",
+            b"Landscape resident glyphs" + FF)
+        landscape_resident_glyphs = write(
+            tmp / "landscape-resident-glyphs.pcl",
+            ESC + b"&l1O" + b"Landscape resident glyphs" + FF)
+        portrait_resident_glyphs_pdf = \
+            tmp / "portrait-resident-glyphs.pdf"
+        landscape_resident_glyphs_pdf = \
+            tmp / "landscape-resident-glyphs.pdf"
+        render(dreamprint, portrait_resident_glyphs,
+               portrait_resident_glyphs_pdf)
+        render(dreamprint, landscape_resident_glyphs,
+               landscape_resident_glyphs_pdf)
+        portrait_resident_box = ppm_bbox(
+            portrait_resident_glyphs_pdf,
+            tmp / "portrait-resident-glyphs", dpi=300)
+        landscape_resident_box = ppm_bbox(
+            landscape_resident_glyphs_pdf,
+            tmp / "landscape-resident-glyphs", dpi=300)
+        if portrait_resident_box is None or landscape_resident_box is None:
+            raise AssertionError("orientation resident glyph probe rendered blank")
+        portrait_resident_size = (
+            portrait_resident_box[2] - portrait_resident_box[0] + 1,
+            portrait_resident_box[3] - portrait_resident_box[1] + 1)
+        landscape_resident_size = (
+            landscape_resident_box[2] - landscape_resident_box[0] + 1,
+            landscape_resident_box[3] - landscape_resident_box[1] + 1)
+        if portrait_resident_size != landscape_resident_size:
+            raise AssertionError(
+                "landscape resident glyph payload was not rotated into logical orientation")
+
         orientation_hmi_base = write(tmp / "orientation-hmi-base.pcl",
                                      ESC + b"&l1O" + b"!!" + FF)
         orientation_hmi_refresh = write(tmp / "orientation-hmi-refresh.pcl",
@@ -1687,6 +1730,23 @@ def main():
            ppm_sha256(orientation_hmi_refresh_pdf,
                       tmp / "orientation-hmi-refresh", dpi=150):
             raise AssertionError("orientation change did not refresh HMI")
+
+        orientation_vmi_base = write(
+            tmp / "orientation-vmi-base.pcl",
+            ESC + b"&l1O" + b"A\nB" + FF)
+        orientation_vmi_refresh = write(
+            tmp / "orientation-vmi-refresh.pcl",
+            ESC + b"&l8D" + ESC + b"&l1O" + b"A\nB" + FF)
+        orientation_vmi_base_pdf = tmp / "orientation-vmi-base.pdf"
+        orientation_vmi_refresh_pdf = tmp / "orientation-vmi-refresh.pdf"
+        render(dreamprint, orientation_vmi_base, orientation_vmi_base_pdf)
+        render(dreamprint, orientation_vmi_refresh,
+               orientation_vmi_refresh_pdf)
+        if ppm_sha256(orientation_vmi_base_pdf,
+                      tmp / "orientation-vmi-base", dpi=150) != \
+           ppm_sha256(orientation_vmi_refresh_pdf,
+                      tmp / "orientation-vmi-refresh", dpi=150):
+            raise AssertionError("orientation change did not restore default VMI")
 
         copies_zero_ignored = write(tmp / "copies-zero-ignored.pcl",
                                     ESC + b"&l2X" + ESC + b"&l0X" +
@@ -2338,6 +2398,43 @@ def main():
                       tmp / "public-soft-upright-after-id", dpi=300):
             raise AssertionError("characteristic command did not clear font ID selection")
 
+        replacement_old_font = ljii_download_font(
+            4707, ljii_soft_font_header(),
+            [(ord("A"), ljii_character_descriptor(
+                bytes([0xf0, 0x80, 0x80]), top=3, width=4, height=3))])
+        replacement_new_font = ljii_download_font(
+            4707, ljii_soft_font_header(),
+            [(ord("A"), ljii_character_descriptor(
+                bytes([0x10, 0x10, 0xf0]), top=3, width=4, height=3))])
+        replacement_used = write(
+            tmp / "public-soft-replacement-used.pcl",
+            replacement_old_font + ESC + b"(4707X" + b"A" +
+            replacement_new_font + ESC + b"(4707X" + b"A" + FF)
+        replacement_used_pdf = tmp / "public-soft-replacement-used.pdf"
+        render(dreamprint, replacement_used, replacement_used_pdf)
+        if pdf_pages(replacement_used_pdf) != 2:
+            raise AssertionError(
+                "replacing a downloaded font used on the page did not publish it")
+        if pdftotext(replacement_used_pdf).count("A") != 2:
+            raise AssertionError("font replacement lost selectable source text")
+
+        replacement_reset = write(
+            tmp / "public-soft-replacement-reset.pcl",
+            replacement_old_font + ESC + b"*c5F" +
+            replacement_new_font + ESC + b"E" + ESC + b"(4707X" +
+            b"A" + FF)
+        replacement_reset_pdf = tmp / "public-soft-replacement-reset.pdf"
+        resident_a = write(tmp / "public-soft-resident-a.pcl", b"A" + FF)
+        resident_a_pdf = tmp / "public-soft-resident-a.pdf"
+        render(dreamprint, replacement_reset, replacement_reset_pdf)
+        render(dreamprint, resident_a, resident_a_pdf)
+        if ppm_sha256(replacement_reset_pdf,
+                      tmp / "public-soft-replacement-reset", dpi=300) != \
+           ppm_sha256(resident_a_pdf,
+                      tmp / "public-soft-resident-a", dpi=300):
+            raise AssertionError(
+                "replacement font inherited the old font's permanent status")
+
         public_permanent_reset = write(
             tmp / "public-soft-permanent-reset.pcl",
             ESC + b"(8U" + public_upright_font + ESC + b"(s0S" +
@@ -2471,6 +2568,37 @@ def main():
            (landscape_box[2] - landscape_box[0] + 1,
             landscape_box[3] - landscape_box[1] + 1) != (3, 4):
             raise AssertionError("landscape character offsets did not rotate bitmap axes")
+
+        orientation_portrait_font = ljii_download_font(
+            4705, ljii_soft_font_header(orientation=0),
+            [(ord("A"), ljii_character_descriptor(
+                bytes([0xf0, 0x90, 0xf0]), orientation=0, top=3,
+                width=4, height=3))])
+        orientation_landscape_font = ljii_download_font(
+            4706, ljii_soft_font_header(orientation=1),
+            [(ord("A"), ljii_character_descriptor(
+                bytes([0x80, 0x40, 0x10]), orientation=1, left=-2, top=8,
+                width=4, height=3))])
+        orientation_font_auto = write(
+            tmp / "orientation-font-auto.pcl",
+            ESC + b"(8U" + orientation_portrait_font +
+            orientation_landscape_font + ESC + b"(s0S" +
+            ESC + b"&l1O" + b"A" + FF)
+        orientation_font_explicit = write(
+            tmp / "orientation-font-explicit.pcl",
+            ESC + b"(8U" + orientation_portrait_font +
+            orientation_landscape_font + ESC + b"(s0S" +
+            ESC + b"&l1O" + ESC + b"(4706X" + b"A" + FF)
+        orientation_font_auto_pdf = tmp / "orientation-font-auto.pdf"
+        orientation_font_explicit_pdf = tmp / "orientation-font-explicit.pdf"
+        render(dreamprint, orientation_font_auto, orientation_font_auto_pdf)
+        render(dreamprint, orientation_font_explicit,
+               orientation_font_explicit_pdf)
+        if ppm_sha256(orientation_font_auto_pdf,
+                      tmp / "orientation-font-auto", dpi=300) != \
+           ppm_sha256(orientation_font_explicit_pdf,
+                      tmp / "orientation-font-explicit", dpi=300):
+            raise AssertionError("orientation change did not select the closest new-orientation font")
 
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +
@@ -3012,6 +3140,26 @@ def main():
         if ppm_sha256(soft_keep_target_pdf, tmp / "soft-keep-target",
                       dpi=150) == delete_target_hash:
             raise AssertionError("downloaded font delete-target regression is not sensitive")
+
+        soft_delete_used_font = write(
+            tmp / "soft-delete-used-font.pcl",
+            soft_two_glyphs + b")" + ESC + b"*c2F" + b"A" + FF)
+        soft_delete_used_font_pdf = tmp / "soft-delete-used-font.pdf"
+        render(dreamprint, soft_delete_used_font, soft_delete_used_font_pdf)
+        if pdf_pages(soft_delete_used_font_pdf) != 2:
+            raise AssertionError(
+                "deleting a downloaded font used on the current page did not publish it")
+
+        soft_delete_unused_font = write(
+            tmp / "soft-delete-unused-font.pcl",
+            soft_two_glyphs + ESC + b"(3X" + b"A" +
+            ESC + b"*c4661D" + ESC + b"*c2F" + b"B" + FF)
+        soft_delete_unused_font_pdf = tmp / "soft-delete-unused-font.pdf"
+        render(dreamprint, soft_delete_unused_font,
+               soft_delete_unused_font_pdf)
+        if pdf_pages(soft_delete_unused_font_pdf) != 1:
+            raise AssertionError(
+                "deleting an unused downloaded font published the current page")
 
         soft_marked_survives_delete_temp = write(
             tmp / "soft-marked-survives-delete-temp.pcl",
@@ -3898,6 +4046,43 @@ def main():
            ppm_sha256(raster_landscape_cursor_expected_pdf,
                       tmp / "raster-landscape-cursor-expected", dpi=300):
             raise AssertionError("landscape raster transfer did not update cursor")
+
+        raster_landscape_axes = write(
+            tmp / "raster-landscape-axes.pcl",
+            ESC + b"&l1O" + ESC + b"*p100x100Y" +
+            ESC + b"*t300R" + ESC + b"*r1A" +
+            ESC + b"*b1W\x80" + ESC + b"*b1W\x80" + FF)
+        raster_landscape_axes_pdf = tmp / "raster-landscape-axes.pdf"
+        render(dreamprint, raster_landscape_axes,
+               raster_landscape_axes_pdf)
+        landscape_axes_box = ppm_bbox(
+            raster_landscape_axes_pdf, tmp / "raster-landscape-axes",
+            dpi=300)
+        if landscape_axes_box is None or \
+           not (98 <= landscape_axes_box[0] <= 100 and
+                149 <= landscape_axes_box[1] <= 151 and
+                landscape_axes_box[2] <= 102 and
+                landscape_axes_box[3] <= 152):
+            raise AssertionError(
+                "landscape raster rows did not run +Y and advance -X")
+
+        raster_landscape_long_axis = write(
+            tmp / "raster-landscape-long-axis.pcl",
+            ESC + b"&l1O" + ESC + b"*p3000x100Y" +
+            ESC + b"*t300R" + ESC + b"*r1A" +
+            ESC + b"*b1W\x80" + FF)
+        raster_landscape_long_axis_pdf = \
+            tmp / "raster-landscape-long-axis.pdf"
+        render(dreamprint, raster_landscape_long_axis,
+               raster_landscape_long_axis_pdf)
+        landscape_long_axis_box = ppm_bbox(
+            raster_landscape_long_axis_pdf,
+            tmp / "raster-landscape-long-axis", dpi=300)
+        if landscape_long_axis_box is None or \
+           not (2999 <= landscape_long_axis_box[0] <= 3001 and
+                149 <= landscape_long_axis_box[1] <= 151):
+            raise AssertionError(
+                "landscape raster row was clipped to the short cross-axis extent")
 
         raster_only = bytearray(ESC + b"*t75R" + ESC + b"*r0A")
         raster_text = bytearray(raster_only)
@@ -5235,6 +5420,21 @@ def main():
         if "".join(pdftotext(macro_temporary_reset_pdf).split()) != "!":
             raise AssertionError("temporary macro survived reset")
 
+        macro_replacement_reset = write(
+            tmp / "macro-replacement-reset.pcl",
+            ESC + b"&f425Y" +
+            ESC + b"&f0X" + b"P" + ESC + b"&f1X" +
+            ESC + b"&f10X" +
+            ESC + b"&f0X" + b"R" + ESC + b"&f1X" +
+            ESC + b"E" +
+            ESC + b"&f425Y" + ESC + b"&f2X" + b"!" + FF)
+        macro_replacement_reset_pdf = tmp / "macro-replacement-reset.pdf"
+        render(dreamprint, macro_replacement_reset,
+               macro_replacement_reset_pdf)
+        if "".join(pdftotext(macro_replacement_reset_pdf).split()) != "!":
+            raise AssertionError(
+                "replacement macro inherited the old macro's permanent status")
+
         macro_delete_temporary = write(
             tmp / "macro-delete-temporary.pcl",
             ESC + b"&f420Y" +
@@ -5426,6 +5626,23 @@ def main():
         render(dreamprint, overlay_disable, overlay_disable_pdf)
         if "!" in pdftotext(overlay_disable_pdf):
             raise AssertionError("macro overlay disable selector did not clear state")
+
+        overlay_page_control_streams = {
+            "orientation": ESC + b"&l1O",
+            "page-size": ESC + b"&l3A",
+            "page-length": ESC + b"&l66P",
+        }
+        for label, page_command in overlay_page_control_streams.items():
+            source = write(
+                tmp / f"overlay-{label}-disable.pcl",
+                ESC + b"&f444Y" + ESC + b"&f0X" + b"!" +
+                ESC + b"&f1X" + ESC + b"&f4X" + page_command +
+                b"A" + FF)
+            pdf = tmp / f"overlay-{label}-disable.pdf"
+            render(dreamprint, source, pdf)
+            if "".join(pdftotext(pdf).split()) != "A":
+                raise AssertionError(
+                    f"{label} change did not disable automatic macro overlay")
 
         overlay_missing_then_defined = write(
             tmp / "overlay-missing-then-defined.pcl",

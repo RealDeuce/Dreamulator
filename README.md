@@ -89,7 +89,7 @@ supported at varying levels of completeness:
 | Apple ImageWriter II | `WRITER` | 9-pin impact | Complete — full command set from ROM analysis |
 | IBM Proprinter X24E | `X24E` | 24-pin impact | Partial — base ESC/P only, no PPDS extensions |
 | IBM Proprinter III | `XIII` | 9-pin impact | Partial — base ESC/P only, no PPDS extensions |
-| HP LaserJet II | `JET` | Toner | In progress — PCL4 text, page geometry, rules, raster, and invisible text layer |
+| HP LaserJet II | `JET` | Toner | Complete — documented PCL4 byte-stream-to-pixel path with selectable text |
 
 The [Epson FX](https://github.com/RealDeuce/epsonfx80),
 [Canon BJ-10e](https://github.com/RealDeuce/canonBJ10e), and

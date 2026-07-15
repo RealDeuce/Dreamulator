@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -695,6 +696,7 @@ private:
 	int pending_drain_count_ = -1;
 	int pending_download_count_ = -1;
 	bool page_root_active_ = false;
+	std::set<int> page_soft_font_ids_;
 	bool underline_span_active_ = false;
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
@@ -803,6 +805,7 @@ void PclPrinter::reset_ljii_state()
 	pending_drain_count_ = -1;
 	pending_download_count_ = -1;
 	page_root_active_ = false;
+	page_soft_font_ids_.clear();
 	underline_span_active_ = false;
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
@@ -1905,10 +1908,6 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 				auto it = soft_fonts_.find(soft_font_id_);
 				if (it != soft_fonts_.end())
 					it->second.permanent = true;
-			} else if (ival == 6) {
-				auto it = soft_fonts_.find(soft_font_id_);
-				if (it != soft_fonts_.end())
-					refresh_soft_font_request(it->second);
 			}
 			break;
 		case 'G':
@@ -2063,9 +2062,8 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 		return;
 
 	int start_x_dot = (int)std::floor(raster_x_in_ * kDotsPerIn);
-	raster_transfer_y_in_ = ((orientation_ & 1) ? st_.x_pos : st_.y_pos) +
-	                        (float)raster_row_ / kDotsPerIn;
-	int start_y_dot = (int)std::floor(raster_transfer_y_in_ * kDotsPerIn);
+	raster_transfer_y_in_ = (orientation_ & 1) ? st_.x_pos : st_.y_pos;
+	int cross_dot = (int)std::floor(raster_transfer_y_in_ * kDotsPerIn);
 	int page_w_dot = (int)std::floor(st_.page_width_in * kDotsPerIn);
 	int page_h_dot = (int)std::floor(st_.page_height_in * kDotsPerIn);
 
@@ -2074,11 +2072,13 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 		advance_raster_cursor_after_transfer();
 		return;
 	}
-	if (start_y_dot > page_h_dot)
+	int cross_limit_dot = (orientation_ & 1) ? page_w_dot : page_h_dot;
+	if (cross_dot > cross_limit_dot)
 		return;
 
 	int dots_per_byte = 8 * std::max(1, raster_scale_);
-	int remaining_dots = page_w_dot - start_x_dot;
+	int row_limit_dot = (orientation_ & 1) ? page_h_dot : page_w_dot;
+	int remaining_dots = row_limit_dot - start_x_dot;
 	int accepted = remaining_dots > 0
 		? (remaining_dots + dots_per_byte - 1) / dots_per_byte
 		: 0;
@@ -2119,6 +2119,7 @@ void PclPrinter::draw_raster_row(const std::vector<uint8_t> &row)
 			x_dot += 32;
 		}
 	}
+	raster_row_ += raster_scale_;
 	advance_raster_cursor_after_transfer();
 }
 
@@ -2136,8 +2137,15 @@ void PclPrinter::draw_raster_bits(uint32_t bits, int bit_count, int x_dot,
 void PclPrinter::draw_raster_dot(int x_dot, int y_dot)
 {
 	int dpi = prof_.render_dpi;
-	float base_x = raster_x_in_ * kDotsPerIn + (float)x_dot;
-	float base_y = raster_transfer_y_in_ * kDotsPerIn + (float)y_dot;
+	float base_x;
+	float base_y;
+	if (orientation_ & 1) {
+		base_x = raster_transfer_y_in_ * kDotsPerIn - (float)y_dot;
+		base_y = raster_x_in_ * kDotsPerIn + (float)x_dot;
+	} else {
+		base_x = raster_x_in_ * kDotsPerIn + (float)x_dot;
+		base_y = raster_transfer_y_in_ * kDotsPerIn + (float)y_dot;
+	}
 	int x0 = (int)std::floor(base_x * (float)dpi / kDotsPerIn);
 	int y0 = (int)std::floor(base_y * (float)dpi / kDotsPerIn);
 	int x1 = (int)std::ceil((base_x + 1.0f) * (float)dpi / kDotsPerIn);
@@ -2226,9 +2234,12 @@ void PclPrinter::rebuild_default_vfc_table()
 
 void PclPrinter::restore_default_text_length()
 {
-	text_length_in_ = std::max(0.0f, st_.page_height_in -
-	                                 st_.top_margin_in -
-	                                 st_.line_spacing_in);
+	float lower_threshold = st_.page_height_in - 0.5f;
+	float bottom = st_.page_height_in;
+	if (st_.top_margin_in > lower_threshold)
+		bottom = st_.top_margin_in +
+		         (st_.top_margin_in - lower_threshold);
+	text_length_in_ = std::max(0.0f, bottom - st_.top_margin_in);
 	text_length_custom_ = false;
 }
 
@@ -2551,6 +2562,8 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate(int slot) c
 
 void PclPrinter::delete_soft_font(int id)
 {
+	if (page_soft_font_ids_.count(id) != 0)
+		publish_current_page();
 	bool refresh[2] = {
 		selected_soft_font_id_[0] == id,
 		selected_soft_font_id_[1] == id
@@ -2748,7 +2761,6 @@ void PclPrinter::apply_download_descriptor_payload(
 
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 {
-	SoftFont &font = current_soft_font();
 	if (payload.empty())
 		return;
 
@@ -2759,6 +2771,16 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 	bool descriptor_shaped_payload = pcl_character_descriptor ||
 		(payload.size() >= 14 &&
 		 payload[4] == 0x0c && (payload[5] == 1 || payload[5] == 2));
+	bool public_font_descriptor =
+		download_font_slot_ == 1 && soft_font_descriptor_pending_;
+	bool legacy_resource_descriptor = download_font_slot_ == 1 &&
+		looks_like_ljii_font_resource_header(payload);
+	if (public_font_descriptor || legacy_resource_descriptor) {
+		auto existing = soft_fonts_.find(soft_font_id_);
+		if (existing != soft_fonts_.end())
+			delete_soft_font(soft_font_id_);
+	}
+	SoftFont &font = current_soft_font();
 
 	if (pcl_character_continuation) {
 		if (!font.continuation_active ||
@@ -2806,10 +2828,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
-	bool public_font_descriptor =
-		download_font_slot_ == 1 && soft_font_descriptor_pending_;
-	bool legacy_resource_descriptor = download_font_slot_ == 1 &&
-		looks_like_ljii_font_resource_header(payload);
 	if (public_font_descriptor && payload.size() < 64) {
 		font.active = false;
 		font.host_descriptor_valid = false;
@@ -3231,6 +3249,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	}
 	note_current_font_underline_distance();
 	start_underline_span();
+	page_soft_font_ids_.insert(font->id);
 
 	if (glyph.unresolved_pixels) {
 		uint16_t cp = text_unicode(b);
@@ -3283,8 +3302,15 @@ bool PclPrinter::ljii_nominal_text_vertical_accepts() const
 bool PclPrinter::ljii_resident_glyph_vertical_accepts(
 	const LjiiGlyphInfo &glyph) const
 {
-	float top = st_.y_pos - (float)glyph.y_offset / kDotsPerIn;
-	float bottom = top + (float)glyph.rows / kDotsPerIn;
+	float top;
+	float bottom;
+	if (orientation_ & 1) {
+		top = st_.y_pos + (float)glyph.x_offset / kDotsPerIn;
+		bottom = top + (float)glyph.width / kDotsPerIn;
+	} else {
+		top = st_.y_pos - (float)glyph.y_offset / kDotsPerIn;
+		bottom = top + (float)glyph.rows / kDotsPerIn;
+	}
 	return ljii_text_box_accepts(top, bottom);
 }
 
@@ -3382,13 +3408,20 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	page_dirty_ = true;
 
 	int dpi = prof_.render_dpi;
-	int base_x = (int)std::lround(st_.x_pos * (float)dpi) + glyph.x_offset;
-	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - glyph.y_offset;
+	int active_x = (int)std::lround(st_.x_pos * (float)dpi);
+	int active_y = (int)std::lround(st_.y_pos * (float)dpi);
+	int base_x = active_x + glyph.x_offset;
+	int base_y = active_y - glyph.y_offset;
 	for (uint8_t row = 0; row < glyph.rows; row++) {
 		const uint8_t *src = glyph.data + (size_t)row * glyph.span;
 		for (uint8_t col = 0; col < glyph.width; col++) {
 			uint8_t byte = src[col >> 3];
-			if (byte & (0x80u >> (col & 7)))
+			if (!(byte & (0x80u >> (col & 7))))
+				continue;
+			if (orientation_ & 1)
+				page_->set_pixel(active_x + glyph.y_offset - row,
+				                 active_y + glyph.x_offset + col, 0);
+			else
 				page_->set_pixel(base_x + col, base_y + row, 0);
 		}
 	}
@@ -3632,6 +3665,7 @@ void PclPrinter::set_page_size(int code)
 	if (!pcl_page_size_selector_valid(code))
 		return;
 	publish_current_page();
+	overlay_enabled_ = false;
 	page_size_code_ = code;
 	apply_page_geometry();
 }
@@ -3642,7 +3676,12 @@ void PclPrinter::set_orientation(int orientation)
 	if (orientation > 1 || orientation == orientation_)
 		return;
 	publish_current_page();
+	overlay_enabled_ = false;
 	orientation_ = orientation;
+	vmi_in_ = 1.0f / 6.0f;
+	st_.line_spacing_in = vmi_in_;
+	refresh_characteristic_selection(0);
+	refresh_characteristic_selection(1);
 	apply_page_geometry();
 }
 
@@ -3674,6 +3713,7 @@ void PclPrinter::apply_page_geometry()
 void PclPrinter::set_page_length(float length_in)
 {
 	flush_underline_span();
+	overlay_enabled_ = false;
 	physical_h_in_ = length_in;
 	logical_h_in_ = std::max(0.0f, physical_h_in_ - logical_y0_in_);
 	st_.page_height_in = physical_h_in_;
@@ -3713,6 +3753,7 @@ void PclPrinter::publish_current_page()
 		page_dirty_ = false;
 	}
 	page_root_active_ = false;
+	page_soft_font_ids_.clear();
 	page_.reset();
 	st_.x_pos = st_.left_margin_in;
 	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
@@ -3728,7 +3769,7 @@ void PclPrinter::start_macro_definition(bool lowercase_final)
 {
 	defining_macro_ = true;
 	Macro &macro = macros_[macro_id_];
-	macro.bytes.clear();
+	macro = Macro{};
 	macro_command_start_ = 0;
 	macro_stop_buf_.clear();
 	macro_chain_active_ = lowercase_final;
