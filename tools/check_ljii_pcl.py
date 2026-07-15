@@ -94,6 +94,18 @@ def ppm_sha256(pdf, stem, dpi=72):
     return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
 
 
+def ppm_pages_sha256(pdf, stem, dpi=72):
+    stem = Path(stem)
+    run(["pdftoppm", "-r", str(dpi), str(pdf), str(stem)])
+    digest = hashlib.sha256()
+    pages = sorted(stem.parent.glob(f"{stem.name}-*.ppm"))
+    if not pages:
+        raise AssertionError("pdftoppm did not emit page images")
+    for page in pages:
+        digest.update(page.read_bytes())
+    return digest.hexdigest()
+
+
 def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0, maximum_sum=None):
     width, height, pixels = ppm_image(pdf, stem, dpi)
     min_x = width
@@ -1251,19 +1263,17 @@ def main():
         margin_reset_cr_default = write(tmp / "margin-reset-cr-default.pcl",
                                         b"\r!" + FF)
         margin_reset_cr_esc9 = write(tmp / "margin-reset-cr-esc9.pcl",
-                                     ESC + b"9\r!" + FF)
+                                     ESC + b"&a20L" + ESC + b"9\r!" + FF)
         margin_reset_cr_default_pdf = tmp / "margin-reset-cr-default.pdf"
         margin_reset_cr_esc9_pdf = tmp / "margin-reset-cr-esc9.pdf"
         render(dreamprint, margin_reset_cr_default,
                margin_reset_cr_default_pdf)
         render(dreamprint, margin_reset_cr_esc9, margin_reset_cr_esc9_pdf)
-        default_box = ppm_bbox(margin_reset_cr_default_pdf,
-                               tmp / "margin-reset-cr-default", dpi=300)
-        reset_box = ppm_bbox(margin_reset_cr_esc9_pdf,
-                             tmp / "margin-reset-cr-esc9", dpi=300)
-        if default_box is None or reset_box is None or \
-           default_box[0] - reset_box[0] < 40:
-            raise AssertionError("ESC 9 CR did not reset to page-left margin")
+        if ppm_sha256(margin_reset_cr_default_pdf,
+                      tmp / "margin-reset-cr-default", dpi=300) != \
+           ppm_sha256(margin_reset_cr_esc9_pdf,
+                      tmp / "margin-reset-cr-esc9", dpi=300):
+            raise AssertionError("ESC 9 CR did not reset to the logical-page left edge")
 
         cursor_pop_positive = write(tmp / "cursor-pop-positive.pcl",
                                     ESC + b"&a20C" + ESC + b"&f0S" +
@@ -2275,16 +2285,13 @@ def main():
 
         public_upright = bytes([0xff, 0x18, 0x18, 0x18, 0x18, 0x18, 0xff])
         public_italic = bytes([0x1f, 0x0c, 0x18, 0x18, 0x30, 0x60, 0xf8])
-        public_style_fonts = (
-            ljii_download_font(
-                4700, ljii_soft_font_header(style=0),
-                [(ord("I"), ljii_character_descriptor(
-                    public_upright, top=7))])
-            + ljii_download_font(
-                4701, ljii_soft_font_header(style=1),
-                [(ord("I"), ljii_character_descriptor(
-                    public_italic, top=7))])
-        )
+        public_upright_font = ljii_download_font(
+            4700, ljii_soft_font_header(style=0),
+            [(ord("I"), ljii_character_descriptor(public_upright, top=7))])
+        public_italic_font = ljii_download_font(
+            4701, ljii_soft_font_header(style=1),
+            [(ord("I"), ljii_character_descriptor(public_italic, top=7))])
+        public_style_fonts = public_upright_font + public_italic_font
         public_style_upright = write(
             tmp / "public-soft-upright.pcl",
             ESC + b"(8U" + public_style_fonts + ESC + b"(s0S" + b"I" + FF)
@@ -2330,6 +2337,17 @@ def main():
            ppm_sha256(public_style_upright_pdf,
                       tmp / "public-soft-upright-after-id", dpi=300):
             raise AssertionError("characteristic command did not clear font ID selection")
+
+        public_permanent_reset = write(
+            tmp / "public-soft-permanent-reset.pcl",
+            ESC + b"(8U" + public_upright_font + ESC + b"(s0S" +
+            ESC + b"*c5F" + ESC + b"E" + b"I" + FF)
+        public_permanent_reset_pdf = tmp / "public-soft-permanent-reset.pdf"
+        render(dreamprint, public_permanent_reset, public_permanent_reset_pdf)
+        if ppm_sha256(public_permanent_reset_pdf,
+                      tmp / "public-soft-permanent-reset", dpi=300) != \
+           resident_i_hash:
+            raise AssertionError("reset retained a permanent soft-font selection")
 
         resident_symbol_reference = write(
             tmp / "public-soft-symbol-reference.pcl",
@@ -5019,10 +5037,107 @@ def main():
         execute_macro_pixels = ppm_rect_nonwhite(
             macro_execute_no_restore_pdf, tmp / "macro-execute-no-restore-far",
             295, 70, 365, 130, dpi=300)
-        if call_cursor_pixels < 200:
-            raise AssertionError("macro call did not restore caller cursor")
-        if execute_cursor_pixels > 50 or execute_macro_pixels < 200:
-            raise AssertionError("macro execute unexpectedly restored cursor")
+        if call_cursor_pixels > 50 or execute_cursor_pixels > 50 or \
+           execute_macro_pixels < 200:
+            raise AssertionError("macro invocation restored non-environment cursor state")
+        if ppm_sha256(macro_call_restore_pdf,
+                      tmp / "macro-call-cursor-state", dpi=300) != \
+           ppm_sha256(macro_execute_no_restore_pdf,
+                      tmp / "macro-execute-cursor-state", dpi=300):
+            raise AssertionError("macro call and execute moved the cursor differently")
+
+        macro_call_stack = write(
+            tmp / "macro-call-stack.pcl",
+            b"A" +
+            ESC + b"&f433Y" +
+            ESC + b"&f0X" + ESC + b"&f0S" + ESC + b"*p300X" +
+            ESC + b"&f1X" +
+            ESC + b"&f3X" + ESC + b"&f1S" + b"B" + FF)
+        macro_call_stack_expected = write(
+            tmp / "macro-call-stack-expected.pcl",
+            b"A" + ESC + b"&f0S" + ESC + b"*p300X" +
+            ESC + b"&f1S" + b"B" + FF)
+        macro_call_stack_pdf = tmp / "macro-call-stack.pdf"
+        macro_call_stack_expected_pdf = tmp / "macro-call-stack-expected.pdf"
+        render(dreamprint, macro_call_stack, macro_call_stack_pdf)
+        render(dreamprint, macro_call_stack_expected,
+               macro_call_stack_expected_pdf)
+        if ppm_sha256(macro_call_stack_pdf,
+                      tmp / "macro-call-stack", dpi=300) != \
+           ppm_sha256(macro_call_stack_expected_pdf,
+                      tmp / "macro-call-stack-expected", dpi=300):
+            raise AssertionError("macro call restored the cursor position stack")
+
+        macro_call_font_restore = write(
+            tmp / "macro-call-font-restore.pcl",
+            public_style_fonts +
+            ESC + b"&f434Y" + ESC + b"&f0X" +
+            ESC + b"(s0S" + ESC + b"&f1X" +
+            ESC + b"&f3X" + b"I" + FF)
+        macro_call_font_restore_pdf = tmp / "macro-call-font-restore.pdf"
+        render(dreamprint, macro_call_font_restore,
+               macro_call_font_restore_pdf)
+        if ppm_sha256(macro_call_font_restore_pdf,
+                      tmp / "macro-call-font-restore", dpi=300) != \
+           ppm_sha256(public_resident_i_pdf,
+                      tmp / "macro-call-font-resident", dpi=300):
+            raise AssertionError("macro call did not restore selected font state")
+
+        macro_call_id_restore = write(
+            tmp / "macro-call-id-restore.pcl",
+            b"A" +
+            ESC + b"&f435Y" + ESC + b"&f0X" +
+            ESC + b"&f436Y" + ESC + b"&f1X" +
+            ESC + b"&f436Y" + ESC + b"&f0X" + b"B" + ESC + b"&f1X" +
+            ESC + b"&f435Y" + ESC + b"&f3X" +
+            ESC + b"&f8X" +
+            ESC + b"&f436Y" + ESC + b"&f2X" +
+            ESC + b"&f435Y" + ESC + b"&f2X" + FF)
+        macro_call_id_restore_pdf = tmp / "macro-call-id-restore.pdf"
+        render(dreamprint, macro_call_id_restore, macro_call_id_restore_pdf)
+        if "".join(pdftotext(macro_call_id_restore_pdf).split()) != "AB":
+            raise AssertionError("macro call did not restore the modified-environment macro ID")
+
+        macro_call_line_term = write(
+            tmp / "macro-call-line-term.pcl",
+            ESC + b"&f437Y" + ESC + b"&f0X" +
+            ESC + b"&k1G" + ESC + b"&f1X" +
+            ESC + b"&f3X" + b"A\rB" + FF)
+        macro_call_line_term_expected = write(
+            tmp / "macro-call-line-term-expected.pcl", b"A\rB" + FF)
+        macro_call_line_term_pdf = tmp / "macro-call-line-term.pdf"
+        macro_call_line_term_expected_pdf = \
+            tmp / "macro-call-line-term-expected.pdf"
+        render(dreamprint, macro_call_line_term, macro_call_line_term_pdf)
+        render(dreamprint, macro_call_line_term_expected,
+               macro_call_line_term_expected_pdf)
+        if ppm_sha256(macro_call_line_term_pdf,
+                      tmp / "macro-call-line-term", dpi=300) != \
+           ppm_sha256(macro_call_line_term_expected_pdf,
+                      tmp / "macro-call-line-term-expected", dpi=300):
+            raise AssertionError("macro call did not restore line termination")
+
+        macro_call_geometry = write(
+            tmp / "macro-call-geometry.pcl",
+            b"A" +
+            ESC + b"&f438Y" + ESC + b"&f0X" +
+            ESC + b"&l1O" + b"M" + ESC + b"&f1X" +
+            ESC + b"&f3X" + b"B" + FF)
+        macro_call_geometry_expected = write(
+            tmp / "macro-call-geometry-expected.pcl",
+            b"A" + ESC + b"&l1O" + b"M" + ESC + b"&l0O" + b"B" + FF)
+        macro_call_geometry_pdf = tmp / "macro-call-geometry.pdf"
+        macro_call_geometry_expected_pdf = \
+            tmp / "macro-call-geometry-expected.pdf"
+        render(dreamprint, macro_call_geometry, macro_call_geometry_pdf)
+        render(dreamprint, macro_call_geometry_expected,
+               macro_call_geometry_expected_pdf)
+        if pdf_pages(macro_call_geometry_pdf) != 3 or \
+           ppm_pages_sha256(macro_call_geometry_pdf,
+                            tmp / "macro-call-geometry", dpi=150) != \
+           ppm_pages_sha256(macro_call_geometry_expected_pdf,
+                            tmp / "macro-call-geometry-expected", dpi=150):
+            raise AssertionError("macro call did not publish and restore changed page geometry")
 
         macro_stack_replayed = write(
             tmp / "macro-stack-replayed.pcl",
@@ -5243,6 +5358,49 @@ def main():
         if "Live!" not in pdftotext(overlay_eof_pdf):
             raise AssertionError("EOF flush did not replay macro overlay")
 
+        overlay_default_font = write(
+            tmp / "overlay-default-font.pcl",
+            ESC + b"&f440Y" + ESC + b"&f0X" + b"I" + ESC + b"&f1X" +
+            ESC + b"(s1S" + b"A" + ESC + b"&f440Y" + ESC + b"&f4X" + FF)
+        overlay_default_font_expected = write(
+            tmp / "overlay-default-font-expected.pcl",
+            ESC + b"&f441Y" + ESC + b"&f0X" +
+            ESC + b"(s0S" + b"I" + ESC + b"&f1X" +
+            ESC + b"(s1S" + b"A" + ESC + b"&f441Y" + ESC + b"&f4X" + FF)
+        overlay_default_font_pdf = tmp / "overlay-default-font.pdf"
+        overlay_default_font_expected_pdf = \
+            tmp / "overlay-default-font-expected.pdf"
+        render(dreamprint, overlay_default_font, overlay_default_font_pdf)
+        render(dreamprint, overlay_default_font_expected,
+               overlay_default_font_expected_pdf)
+        if ppm_sha256(overlay_default_font_pdf,
+                      tmp / "overlay-default-font", dpi=300) != \
+           ppm_sha256(overlay_default_font_expected_pdf,
+                      tmp / "overlay-default-font-expected", dpi=300):
+            raise AssertionError("macro overlay did not install the user-default font environment")
+
+        overlay_default_cursor = write(
+            tmp / "overlay-default-cursor.pcl",
+            ESC + b"&f442Y" + ESC + b"&f0X" + b"I" + ESC + b"&f1X" +
+            ESC + b"&a20L" + b"A" + ESC + b"&f442Y" + ESC + b"&f4X" + FF)
+        overlay_default_cursor_expected = write(
+            tmp / "overlay-default-cursor-expected.pcl",
+            ESC + b"&f443Y" + ESC + b"&f0X" +
+            ESC + b"&a120H" + ESC + b"&a1R" + b"I" + ESC + b"&f1X" +
+            ESC + b"&a20L" + b"A" + ESC + b"&f443Y" + ESC + b"&f4X" + FF)
+        overlay_default_cursor_pdf = tmp / "overlay-default-cursor.pdf"
+        overlay_default_cursor_expected_pdf = \
+            tmp / "overlay-default-cursor-expected.pdf"
+        render(dreamprint, overlay_default_cursor,
+               overlay_default_cursor_pdf)
+        render(dreamprint, overlay_default_cursor_expected,
+               overlay_default_cursor_expected_pdf)
+        if ppm_sha256(overlay_default_cursor_pdf,
+                      tmp / "overlay-default-cursor", dpi=300) != \
+           ppm_sha256(overlay_default_cursor_expected_pdf,
+                      tmp / "overlay-default-cursor-expected", dpi=300):
+            raise AssertionError("macro overlay did not reset default margins and cursor placement")
+
         overlay_repeated = write(
             tmp / "overlay-repeated.pcl",
             ESC + b"&f129Y" +
@@ -5422,18 +5580,17 @@ def main():
         span_flush_box = ppm_bbox(overlay_span_flush_pdf,
                                   tmp / "overlay-span-flush", dpi=300)
         if text_only_box is None or cursor_box is None or \
-           cursor_box[0] >= text_only_box[0]:
+           cursor_box[0] <= text_only_box[0]:
             raise AssertionError("cursor-position overlay did not move glyph")
         if text_only_box is None or vertical_box is None or \
            vertical_box[1] >= text_only_box[1]:
             raise AssertionError("vertical-decipoint overlay did not move glyph")
         if text_only_box is None or chained_cursor_box is None or \
-           chained_cursor_box[0] >= text_only_box[0] or \
+           chained_cursor_box[0] <= text_only_box[0] or \
            chained_cursor_box[3] <= text_only_box[3]:
             raise AssertionError("chained cursor-position overlay did not move glyph")
         if text_only_box is None or chained_margin_box is None or \
-           chained_margin_box[0] >= text_only_box[0] or \
-           chained_margin_box[3] <= text_only_box[3]:
+           chained_margin_box[0] <= text_only_box[0]:
             raise AssertionError("chained margin overlay did not move glyph")
         if span_plain_box is None or span_flush_box is None or \
            span_flush_box[0] <= span_plain_box[0]:

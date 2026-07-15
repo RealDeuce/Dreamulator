@@ -480,6 +480,10 @@ private:
 		int fill_pattern = 0;
 		int copy_count = 1;
 		bool wrap_enabled = false;
+		int line_term = 0;
+		int macro_id = 0;
+		int soft_font_id = 0;
+		uint8_t soft_char_code = 0;
 		int selected_soft_font_id[2] = { -1, -1 };
 		int download_font_slot = 1;
 		bool soft_font_descriptor_pending = true;
@@ -513,7 +517,6 @@ private:
 		bool has_style_metric = false;
 		bool has_stroke_metric = false;
 		bool has_typeface_metric = false;
-		bool characteristic_eligible[2] = { false, false };
 		bool continuation_active = false;
 		uint8_t continuation_char = 0;
 		size_t continuation_offset = 0;
@@ -575,7 +578,7 @@ private:
 	SoftFont &current_soft_font();
 	SoftFont *selected_soft_font();
 	const SoftFont *selected_soft_font() const;
-	const SoftFont *selected_soft_font_candidate() const;
+	const SoftFont *selected_soft_font_candidate(int slot) const;
 	void delete_soft_font(int id);
 	void refresh_soft_font_request(const SoftFont &font);
 	void refresh_characteristic_selection(int slot);
@@ -645,7 +648,9 @@ private:
 	bool capture_macro_payload_chain_byte(uint8_t b);
 	bool capture_macro_definition_byte(uint8_t b);
 	MacroPrintEnvironment capture_print_environment() const;
-	void restore_print_environment(const MacroPrintEnvironment &env);
+	void apply_overlay_environment();
+	void restore_print_environment(const MacroPrintEnvironment &env,
+	                               bool restore_cursor_state);
 	void replay_macro(int id, MacroReplayMode mode);
 
 	State state_ = State::Normal;
@@ -1094,8 +1099,8 @@ void PclPrinter::process_escape(uint8_t b)
 	}
 	if (b == '9') {
 		flush_underline_span();
-		st_.left_margin_in = 0.0f;
-		st_.right_margin_in = st_.page_width_in;
+		st_.left_margin_in = logical_x0_in_;
+		st_.right_margin_in = logical_x0_in_ + logical_w_in_;
 		restart_underline_span();
 		state_ = State::Normal;
 		return;
@@ -2391,10 +2396,10 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
 			return &it->second;
 		return nullptr;
 	}
-	return selected_soft_font_candidate();
+	return nullptr;
 }
 
-const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
+const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate(int slot) const
 {
 	struct Candidate {
 		const SoftFont *soft = nullptr;
@@ -2407,7 +2412,8 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
 		int typeface = 0;
 	};
 
-	const LjiiFontRequest &req = active_font_request();
+	slot = slot ? 1 : 0;
+	const LjiiFontRequest &req = font_request(slot);
 	std::vector<Candidate> candidates;
 	LjiiFontMetrics resident = get_ljii_font_metrics(
 		select_ljii_context(req, orientation_));
@@ -2420,8 +2426,6 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
 		if (!entry.second.active)
 			continue;
 		if (entry.second.glyphs.empty())
-			continue;
-		if (!entry.second.characteristic_eligible[active_font_slot_ ? 1 : 0])
 			continue;
 		if (entry.second.orientation >= 0 &&
 		    entry.second.orientation != orientation_)
@@ -2547,10 +2551,14 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
 
 void PclPrinter::delete_soft_font(int id)
 {
+	bool refresh[2] = {
+		selected_soft_font_id_[0] == id,
+		selected_soft_font_id_[1] == id
+	};
 	soft_fonts_.erase(id);
-	for (int &selected : selected_soft_font_id_)
-		if (selected == id)
-			selected = -1;
+	for (int slot = 0; slot < 2; slot++)
+		if (refresh[slot])
+			refresh_characteristic_selection(slot);
 }
 
 void PclPrinter::refresh_soft_font_request(const SoftFont &font)
@@ -2580,11 +2588,11 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 
 void PclPrinter::refresh_characteristic_selection(int slot)
 {
-	selected_soft_font_id_[slot ? 1 : 0] = -1;
-	for (auto &entry : soft_fonts_)
-		if (entry.second.active && !entry.second.glyphs.empty())
-			entry.second.characteristic_eligible[slot ? 1 : 0] = true;
-	if ((slot ? 1 : 0) == active_font_slot_)
+	slot = slot ? 1 : 0;
+	selected_soft_font_id_[slot] = -1;
+	if (const SoftFont *font = selected_soft_font_candidate(slot))
+		selected_soft_font_id_[slot] = font->id;
+	if (slot == active_font_slot_)
 		sync_active_font_state();
 }
 
@@ -2832,8 +2840,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 
 		font.glyphs.clear();
 		font.active = true;
-		font.characteristic_eligible[0] = false;
-		font.characteristic_eligible[1] = false;
 		font.host_descriptor_valid = true;
 		font.resource_header_active = legacy_resource_descriptor &&
 			!public_font_descriptor;
@@ -2876,8 +2882,6 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.continuation_remaining = 0;
 		font.active = true;
 		font.host_descriptor_valid = false;
-		font.characteristic_eligible[0] = false;
-		font.characteristic_eligible[1] = false;
 		font.fixed_record_extended_chars = payload[0x0e] != 0;
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
@@ -4147,6 +4151,10 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	env.fill_pattern = fill_pattern_;
 	env.copy_count = copy_count_;
 	env.wrap_enabled = wrap_enabled_;
+	env.line_term = line_term_;
+	env.macro_id = macro_id_;
+	env.soft_font_id = soft_font_id_;
+	env.soft_char_code = soft_char_code_;
 	env.selected_soft_font_id[0] = selected_soft_font_id_[0];
 	env.selected_soft_font_id[1] = selected_soft_font_id_[1];
 	env.download_font_slot = download_font_slot_;
@@ -4158,9 +4166,75 @@ PclPrinter::MacroPrintEnvironment PclPrinter::capture_print_environment() const
 	return env;
 }
 
-void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
+void PclPrinter::apply_overlay_environment()
 {
+	flush_underline_span();
+	line_term_ = 0;
+	hmi_in_ = 1.0f / 10.0f;
+	vmi_in_ = 1.0f / 6.0f;
+	font_req_[0] = LjiiFontRequest{};
+	font_req_[1] = LjiiFontRequest{};
+	font_req_[1].secondary = true;
+	font_req_[1].symbol_set = 0x000e;
+	active_font_slot_ = 0;
+	selected_soft_font_id_[0] = -1;
+	selected_soft_font_id_[1] = -1;
+	underline_selector_ = 0;
+	raster_resolution_ = 75;
+	raster_mode_ = 3;
+	raster_scale_ = 4;
+	raster_active_ = false;
+	raster_x_in_ = 0.0f;
+	raster_row_ = 0;
+	rect_w_in_ = 0.0f;
+	rect_h_in_ = 0.0f;
+	fill_pattern_ = 0;
+	wrap_enabled_ = false;
+	macro_id_ = 0;
+	soft_font_id_ = 0;
+	soft_char_code_ = 0;
+	soft_font_descriptor_pending_ = true;
+	download_font_slot_ = 1;
+	st_.pitch_cpi = 10.0f;
+	st_.line_spacing_in = vmi_in_;
+	st_.left_margin_in = logical_x0_in_;
+	st_.right_margin_in = logical_x0_in_ + logical_w_in_;
+	st_.top_margin_in = logical_y0_in_;
+	st_.perf_skip_lines = 6;
+	st_.underline = false;
+	st_.x_pos = st_.left_margin_in;
+	st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	pending_cursor_y_ = true;
+	previous_width_pending_ = false;
+	previous_text_width_in_ = hmi_in_;
+	previous_text_advance_in_ = hmi_in_;
+	restore_default_text_length();
+	update_vfc_bounds();
+	rebuild_default_vfc_table();
+	sync_active_font_state();
+	restart_underline_span();
+}
+
+void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env,
+                                           bool restore_cursor_state)
+{
+	const bool geometry_changed = orientation_ != env.orientation ||
+		page_size_code_ != env.page_size_code ||
+		std::abs(physical_w_in_ - env.physical_w_in) > 0.0001f ||
+		std::abs(physical_h_in_ - env.physical_h_in) > 0.0001f;
+	if (geometry_changed)
+		publish_current_page();
+	const float cursor_x = st_.x_pos;
+	const float cursor_y = st_.y_pos;
+	const bool pending_cursor_y = pending_cursor_y_;
 	st_ = env.st;
+	if (!restore_cursor_state && !geometry_changed) {
+		st_.x_pos = cursor_x;
+		st_.y_pos = cursor_y;
+	} else if (geometry_changed) {
+		st_.x_pos = st_.left_margin_in;
+		st_.y_pos = st_.top_margin_in + st_.line_spacing_in;
+	}
 	orientation_ = env.orientation;
 	page_size_code_ = env.page_size_code;
 	physical_w_in_ = env.physical_w_in;
@@ -4181,7 +4255,9 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	vfc_last_line_ = env.vfc_last_line;
 	vfc_text_last_line_ = env.vfc_text_last_line;
 	underline_selector_ = env.underline_selector;
-	pending_cursor_y_ = env.pending_cursor_y;
+	pending_cursor_y_ = geometry_changed ? true :
+	                    (restore_cursor_state ? env.pending_cursor_y :
+	                     pending_cursor_y);
 	raster_resolution_ = env.raster_resolution;
 	raster_mode_ = env.raster_mode;
 	raster_scale_ = env.raster_scale;
@@ -4193,14 +4269,28 @@ void PclPrinter::restore_print_environment(const MacroPrintEnvironment &env)
 	fill_pattern_ = env.fill_pattern;
 	copy_count_ = env.copy_count;
 	wrap_enabled_ = env.wrap_enabled;
+	line_term_ = env.line_term;
+	macro_id_ = env.macro_id;
+	soft_font_id_ = env.soft_font_id;
+	soft_char_code_ = env.soft_char_code;
 	selected_soft_font_id_[0] = env.selected_soft_font_id[0];
 	selected_soft_font_id_[1] = env.selected_soft_font_id[1];
+	for (int slot = 0; slot < 2; slot++) {
+		int id = selected_soft_font_id_[slot];
+		auto it = soft_fonts_.find(id);
+		if (id >= 0 &&
+		    (it == soft_fonts_.end() || !it->second.active))
+			refresh_characteristic_selection(slot);
+	}
 	download_font_slot_ = env.download_font_slot;
 	soft_font_descriptor_pending_ = env.soft_font_descriptor_pending;
-	cursor_stack_ = env.cursor_stack;
-	previous_width_pending_ = env.previous_width_pending;
-	previous_text_width_in_ = env.previous_text_width_in;
-	previous_text_advance_in_ = env.previous_text_advance_in;
+	if (restore_cursor_state) {
+		cursor_stack_ = env.cursor_stack;
+		previous_width_pending_ = env.previous_width_pending;
+		previous_text_width_in_ = env.previous_text_width_in;
+		previous_text_advance_in_ = env.previous_text_advance_in;
+	}
+	sync_active_font_state();
 	restart_underline_span();
 }
 
@@ -4216,6 +4306,8 @@ void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 	if (restores_environment) {
 		flush_underline_span();
 		env = capture_print_environment();
+		if (mode == MacroReplayMode::Overlay)
+			apply_overlay_environment();
 	}
 	macro_replay_depth_++;
 	replaying_macro_ = true;
@@ -4226,7 +4318,7 @@ void PclPrinter::replay_macro(int id, MacroReplayMode mode)
 	state_ = State::Normal;
 	if (restores_environment) {
 		flush_underline_span();
-		restore_print_environment(env);
+		restore_print_environment(env, mode == MacroReplayMode::Overlay);
 	}
 	macro_replay_depth_--;
 	replaying_macro_ = macro_replay_depth_ > 0;
