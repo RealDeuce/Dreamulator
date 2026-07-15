@@ -414,6 +414,31 @@ def main():
         if transparent_nonroman_text.count("!") < 2:
             raise AssertionError("non-Roman transparent controls lost surrounding text")
 
+        transparent_secondary_high = write(
+            tmp / "transparent-secondary-high.pcl",
+            b"\x0e" + ESC + b"&p3X" + b"!\x80!" + FF)
+        transparent_secondary_space = write(
+            tmp / "transparent-secondary-space.pcl",
+            b"\x0e" + ESC + b"&p3X" + b"! !" + FF)
+        transparent_secondary_high_pdf = \
+            tmp / "transparent-secondary-high.pdf"
+        transparent_secondary_space_pdf = \
+            tmp / "transparent-secondary-space.pdf"
+        render(dreamprint, transparent_secondary_high,
+               transparent_secondary_high_pdf)
+        render(dreamprint, transparent_secondary_space,
+               transparent_secondary_space_pdf)
+        if ppm_bbox(transparent_secondary_high_pdf,
+                    tmp / "transparent-secondary-high", dpi=300) is None:
+            raise AssertionError("secondary transparent high-control rendered blank")
+        if ppm_sha256(transparent_secondary_high_pdf,
+                      tmp / "transparent-secondary-high-shape", dpi=300) == \
+           ppm_sha256(transparent_secondary_space_pdf,
+                      tmp / "transparent-secondary-space", dpi=300):
+            raise AssertionError("secondary transparent high-control stayed fixed-space")
+        if "\x80" not in pdftotext(transparent_secondary_high_pdf):
+            raise AssertionError("secondary transparent high-control lost selectable byte")
+
         transparent_probe_x = write(tmp / "transparent-probe-x.pcl",
                                     ESC + b"&p3X" + b"A\x1aXB" + FF)
         transparent_probe_del = write(tmp / "transparent-probe-del.pcl",
