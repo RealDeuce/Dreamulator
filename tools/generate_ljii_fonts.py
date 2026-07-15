@@ -68,14 +68,19 @@ def record_metadata(rom: bytes | None, record: dict) -> tuple[int, ...]:
     )
 
 
+def firmware_render_span(width: int, mode: int) -> int:
+    span = (width + 7) // 8 if width else 0
+    # IC30/IC13 0x1f38c..0x1f39e pads odd built-in mode-1 spans.
+    if span & 1 and mode != 2:
+        span += 1
+    return span
+
+
 def corrected_payload(doc_path: Path, doc: dict, glyph: dict) -> tuple[bytes, int]:
     width = int(glyph["width"])
     rows = int(glyph["rows"])
     mode = int(glyph.get("mode", 0))
-    span = (width + 7) // 8 if width else 0
-    render_span = span
-    if render_span & 1 and mode != 2:
-        render_span += 1
+    render_span = firmware_render_span(width, mode)
 
     bitmap_offset = glyph.get("bitmap_offset")
     if bitmap_offset is not None:
@@ -83,11 +88,43 @@ def corrected_payload(doc_path: Path, doc: dict, glyph: dict) -> tuple[bytes, in
         if rom_path is not None and rom_path.exists():
             rom = rom_path.read_bytes()
             offset = int(bitmap_offset)
+            entry = int(glyph["entry_offset"])
+            if entry < 0 or entry + 10 > len(rom):
+                raise ValueError(f"glyph entry outside resource ROM: 0x{entry:x}")
+            expected_offset = entry + rom[entry + 4]
+            if offset != expected_offset:
+                raise ValueError(
+                    f"glyph bitmap offset 0x{offset:x} does not match firmware "
+                    f"resolution 0x{expected_offset:x}"
+                )
+            rom_mode = rom[entry + 5]
+            rom_rows = u16(rom, entry + 6)
+            rom_width = u16(rom, entry + 8)
+            rom_x = s16(rom, entry)
+            rom_y = s16(rom, entry + 2)
+            metadata = (
+                int(glyph["x_offset"]), int(glyph["y_offset"]),
+                mode, rows, width,
+            )
+            rom_metadata = (rom_x, rom_y, rom_mode, rom_rows, rom_width)
+            if metadata != rom_metadata:
+                raise ValueError(
+                    "glyph metadata does not match resource ROM entry "
+                    f"0x{entry:x}: {metadata} != {rom_metadata}"
+                )
             length = rows * max(render_span, 1)
             if offset >= 0 and offset + length <= len(rom):
                 return rom[offset : offset + length], render_span
 
-    return bytes.fromhex(glyph["payload_hex"]), int(glyph["render_span"])
+    payload = bytes.fromhex(glyph["payload_hex"])
+    documented_span = int(glyph["render_span"])
+    if documented_span != render_span or len(payload) != rows * render_span:
+        raise ValueError(
+            "resource ROM is required to correct the documented glyph payload "
+            f"(width={width}, rows={rows}, mode={mode}, "
+            f"documented span={documented_span}, firmware span={render_span})"
+        )
+    return payload, render_span
 
 
 def c_array(name: str, data: bytes) -> str:

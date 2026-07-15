@@ -1201,6 +1201,70 @@ def main():
         if line_w >= default_w * 3 // 4 or line_h >= default_h:
             raise AssertionError("line-printer pitch did not select resident compact glyphs")
 
+        # Compare resident ROM glyphs with equivalent downloaded glyphs built
+        # from independently resolved ROM rows. This catches address, stride,
+        # padding, bit-order, and pixel-polarity mistakes in the resident path.
+        courier_s_raw = bytes.fromhex(
+            "02f438000ffff8003ffff8007e97f8007801f800f0007800"
+            "f0003800f0000000f80000007f4000007ffd40001ffff000"
+            "02fffc00000afc0000003e00e0001e00e0001e00f0001e00"
+            "f8003c00ff55fc00fffff800ffffe00062b50000")
+        courier_s_rows = [courier_s_raw[i:i + 3]
+                          for i in range(0, len(courier_s_raw), 4)]
+        courier_s_host_bitmap = (
+            b"".join(row[:2] for row in courier_s_rows)
+            + bytes(row[2] for row in courier_s_rows))
+        courier_s_soft_font = ljii_download_font(
+            4798, ljii_soft_font_header(),
+            [(ord("s"), ljii_character_descriptor(
+                courier_s_host_bitmap, left=4, top=22, width=23,
+                height=23, delta_x=120))])
+        resident_courier_s = write(tmp / "resident-courier-s.pcl", b"s" + FF)
+        downloaded_courier_s = write(
+            tmp / "downloaded-courier-s.pcl",
+            courier_s_soft_font + ESC + b"(4798X" + b"s" + FF)
+        resident_courier_s_pdf = tmp / "resident-courier-s.pdf"
+        downloaded_courier_s_pdf = tmp / "downloaded-courier-s.pdf"
+        render(dreamprint, resident_courier_s, resident_courier_s_pdf)
+        render(dreamprint, downloaded_courier_s, downloaded_courier_s_pdf)
+        if ppm_sha256(resident_courier_s_pdf,
+                      tmp / "resident-courier-s", dpi=300) != \
+           ppm_sha256(downloaded_courier_s_pdf,
+                      tmp / "downloaded-courier-s", dpi=300):
+            raise AssertionError(
+                "resident Courier s did not match its ROM-resolved bitmap")
+
+        line_printer_bang_bitmap = bytes(
+            [0xf0] * 16 + [0x00] * 3 + [0xf0] * 3)
+        line_printer_bang_soft_font = ljii_download_font(
+            4799,
+            ljii_soft_font_header(
+                pitch=72, height=141, baseline=35,
+                cell_width=18, cell_height=39),
+            [(ord("!"), ljii_character_descriptor(
+                line_printer_bang_bitmap, left=6, top=21, width=4,
+                height=22, delta_x=72))])
+        resident_line_printer_bang = write(
+            tmp / "resident-line-printer-bang.pcl",
+            ESC + b"(s0p16.66h8.5v0s0b0T" + b"!" + FF)
+        downloaded_line_printer_bang = write(
+            tmp / "downloaded-line-printer-bang.pcl",
+            line_printer_bang_soft_font + ESC + b"(4799X" + b"!" + FF)
+        resident_line_printer_bang_pdf = \
+            tmp / "resident-line-printer-bang.pdf"
+        downloaded_line_printer_bang_pdf = \
+            tmp / "downloaded-line-printer-bang.pdf"
+        render(dreamprint, resident_line_printer_bang,
+               resident_line_printer_bang_pdf)
+        render(dreamprint, downloaded_line_printer_bang,
+               downloaded_line_printer_bang_pdf)
+        if ppm_sha256(resident_line_printer_bang_pdf,
+                      tmp / "resident-line-printer-bang", dpi=300) != \
+           ppm_sha256(downloaded_line_printer_bang_pdf,
+                      tmp / "downloaded-line-printer-bang", dpi=300):
+            raise AssertionError(
+                "resident one-byte Line Printer glyph used the wrong ROM stride")
+
         vmi_zero_base = write(tmp / "vmi-zero-base.pcl",
                               ESC + b"&l12D" + b"A\nB" + FF)
         vmi_zero_ignored = write(tmp / "vmi-zero-ignored.pcl",
