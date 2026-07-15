@@ -3852,10 +3852,37 @@ def main():
 
         paper_zero = write(tmp / "paper-zero.pcl",
                            b"A" + ESC + b"&l0H" + b"B" + FF)
+        paper_one = write(tmp / "paper-one.pcl",
+                          b"A" + ESC + b"&l1H" + b"B" + FF)
+        paper_two = write(tmp / "paper-two.pcl",
+                          b"A" + ESC + b"&l2H" + b"B" + FF)
+        paper_three = write(tmp / "paper-three.pcl",
+                            b"A" + ESC + b"&l3H" + b"B" + FF)
+        paper_default = write(tmp / "paper-default.pcl",
+                              b"A" + ESC + b"&l99H" + b"B" + FF)
         paper_zero_pdf = tmp / "paper-zero.pdf"
+        paper_one_pdf = tmp / "paper-one.pdf"
+        paper_two_pdf = tmp / "paper-two.pdf"
+        paper_three_pdf = tmp / "paper-three.pdf"
+        paper_default_pdf = tmp / "paper-default.pdf"
         render(dreamprint, paper_zero, paper_zero_pdf)
-        if pdf_pages(paper_zero_pdf) != 2:
-            raise AssertionError("paper-source selector zero did not publish")
+        render(dreamprint, paper_one, paper_one_pdf)
+        render(dreamprint, paper_two, paper_two_pdf)
+        render(dreamprint, paper_three, paper_three_pdf)
+        render(dreamprint, paper_default, paper_default_pdf)
+        for selector, pdf in (
+            ("zero", paper_zero_pdf),
+            ("one", paper_one_pdf),
+            ("two", paper_two_pdf),
+            ("three", paper_three_pdf),
+            ("default", paper_default_pdf),
+        ):
+            if pdf_pages(pdf) != 2:
+                raise AssertionError(
+                    f"paper-source selector {selector} did not publish")
+            if "AB" not in "".join(pdftotext(pdf).split()):
+                raise AssertionError(
+                    f"paper-source selector {selector} lost text")
 
         page_length_zero = write(tmp / "page-length-zero.pcl",
                                  b"A" + ESC + b"&l0P" + b"B" + FF)
