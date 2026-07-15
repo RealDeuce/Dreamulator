@@ -385,19 +385,23 @@ uint16_t be16_at(const std::vector<uint8_t> &payload, size_t off)
 	return (uint16_t)(((uint16_t)payload[off] << 8) | payload[off + 1]);
 }
 
-bool valid_ljii_font_resource_header(const std::vector<uint8_t> &payload)
+int16_t be16_signed_at(const std::vector<uint8_t> &payload, size_t off)
 {
-	if (!looks_like_ljii_font_resource_header(payload) || payload.size() < 64)
-		return false;
-	uint8_t resource_type = payload[3];
-	uint16_t first = be16_at(payload, 6);
-	uint16_t line_count = be16_at(payload, 8);
-	uint16_t last = be16_at(payload, 10);
-	uint8_t font_class = payload[12];
-	return resource_type <= 2 && first <= 0x1067 &&
-	       line_count != 0 && line_count <= 0x1068 &&
-	       last != 0 && last <= 0x1068 &&
-	       first <= (uint16_t)(last - 1) && font_class <= 1;
+	return (int16_t)be16_at(payload, off);
+}
+
+int ljii_font_pitch_cpi100(uint16_t quarter_dots, uint8_t extended)
+{
+	uint32_t units = (uint32_t)quarter_dots * 256u + extended;
+	if (units == 0)
+		return 0;
+	return (int)std::lround(30000.0 * 1024.0 / (double)units);
+}
+
+int ljii_font_height_hundredths(uint16_t quarter_dots, uint8_t extended)
+{
+	uint32_t units = (uint32_t)quarter_dots * 256u + extended;
+	return (int)std::lround((double)units * 24.0 / 1024.0);
 }
 
 } // namespace
@@ -489,6 +493,11 @@ private:
 		uint16_t width = 0;
 		uint16_t rows = 0;
 		uint16_t span = 0;
+		int16_t left_offset = 0;
+		int16_t top_offset = 0;
+		uint16_t delta_x = 0;
+		uint8_t orientation = 0;
+		bool pcl_character_descriptor = false;
 		bool split_plane = false;
 		bool unresolved_pixels = false;
 		std::vector<uint8_t> bitmap;
@@ -509,12 +518,19 @@ private:
 		size_t continuation_offset = 0;
 		size_t continuation_remaining = 0;
 		bool resource_header_active = false;
+		bool host_descriptor_valid = false;
 		uint8_t resource_type = 0;
 		bool resource_extended_chars = false;
 		bool fixed_record_extended_chars = false;
 		uint16_t resource_first = 0;
 		uint16_t resource_last = 0x7f;
 		int symbol_set = kSymbolRoman8;
+		int orientation = -1;
+		uint16_t baseline_distance = 0;
+		uint16_t cell_width = 0;
+		uint16_t cell_height = 0;
+		int font_type = 0;
+		int8_t underline_distance = 0;
 		int spacing = 0;
 		int pitch = 1000;
 		int height = 1200;
@@ -591,6 +607,7 @@ private:
 	void start_underline_span();
 	void flush_underline_span();
 	void restart_underline_span();
+	void note_current_font_underline_distance();
 	void draw_underline_range(float x0_in, float x1_in, float y_in,
 	                          int selector);
 	float underline_y_in(float y_in, int selector) const;
@@ -675,6 +692,8 @@ private:
 	float underline_span_x0_in_ = 0.0f;
 	float underline_span_y_in_ = 0.0f;
 	int underline_span_selector_ = 0;
+	float underline_line_y_in_ = -1.0f;
+	int floating_underline_distance_dots_ = -0x7fffffff;
 	int underline_selector_ = 0;
 	bool pending_cursor_y_ = true;
 
@@ -781,6 +800,8 @@ void PclPrinter::reset_ljii_state()
 	underline_span_x0_in_ = 0.0f;
 	underline_span_y_in_ = 0.0f;
 	underline_span_selector_ = 0;
+	underline_line_y_in_ = -1.0f;
+	floating_underline_distance_dots_ = -0x7fffffff;
 	underline_selector_ = 0;
 	pending_cursor_y_ = true;
 	raster_resolution_ = 75;
@@ -1185,22 +1206,9 @@ void PclPrinter::advance_fixed_space()
 		finish_text_advance(char_w_in, char_w_in, had_pending);
 		return;
 	}
+	note_current_font_underline_distance();
 	start_underline_span();
 	append_ljii_text_glyph(0x20, char_w_in);
-	if (st_.underline) {
-		new_page_if_needed();
-		page_dirty_ = true;
-		int dpi = prof_.render_dpi;
-		int y = (int)std::lround(underline_y_in(st_.y_pos,
-		                                        underline_selector_) *
-		                         (float)dpi);
-		int x0 = (int)std::lround(st_.x_pos * (float)dpi);
-		int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
-		for (int x = x0; x < x1; x++) {
-			page_->set_pixel(x, y, 0);
-			page_->set_pixel(x, y + 1, 0);
-		}
-	}
 	finish_text_advance(char_w_in, char_w_in, had_pending);
 }
 
@@ -1641,7 +1649,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			auto it = soft_fonts_.find(ival);
 			if (it != soft_fonts_.end() && it->second.active) {
 				selected_soft_font_id_[slot] = ival;
-				font_request(slot).symbol_set = it->second.symbol_set;
+				refresh_soft_font_request(it->second);
 				if (slot == active_font_slot_)
 					sync_active_font_state();
 			} else if (apply_builtin_font_id(slot, ival)) {
@@ -2377,7 +2385,9 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
 	int id = selected_soft_font_id_[active_font_slot_ ? 1 : 0];
 	if (id >= 0) {
 		auto it = soft_fonts_.find(id);
-		if (it != soft_fonts_.end() && it->second.active)
+		if (it != soft_fonts_.end() && it->second.active &&
+		    (it->second.orientation < 0 ||
+		     it->second.orientation == orientation_))
 			return &it->second;
 		return nullptr;
 	}
@@ -2386,63 +2396,151 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font() const
 
 const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate() const
 {
-	std::vector<const SoftFont *> candidates;
+	struct Candidate {
+		const SoftFont *soft = nullptr;
+		int symbol_set = 0;
+		int pitch = 0;
+		int height = 0;
+		int spacing = 0;
+		int style = 0;
+		int stroke = 0;
+		int typeface = 0;
+	};
+
+	const LjiiFontRequest &req = active_font_request();
+	std::vector<Candidate> candidates;
+	LjiiFontMetrics resident = get_ljii_font_metrics(
+		select_ljii_context(req, orientation_));
+	if (resident.found) {
+		candidates.push_back({ nullptr, resident.symbol_set, resident.pitch,
+		                       resident.height, resident.spacing, resident.style,
+		                       resident.stroke, resident.typeface });
+	}
 	for (const auto &entry : soft_fonts_) {
 		if (!entry.second.active)
 			continue;
 		if (entry.second.glyphs.empty())
 			continue;
-		candidates.push_back(&entry.second);
+		if (entry.second.orientation >= 0 &&
+		    entry.second.orientation != orientation_)
+			continue;
+		candidates.push_back({ &entry.second, entry.second.symbol_set,
+		                       entry.second.pitch, entry.second.height,
+		                       entry.second.spacing, entry.second.style,
+		                       entry.second.stroke, entry.second.typeface });
 	}
-	if (candidates.empty())
+	if (candidates.size() <= (resident.found ? 1u : 0u))
 		return nullptr;
 
-	const LjiiFontRequest &req = active_font_request();
 	auto prune = [&candidates](auto predicate) {
-		std::vector<const SoftFont *> filtered;
-		for (const SoftFont *font : candidates)
-			if (predicate(*font))
-				filtered.push_back(font);
+		std::vector<Candidate> filtered;
+		for (const Candidate &candidate : candidates)
+			if (predicate(candidate))
+				filtered.push_back(candidate);
 		if (!filtered.empty())
 			candidates = std::move(filtered);
 	};
-	auto nearest = [&candidates, &prune](auto value_fn, int requested) {
-		if (candidates.empty())
+	auto nearest_height = [&candidates, &prune](int requested) {
+		bool in_range = false;
+		for (const Candidate &candidate : candidates)
+			in_range |= std::abs(candidate.height - requested) <= 25;
+		if (in_range) {
+			prune([&](const Candidate &candidate) {
+				return std::abs(candidate.height - requested) <= 25;
+			});
 			return;
+		}
 		int best_diff = 0x7fffffff;
-		for (const SoftFont *font : candidates)
-			best_diff = std::min(best_diff,
-			                     std::abs(value_fn(*font) - requested));
-		prune([&](const SoftFont &font) {
-			return std::abs(value_fn(font) - requested) == best_diff;
+		for (const Candidate &candidate : candidates)
+			best_diff = std::min(best_diff, std::abs(candidate.height - requested));
+		prune([&](const Candidate &candidate) {
+			return std::abs(candidate.height - requested) == best_diff;
+		});
+	};
+	auto nearest_pitch = [&candidates, &prune](int requested) {
+		bool in_range = false;
+		for (const Candidate &candidate : candidates)
+			in_range |= std::abs(candidate.pitch - requested) <= 5;
+		if (in_range) {
+			prune([&](const Candidate &candidate) {
+				return std::abs(candidate.pitch - requested) <= 5;
+			});
+			return;
+		}
+		int above = 0x7fffffff;
+		int below = -1;
+		for (const Candidate &candidate : candidates) {
+			if (candidate.pitch >= requested)
+				above = std::min(above, candidate.pitch);
+			else
+				below = std::max(below, candidate.pitch);
+		}
+		int selected = above != 0x7fffffff ? above : below;
+		prune([&](const Candidate &candidate) {
+			return candidate.pitch == selected;
 		});
 	};
 
-	prune([&](const SoftFont &font) { return font.symbol_set == req.symbol_set; });
+	prune([&](const Candidate &candidate) {
+		return candidate.symbol_set == req.symbol_set;
+	});
 	if (req.symbol_set != kSymbolRoman8)
-		prune([](const SoftFont &font) { return font.symbol_set == kSymbolRoman8; });
+		prune([](const Candidate &candidate) {
+			return candidate.symbol_set == kSymbolRoman8;
+		});
 
-	std::vector<const SoftFont *> spacing_matches;
-	for (const SoftFont *font : candidates)
-		if (font->spacing == req.spacing)
-			spacing_matches.push_back(font);
+	std::vector<Candidate> spacing_matches;
+	for (const Candidate &candidate : candidates)
+		if (candidate.spacing == req.spacing)
+			spacing_matches.push_back(candidate);
 	if (req.spacing == 1) {
 		if (!spacing_matches.empty())
 			candidates = std::move(spacing_matches);
 	} else if (!spacing_matches.empty()) {
 		candidates = std::move(spacing_matches);
-		nearest([](const SoftFont &font) { return font.pitch; }, req.pitch);
+		nearest_pitch(req.pitch);
 	}
 
-	nearest([](const SoftFont &font) { return font.height; }, req.height);
-	prune([&](const SoftFont &font) { return font.style == req.style; });
-	if (req.stroke >= 3)
-		prune([](const SoftFont &font) { return font.stroke >= 3; });
-	else
-		prune([&](const SoftFont &font) { return font.stroke == req.stroke; });
-	prune([&](const SoftFont &font) { return font.typeface == req.typeface; });
+	nearest_height(req.height);
+	prune([&](const Candidate &candidate) { return candidate.style == req.style; });
+	bool exact_stroke = false;
+	for (const Candidate &candidate : candidates)
+		exact_stroke |= candidate.stroke == req.stroke;
+	if (exact_stroke) {
+		prune([&](const Candidate &candidate) {
+			return candidate.stroke == req.stroke;
+		});
+	} else {
+		int preferred = req.stroke >= 0 ? 0x7fffffff : -0x7fffffff;
+		for (const Candidate &candidate : candidates) {
+			if (req.stroke >= 0 && candidate.stroke > req.stroke)
+				preferred = std::min(preferred, candidate.stroke);
+			else if (req.stroke < 0 && candidate.stroke < req.stroke)
+				preferred = std::max(preferred, candidate.stroke);
+		}
+		bool preferred_found = preferred != (req.stroke >= 0 ? 0x7fffffff : -0x7fffffff);
+		if (!preferred_found) {
+			for (const Candidate &candidate : candidates) {
+				if (req.stroke >= 0)
+					preferred = std::max(preferred == 0x7fffffff ? -0x7fffffff : preferred,
+					                     candidate.stroke);
+				else
+					preferred = std::min(preferred == -0x7fffffff ? 0x7fffffff : preferred,
+					                     candidate.stroke);
+			}
+		}
+		prune([&](const Candidate &candidate) {
+			return candidate.stroke == preferred;
+		});
+	}
+	prune([&](const Candidate &candidate) {
+		return candidate.typeface == req.typeface;
+	});
 
-	return candidates.empty() ? nullptr : candidates.front();
+	for (const Candidate &candidate : candidates)
+		if (candidate.soft)
+			return candidate.soft;
+	return nullptr;
 }
 
 void PclPrinter::delete_soft_font(int id)
@@ -2463,7 +2561,7 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 		LjiiFontRequest &req = font_request(slot);
 		req.symbol_set = font.symbol_set;
 		req.spacing = font.spacing;
-		if (font.has_pitch_metric)
+		if (font.spacing == 0 && font.has_pitch_metric)
 			req.pitch = font.pitch;
 		if (font.has_height_metric)
 			req.height = font.height;
@@ -2515,7 +2613,8 @@ uint8_t PclPrinter::soft_glyph_bitmap_byte(const SoftGlyph &glyph,
 bool PclPrinter::soft_glyph_uses_selected_segment(
 	const SoftGlyph &glyph) const
 {
-	if (glyph.unresolved_pixels || glyph.span < 17 || glyph.rows <= 0x80)
+	if (glyph.pcl_character_descriptor || glyph.unresolved_pixels ||
+	    glyph.span < 17 || glyph.rows <= 0x80)
 		return false;
 	return (glyph.rows & 0xff) >= 0x81;
 }
@@ -2630,13 +2729,41 @@ void PclPrinter::apply_download_descriptor_payload(
 void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 {
 	SoftFont &font = current_soft_font();
-	font.active = true;
-	if (payload.empty()) {
+	if (payload.empty())
+		return;
+
+	bool pcl_character_descriptor = payload.size() >= 4 &&
+		payload[0] == 4 && payload[1] == 0;
+	bool pcl_character_continuation = payload.size() >= 2 &&
+		payload[0] == 4 && payload[1] == 1;
+	bool descriptor_shaped_payload = pcl_character_descriptor ||
+		(payload.size() >= 14 &&
+		 payload[4] == 0x0c && (payload[5] == 1 || payload[5] == 2));
+
+	if (pcl_character_continuation) {
+		if (!font.continuation_active ||
+		    font.continuation_char != soft_char_code_)
+			return;
+		auto it = font.glyphs.find(font.continuation_char);
+		if (it == font.glyphs.end() ||
+		    !it->second.pcl_character_descriptor) {
+			font.continuation_active = false;
+			font.continuation_remaining = 0;
+			return;
+		}
+		SoftGlyph &glyph = it->second;
+		auto first = payload.begin() + 2;
+		auto last = first + (std::vector<uint8_t>::difference_type)
+		            std::min((size_t)(payload.end() - first),
+		                     font.continuation_remaining);
+		size_t copy = copy_soft_glyph_host_bytes(
+			glyph, font.continuation_offset, first, last);
+		font.continuation_offset += copy;
+		font.continuation_remaining -= copy;
+		if (font.continuation_remaining == 0)
+			font.continuation_active = false;
 		return;
 	}
-
-	bool descriptor_shaped_payload = payload.size() >= 14 &&
-		payload[4] == 0x0c && (payload[5] == 1 || payload[5] == 2);
 	if (font.continuation_active &&
 	    font.continuation_char == soft_char_code_ &&
 	    !descriptor_shaped_payload &&
@@ -2659,71 +2786,82 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		return;
 	}
 
-	bool resource_header = looks_like_ljii_font_resource_header(payload);
-	bool valid_resource_header = valid_ljii_font_resource_header(payload);
-	if (resource_header &&
-	    (valid_resource_header || !soft_font_descriptor_pending_)) {
+	bool public_font_descriptor =
+		download_font_slot_ == 1 && soft_font_descriptor_pending_;
+	bool legacy_resource_descriptor = download_font_slot_ == 1 &&
+		looks_like_ljii_font_resource_header(payload);
+	if (public_font_descriptor && payload.size() < 64) {
+		font.active = false;
+		font.host_descriptor_valid = false;
+		font.glyphs.clear();
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
-		if (!valid_resource_header)
+		return;
+	}
+	if (payload.size() >= 64 &&
+	    (public_font_descriptor || legacy_resource_descriptor)) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
+		uint16_t baseline = be16_at(payload, 6);
+		uint16_t cell_width = be16_at(payload, 8);
+		uint16_t cell_height = be16_at(payload, 10);
+		uint8_t font_type = payload[3];
+		uint8_t font_orientation = payload[12];
+		int stroke = std::max(-7, std::min(7,
+		                                      (int)(int8_t)payload[24]));
+		if (font_type > 2 || cell_width == 0 || cell_width > 4200 ||
+		    cell_height == 0 || cell_height > 4200 ||
+		    baseline >= cell_height || font_orientation > 1) {
+			font.active = false;
+			font.host_descriptor_valid = false;
+			font.glyphs.clear();
 			return;
-		uint8_t resource_type = payload[3];
-		uint16_t first = be16_at(payload, 6);
-		uint8_t font_class = payload[12];
+		}
 
-		font.resource_header_active = true;
-		font.resource_type = resource_type;
-		font.resource_extended_chars = font_class >= 1;
-		font.resource_first = first;
-		font.resource_last = font.resource_extended_chars ? 0x00ff : 0x007f;
+		font.glyphs.clear();
+		font.active = true;
+		font.host_descriptor_valid = true;
+		font.resource_header_active = legacy_resource_descriptor &&
+			!public_font_descriptor;
+		font.resource_type = font_type;
+		font.resource_extended_chars = font_type != 0;
+		font.resource_first = font_type == 2 ? 1 : 0x20;
+		font.resource_last = font_type == 0 ? 0x7f : 0xff;
+		font.fixed_record_extended_chars = font_type != 0;
+		font.font_type = font_type;
+		font.orientation = font_orientation;
+		font.baseline_distance = baseline;
+		font.cell_width = cell_width;
+		font.cell_height = cell_height;
 		font.symbol_set = be16_at(payload, 14);
-		if (font.symbol_set == 0)
-			font.symbol_set = kSymbolRoman8;
-		font.has_request_metrics = true;
 		font.spacing = payload[13] ? 1 : 0;
-		uint16_t pitch = be16_at(payload, 16);
-		uint16_t height = be16_at(payload, 18);
-		if (pitch > 0) {
-			font.pitch = std::min<int>(pitch, 0x41a0);
-			font.has_pitch_metric = true;
-		}
-		if (height > 0) {
-			font.height = std::min<int>(height, 0x2aaa);
-			font.has_height_metric = true;
-		}
-		if (payload.size() > 0x31) {
-			font.style = payload[0x2f];
-			font.stroke = std::max(-7, std::min(7,
-			                                    (int)(int8_t)payload[0x30]));
-			font.typeface = payload[0x31];
-			font.has_style_metric = true;
-			font.has_stroke_metric = true;
-			font.has_typeface_metric = true;
-		}
-		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
-			LjiiFontRequest &req = font_request(download_font_slot_);
-			req.symbol_set = font.symbol_set;
-			req.spacing = font.spacing;
-			if (font.has_pitch_metric)
-				req.pitch = font.pitch;
-			if (font.has_height_metric)
-				req.height = font.height;
-			if (font.has_style_metric)
-				req.style = font.style;
-			if (font.has_stroke_metric)
-				req.stroke = font.stroke;
-			if (font.has_typeface_metric)
-				req.typeface = font.typeface;
-			if (download_font_slot_ == active_font_slot_)
-				sync_active_font_state();
-		}
+		uint16_t pitch_word = std::min<uint16_t>(be16_at(payload, 16), 16800);
+		uint16_t height_word = std::min<uint16_t>(be16_at(payload, 18), 10922);
+		uint8_t pitch_extended = pitch_word >= 16800 ? 0 : payload[40];
+		uint8_t height_extended = height_word >= 10922
+			? std::min<uint8_t>(payload[41], 0x80) : payload[41];
+		font.pitch = ljii_font_pitch_cpi100(pitch_word, pitch_extended);
+		font.height = ljii_font_height_hundredths(height_word, height_extended);
+		font.style = payload[23];
+		font.stroke = stroke;
+		font.typeface = payload[25];
+		font.underline_distance = (int8_t)payload[30];
+		font.has_request_metrics = true;
+		font.has_pitch_metric = pitch_word > 0;
+		font.has_height_metric = height_word > 0;
+		font.has_style_metric = true;
+		font.has_stroke_metric = true;
+		font.has_typeface_metric = true;
 		return;
 	}
 
 	if (payload.size() >= 64 &&
+	    !pcl_character_descriptor &&
 	    (soft_font_descriptor_pending_ || soft_char_code_ <= 0x20)) {
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
+		font.active = true;
+		font.host_descriptor_valid = false;
 		font.fixed_record_extended_chars = payload[0x0e] != 0;
 		if (payload.size() > 0x23) {
 			int symbol = ((int)payload[0x22] << 8) | payload[0x23];
@@ -2773,6 +2911,13 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		}
 		return;
 	}
+	if (font.host_descriptor_valid && download_font_slot_ == 0 &&
+	    !pcl_character_descriptor) {
+		font.glyphs.erase(soft_char_code_);
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
+		return;
+	}
 
 	SoftGlyph glyph;
 	bool render_payload_control_glyph = false;
@@ -2787,7 +2932,61 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 			return false;
 		return true;
 	};
-	if (download_payload_control_seen_ && payload.size() == 18 &&
+	if (pcl_character_descriptor) {
+		font.continuation_active = false;
+		font.continuation_remaining = 0;
+		if (payload.size() < 16) {
+			font.glyphs.erase(soft_char_code_);
+			return;
+		}
+		uint8_t descriptor_size = payload[2];
+		size_t bitmap_offset = (size_t)descriptor_size + 2;
+		int orientation = payload[4] & 3;
+		int left = std::max(-4200, std::min(4200,
+		                                     (int)be16_signed_at(payload, 6)));
+		int top = std::max(-4200, std::min(4200,
+		                                    (int)be16_signed_at(payload, 8)));
+		uint16_t width = be16_at(payload, 10);
+		uint16_t height = be16_at(payload, 12);
+		int delta_x = std::max(0, std::min(16800,
+		                                      (int)be16_signed_at(payload, 14)));
+		delta_x = ((delta_x + 2) >> 2) << 2;
+		bool geometry_valid = false;
+		if (orientation == 0) {
+			geometry_valid = left >= 0 && left + width <= font.cell_width &&
+				top <= font.baseline_distance &&
+				(int)height - top <=
+					(int)font.cell_height - font.baseline_distance;
+		} else if (orientation == 1) {
+			geometry_valid = left >= -(int)font.baseline_distance &&
+				left + width <=
+					(int)font.cell_height - font.baseline_distance &&
+				top <= font.cell_width && height <= top;
+		}
+		if (!font.host_descriptor_valid || descriptor_size < 14 ||
+		    payload.size() < bitmap_offset || payload[3] != 1 ||
+		    orientation > 1 || orientation != font.orientation ||
+		    width == 0 || width > 4200 || height == 0 || height > 4200 ||
+		    !geometry_valid) {
+			font.glyphs.erase(soft_char_code_);
+			return;
+		}
+		glyph.width = width;
+		glyph.rows = height;
+		glyph.span = (uint16_t)((width + 7) / 8);
+		glyph.left_offset = (int16_t)left;
+		glyph.top_offset = (int16_t)top;
+		glyph.delta_x = (uint16_t)delta_x;
+		glyph.orientation = (uint8_t)orientation;
+		glyph.pcl_character_descriptor = true;
+		glyph.bitmap.assign((size_t)glyph.rows * glyph.span, 0);
+		descriptor_bitmap_bytes = copy_soft_glyph_host_bytes(
+			glyph, 0,
+			payload.begin() + (std::vector<uint8_t>::difference_type)bitmap_offset,
+			payload.end());
+		preserve_declared_glyph_shape = true;
+		continuable_descriptor_glyph = true;
+	} else if (download_payload_control_seen_ && payload.size() == 18 &&
 	    payload[0] == 0x00) {
 		glyph.width = 136;
 		glyph.span = 17;
@@ -2907,6 +3106,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		font.continuation_active = false;
 		font.continuation_remaining = 0;
 	}
+	font.active = true;
 	font.glyphs[soft_char_code_] = std::move(glyph);
 	if (render_payload_control_glyph)
 		draw_soft_glyph_pixels(font.glyphs[soft_char_code_]);
@@ -2955,14 +3155,25 @@ void PclPrinter::draw_soft_glyph_pixels(const SoftGlyph &glyph)
 	page_dirty_ = true;
 
 	int dpi = prof_.render_dpi;
-	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
-	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)visible_rows;
+	int active_x = (int)std::lround(st_.x_pos * (float)dpi);
+	int active_y = (int)std::lround(st_.y_pos * (float)dpi);
+	int base_x = active_x;
+	int base_y = active_y - (int)visible_rows;
+	if (glyph.pcl_character_descriptor && glyph.orientation == 0) {
+		base_x += glyph.left_offset;
+		base_y = active_y - glyph.top_offset;
+	}
 	for (uint16_t row = 0; row < visible_rows; row++) {
 		uint16_t source_row = (uint16_t)(source_row_offset + row);
 		for (uint16_t col = 0; col < glyph.width; col++) {
 			uint8_t byte =
 				soft_glyph_bitmap_byte(glyph, source_row, col >> 3);
-			if (byte & (0x80u >> (col & 7)))
+			if (!(byte & (0x80u >> (col & 7))))
+				continue;
+			if (glyph.pcl_character_descriptor && glyph.orientation == 1)
+				page_->set_pixel(active_x + glyph.top_offset - row,
+				                 active_y + glyph.left_offset + col, 0);
+			else
 				page_->set_pixel(base_x + col, base_y + row, 0);
 		}
 	}
@@ -2977,10 +3188,12 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 	if (it == font->glyphs.end())
 		return false;
 	const SoftGlyph &glyph = it->second;
-	float metric_width_in =
-		(st_.proportional && glyph.width > 0) ?
-		(float)std::min<uint16_t>(glyph.width, 0xff) / kDotsPerIn :
-		char_w_in;
+	float metric_width_in = char_w_in;
+	if (st_.proportional && glyph.pcl_character_descriptor)
+		metric_width_in = (float)((glyph.delta_x + 2) / 4) / kDotsPerIn;
+	else if (st_.proportional && glyph.width > 0)
+		metric_width_in =
+			(float)std::min<uint16_t>(glyph.width, 0xff) / kDotsPerIn;
 	bool had_pending = consume_previous_width_adjustment(metric_width_in);
 	char_w_in = metric_width_in;
 
@@ -2996,6 +3209,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		finish_text_advance(metric_width_in, char_w_in, had_pending);
 		return true;
 	}
+	note_current_font_underline_distance();
 	start_underline_span();
 
 	if (glyph.unresolved_pixels) {
@@ -3007,23 +3221,7 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 		return true;
 	}
 
-	new_page_if_needed();
-	page_dirty_ = true;
-
-	uint16_t visible_rows = soft_glyph_visible_rows(glyph);
-	uint16_t source_row_offset = soft_glyph_source_row_offset(glyph);
-	int dpi = prof_.render_dpi;
-	int base_x = (int)std::lround(st_.x_pos * (float)dpi);
-	int base_y = (int)std::lround(st_.y_pos * (float)dpi) - (int)visible_rows;
-	for (uint16_t row = 0; row < visible_rows; row++) {
-		uint16_t source_row = (uint16_t)(source_row_offset + row);
-		for (uint16_t col = 0; col < glyph.width; col++) {
-			uint8_t byte =
-				soft_glyph_bitmap_byte(glyph, source_row, col >> 3);
-			if (byte & (0x80u >> (col & 7)))
-				page_->set_pixel(base_x + col, base_y + row, 0);
-		}
-	}
+	draw_soft_glyph_pixels(glyph);
 
 	uint16_t cp = text_unicode(b);
 	if (cp >= 0x20) {
@@ -3076,7 +3274,15 @@ bool PclPrinter::ljii_soft_glyph_vertical_accepts(const SoftGlyph &glyph) const
 	if (visible_rows == 0)
 		return false;
 	float top = st_.y_pos - (float)visible_rows / kDotsPerIn;
-	return ljii_text_box_accepts(top, st_.y_pos);
+	float bottom = st_.y_pos;
+	if (glyph.pcl_character_descriptor && glyph.orientation == 0) {
+		top = st_.y_pos - (float)glyph.top_offset / kDotsPerIn;
+		bottom = top + (float)visible_rows / kDotsPerIn;
+	} else if (glyph.pcl_character_descriptor && glyph.orientation == 1) {
+		top = st_.y_pos + (float)glyph.left_offset / kDotsPerIn;
+		bottom = top + (float)glyph.width / kDotsPerIn;
+	}
+	return ljii_text_box_accepts(top, bottom);
 }
 
 bool PclPrinter::render_ljii_text(uint8_t b)
@@ -3098,22 +3304,9 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			finish_text_advance(char_w_in, char_w_in, had_pending);
 			return true;
 		}
+		note_current_font_underline_distance();
 		start_underline_span();
 		append_ljii_text_glyph(0x20, char_w_in);
-		if (st_.underline) {
-			new_page_if_needed();
-			page_dirty_ = true;
-			int dpi = prof_.render_dpi;
-				int y = (int)std::lround(underline_y_in(st_.y_pos,
-				                                        underline_selector_) *
-				                         (float)dpi);
-			int x0 = (int)std::lround(st_.x_pos * (float)dpi);
-			int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
-			for (int x = x0; x < x1; x++) {
-				page_->set_pixel(x, y, 0);
-				page_->set_pixel(x, y + 1, 0);
-			}
-		}
 		finish_text_advance(char_w_in, char_w_in, had_pending);
 		return true;
 	}
@@ -3139,6 +3332,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 			finish_text_advance(char_w_in, char_w_in, had_pending);
 			return true;
 		}
+		note_current_font_underline_distance();
 		start_underline_span();
 		uint16_t cp = text_unicode(b);
 		if (cp >= 0x20) {
@@ -3161,6 +3355,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		finish_text_advance(char_w_in, char_w_in, had_pending);
 		return true;
 	}
+	note_current_font_underline_distance();
 	start_underline_span();
 
 	new_page_if_needed();
@@ -3177,18 +3372,6 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 				page_->set_pixel(base_x + col, base_y + row, 0);
 		}
 	}
-	if (st_.underline) {
-			int y = (int)std::lround(underline_y_in(st_.y_pos,
-			                                        underline_selector_) *
-			                         (float)dpi);
-		int x0 = (int)std::lround(st_.x_pos * (float)dpi);
-		int x1 = (int)std::lround((st_.x_pos + char_w_in) * (float)dpi);
-		for (int x = x0; x < x1; x++) {
-			page_->set_pixel(x, y, 0);
-			page_->set_pixel(x, y + 1, 0);
-		}
-	}
-
 	uint16_t cp = text_unicode(b);
 	if (cp >= 0x20) {
 		append_ljii_text_glyph(cp, char_w_in);
@@ -3237,9 +3420,35 @@ void PclPrinter::restart_underline_span()
 	start_underline_span();
 }
 
+void PclPrinter::note_current_font_underline_distance()
+{
+	if (underline_line_y_in_ < 0.0f ||
+	    std::fabs(underline_line_y_in_ - st_.y_pos) > 0.0001f) {
+		underline_line_y_in_ = st_.y_pos;
+		floating_underline_distance_dots_ = -0x7fffffff;
+	}
+
+	int descriptor_distance = -5;
+	const SoftFont *soft = selected_soft_font();
+	if (soft && soft->host_descriptor_valid) {
+		descriptor_distance = soft->underline_distance;
+	} else if (!soft) {
+		LjiiFontMetrics resident = get_ljii_font_metrics(
+			select_ljii_context(active_font_request(), orientation_));
+		if (resident.found)
+			descriptor_distance = resident.underline_distance;
+	}
+	floating_underline_distance_dots_ = std::max(
+		floating_underline_distance_dots_, -descriptor_distance);
+}
+
 float PclPrinter::underline_y_in(float y_in, int selector) const
 {
-	return y_in + (selector == 1 ? 18.0f : 5.0f) / kDotsPerIn;
+	int distance = 5;
+	if (selector == 1 && floating_underline_distance_dots_ != -0x7fffffff &&
+	    std::fabs(underline_line_y_in_ - y_in) <= 0.0001f)
+		distance = floating_underline_distance_dots_;
+	return y_in + (float)distance / kDotsPerIn;
 }
 
 void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in,
@@ -3261,6 +3470,7 @@ void PclPrinter::draw_underline_range(float x0_in, float x1_in, float y_in,
 	for (int x = x0; x < x1; x++) {
 		page_->set_pixel(x, y, 0);
 		page_->set_pixel(x, y + 1, 0);
+		page_->set_pixel(x, y + 2, 0);
 	}
 }
 

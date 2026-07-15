@@ -28,9 +28,23 @@ struct LjiiFontRequest {
 	bool secondary = false;
 };
 
+struct LjiiFontMetrics {
+	bool found = false;
+	int orientation = 0;
+	int symbol_set = 0;
+	int pitch = 0;
+	int height = 0;
+	int spacing = 0;
+	int style = 0;
+	int stroke = 0;
+	int typeface = 0;
+	int underline_distance = 0;
+};
+
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte);
 uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation);
 int ljii_context_pitch(uint32_t context_longword);
+LjiiFontMetrics get_ljii_font_metrics(uint32_t context_longword);
 uint32_t default_ljii_context_for_pitch(float pitch_cpi, int symbol_set,
                                         int class_id);
 

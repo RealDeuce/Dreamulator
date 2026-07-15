@@ -576,28 +576,42 @@ def ljii_font(pitch: str, italic: bool, bold: bool, slot: bytes = b"(") -> bytes
 
 def ljii_soft_font_header(style: int) -> bytes:
     header = bytearray(64)
-    header[0] = 0x00
-    header[1] = 0x01
-    header[0x21] = 0
-    header[0x22] = 0x01
-    header[0x23] = 0x15
-    header[0x24] = 0x03
-    header[0x25] = 0xe8
-    header[0x28] = 0x04
-    header[0x29] = 0xb0
-    header[0x2f] = style
-    header[0x30] = 0
-    header[0x31] = 3
+    header[0:2] = (64).to_bytes(2, "big")
+    header[3] = 1
+    header[6:8] = (35).to_bytes(2, "big")
+    header[8:10] = (30).to_bytes(2, "big")
+    header[10:12] = (50).to_bytes(2, "big")
+    header[12] = 0
+    header[13] = 0
+    header[14:16] = (277).to_bytes(2, "big")
+    header[16:18] = (120).to_bytes(2, "big")
+    header[18:20] = (200).to_bytes(2, "big")
+    header[23] = style
+    header[24] = 0
+    header[25] = 3
+    header[27] = 2
+    header[30] = (-5) & 0xff
+    header[31] = 3
     return bytes(header)
 
 
 def ljii_download_style_font(font_id: int, style: int, char: int,
                              glyph: bytes) -> bytes:
+    descriptor = (
+        bytes([4, 0, 14, 1, 0, 0])
+        + (0).to_bytes(2, "big", signed=True)
+        + (len(glyph)).to_bytes(2, "big", signed=True)
+        + (8).to_bytes(2, "big")
+        + len(glyph).to_bytes(2, "big")
+        + (120).to_bytes(2, "big", signed=True)
+        + glyph
+    )
     return (
         pcl_param(b"*c", f"{font_id}D".encode("ascii"))
-        + pcl_param(b"(s", b"64W") + ljii_soft_font_header(style)
+        + pcl_param(b")s", b"64W") + ljii_soft_font_header(style)
         + pcl_param(b"*c", f"{char}E".encode("ascii"))
-        + pcl_param(b"(s", str(len(glyph)).encode("ascii") + b"W") + glyph
+        + pcl_param(b"(s", str(len(descriptor)).encode("ascii") + b"W")
+        + descriptor
     )
 
 
@@ -705,6 +719,7 @@ def build_ljii_text_attributes() -> bytes:
         [0x60] * 3 + [0xf8] * 3
     )
     out += ljii_plain()
+    out += pcl_param(b"(", b"8U")
     out += b"Downloaded soft font style selection\r\n"
     out += ljii_download_style_font(4662, 0, ord("I"), upright_i)
     out += ljii_download_style_font(4663, 1, ord("I"), italic_i)

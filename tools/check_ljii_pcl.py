@@ -94,7 +94,7 @@ def ppm_sha256(pdf, stem, dpi=72):
     return hashlib.sha256(ppm_pixels(pdf, stem, dpi)).hexdigest()
 
 
-def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0):
+def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0, maximum_sum=None):
     width, height, pixels = ppm_image(pdf, stem, dpi)
     min_x = width
     min_y = height
@@ -104,8 +104,9 @@ def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0):
         row = y * width * 3
         for x in range(min_x_filter, width):
             off = row + x * 3
-            if (pixels[off] == 0xff and pixels[off + 1] == 0xff and
-                    pixels[off + 2] == 0xff):
+            pixel = pixels[off:off + 3]
+            if ((maximum_sum is None and pixel == b"\xff\xff\xff") or
+                    (maximum_sum is not None and sum(pixel) >= maximum_sum)):
                 continue
             if x < min_x:
                 min_x = x
@@ -148,9 +149,79 @@ def ppm_rect_nonwhite(pdf, stem, x0, y0, x1, y1, dpi=72):
     return count
 
 
+def ppm_nonwhite_rows(pdf, stem, x0, x1, y0, y1, dpi=72,
+                      minimum_pixels=1, maximum_sum=None):
+    width, height, pixels = ppm_image(pdf, stem, dpi)
+    rows = []
+    for y in range(max(0, y0), min(height, y1)):
+        count = 0
+        row = y * width * 3
+        for x in range(max(0, x0), min(width, x1)):
+            off = row + x * 3
+            pixel = pixels[off:off + 3]
+            if ((maximum_sum is None and pixel != b"\xff\xff\xff") or
+                    (maximum_sum is not None and sum(pixel) < maximum_sum)):
+                count += 1
+        if count >= minimum_pixels:
+            rows.append(y)
+    return rows
+
+
 def write(path, data):
     path.write_bytes(data)
     return path
+
+
+def ljii_soft_font_header(*, font_type=1, orientation=0, spacing=0,
+                          style=0, stroke=0, typeface=3,
+                          baseline=35, cell_width=30, cell_height=50,
+                          pitch=120, height=200, underline_distance=-5):
+    header = bytearray(64)
+    header[0:2] = (64).to_bytes(2, "big")
+    header[3] = font_type
+    header[6:8] = baseline.to_bytes(2, "big")
+    header[8:10] = cell_width.to_bytes(2, "big")
+    header[10:12] = cell_height.to_bytes(2, "big")
+    header[12] = orientation
+    header[13] = spacing
+    header[14:16] = (277).to_bytes(2, "big")
+    header[16:18] = pitch.to_bytes(2, "big")
+    header[18:20] = height.to_bytes(2, "big")
+    header[23] = style
+    header[24] = stroke & 0xff
+    header[25] = typeface
+    header[30] = underline_distance & 0xff
+    header[31] = 3
+    return bytes(header)
+
+
+def ljii_character_descriptor(bitmap, *, orientation=0, left=0, top=0,
+                              width=8, height=None, delta_x=120,
+                              extension=b""):
+    if height is None:
+        height = len(bitmap) // ((width + 7) // 8)
+    descriptor_size = 14 + len(extension)
+    return (
+        bytes([4, 0, descriptor_size, 1, orientation, 0])
+        + left.to_bytes(2, "big", signed=True)
+        + top.to_bytes(2, "big", signed=True)
+        + width.to_bytes(2, "big")
+        + height.to_bytes(2, "big")
+        + delta_x.to_bytes(2, "big", signed=True)
+        + extension
+        + bitmap
+    )
+
+
+def ljii_download_font(font_id, header, characters):
+    stream = bytearray()
+    stream += ESC + b"*c" + str(font_id).encode("ascii") + b"D"
+    stream += ESC + b")s64W" + header
+    for code, descriptor in characters:
+        stream += ESC + b"*c" + str(code).encode("ascii") + b"E"
+        stream += (ESC + b"(s" + str(len(descriptor)).encode("ascii")
+                   + b"W" + descriptor)
+    return bytes(stream)
 
 
 def main():
@@ -2155,24 +2226,21 @@ def main():
             raise AssertionError("floating underline span text did not extract")
         if pdftotext(underline_space_pdf).strip() != "A B":
             raise AssertionError("underlined space did not remain selectable")
-        if ppm_rect_nonwhite(underline_fixed_pdf, tmp / "underline-fixed",
-                             130, 100, 180, 104, dpi=300) == 0:
-            raise AssertionError("fixed underline span did not cover tab gap")
-        if ppm_rect_nonwhite(underline_span_pdf, tmp / "underline-span",
-                             130, 113, 180, 118, dpi=300) == 0:
-            raise AssertionError("floating underline span did not cover tab gap")
-        if ppm_rect_nonwhite(underline_span_pdf,
-                             tmp / "underline-span-fixed-row",
-                             130, 100, 180, 104, dpi=300) != 0:
-            raise AssertionError("floating underline used fixed underline row")
-        if ppm_rect_nonwhite(underline_span_pdf,
-                             tmp / "underline-span-old-above",
-                             130, 90, 180, 95, dpi=300) != 0:
-            raise AssertionError("floating underline rendered above the baseline")
-        if ppm_rect_nonwhite(underline_fixed_pdf,
-                             tmp / "underline-fixed-stale-baseline",
-                             130, 113, 180, 118, dpi=300) != 0:
-            raise AssertionError("fixed underline used stale pending baseline")
+        fixed_underline_rows = ppm_nonwhite_rows(
+            underline_fixed_pdf, tmp / "underline-fixed-rows",
+            130, 180, 90, 120, dpi=300, minimum_pixels=40,
+            maximum_sum=384)
+        floating_underline_rows = ppm_nonwhite_rows(
+            underline_span_pdf, tmp / "underline-floating-rows",
+            130, 180, 90, 120, dpi=300, minimum_pixels=40,
+            maximum_sum=384)
+        if len(fixed_underline_rows) != 3:
+            raise AssertionError("fixed underline was not three dot rows thick")
+        if len(floating_underline_rows) != 3:
+            raise AssertionError("floating underline was not three dot rows thick")
+        if floating_underline_rows[0] - fixed_underline_rows[0] != 4:
+            raise AssertionError(
+                "Courier floating underline did not use descriptor distance -9")
 
         underline_negative = write(tmp / "underline-negative.pcl",
                                    ESC + b"&d-3D" + b"A\tB" +
@@ -2204,6 +2272,160 @@ def main():
            ppm_sha256(underline_other_pdf, tmp / "underline-other",
                       dpi=150):
             raise AssertionError("non-3D underline selector did not stay fixed")
+
+        public_upright = bytes([0xff, 0x18, 0x18, 0x18, 0x18, 0x18, 0xff])
+        public_italic = bytes([0x1f, 0x0c, 0x18, 0x18, 0x30, 0x60, 0xf8])
+        public_style_fonts = (
+            ljii_download_font(
+                4700, ljii_soft_font_header(style=0),
+                [(ord("I"), ljii_character_descriptor(
+                    public_upright, top=7))])
+            + ljii_download_font(
+                4701, ljii_soft_font_header(style=1),
+                [(ord("I"), ljii_character_descriptor(
+                    public_italic, top=7))])
+        )
+        public_style_upright = write(
+            tmp / "public-soft-upright.pcl",
+            ESC + b"(8U" + public_style_fonts + ESC + b"(s0S" + b"I" + FF)
+        public_style_italic = write(
+            tmp / "public-soft-italic.pcl",
+            ESC + b"(8U" + public_style_fonts + ESC + b"(s1S" + b"I" + FF)
+        public_style_upright_pdf = tmp / "public-soft-upright.pdf"
+        public_style_italic_pdf = tmp / "public-soft-italic.pdf"
+        render(dreamprint, public_style_upright, public_style_upright_pdf)
+        render(dreamprint, public_style_italic, public_style_italic_pdf)
+        if pdftotext(public_style_upright_pdf).strip() != "I" or \
+           pdftotext(public_style_italic_pdf).strip() != "I":
+            raise AssertionError("public soft-font style streams lost selectable text")
+        if ppm_sha256(public_style_upright_pdf,
+                      tmp / "public-soft-upright", dpi=300) == \
+           ppm_sha256(public_style_italic_pdf,
+                      tmp / "public-soft-italic", dpi=300):
+            raise AssertionError("public style-1 soft font did not select italic bitmap")
+
+        resident_symbol_reference = write(
+            tmp / "public-soft-symbol-reference.pcl",
+            ESC + b"(0N" + ESC + b"(s1S" + b"I" + FF)
+        resident_symbol_with_soft = write(
+            tmp / "public-soft-symbol-priority.pcl",
+            public_style_fonts + ESC + b"(0N" + ESC + b"(s1S" + b"I" + FF)
+        resident_symbol_reference_pdf = tmp / "public-soft-symbol-reference.pdf"
+        resident_symbol_with_soft_pdf = tmp / "public-soft-symbol-priority.pdf"
+        render(dreamprint, resident_symbol_reference,
+               resident_symbol_reference_pdf)
+        render(dreamprint, resident_symbol_with_soft,
+               resident_symbol_with_soft_pdf)
+        if ppm_sha256(resident_symbol_reference_pdf,
+                      tmp / "public-soft-symbol-reference", dpi=300) != \
+           ppm_sha256(resident_symbol_with_soft_pdf,
+                      tmp / "public-soft-symbol-priority", dpi=300):
+            raise AssertionError(
+                "soft-font location priority displaced a resident symbol-set match")
+
+        offset_bitmap = bytes([0x80, 0x40, 0x20])
+
+        def public_offset_case(name, *, left, top, extension=b"",
+                               delta_x=120, spacing=0, repeated=False):
+            descriptor = ljii_character_descriptor(
+                offset_bitmap, left=left, top=top, delta_x=delta_x,
+                extension=extension)
+            stream = (
+                ljii_download_font(
+                    4702, ljii_soft_font_header(spacing=spacing),
+                    [(ord("A"), descriptor)])
+                + ESC + b"(4702X" + ESC + b"*p300x600Y"
+                + (b"AA" if repeated else b"A") + FF
+            )
+            source = write(tmp / f"{name}.pcl", stream)
+            pdf = tmp / f"{name}.pdf"
+            render(dreamprint, source, pdf)
+            expected_text = "AA" if repeated else "A"
+            if pdftotext(pdf).strip() != expected_text:
+                raise AssertionError(f"{name} lost selectable source text")
+            box = ppm_bbox(pdf, tmp / name, dpi=300)
+            if box is None:
+                raise AssertionError(f"{name} rendered no downloaded glyph pixels")
+            return pdf, box
+
+        public_offset_base_pdf, public_offset_base_box = public_offset_case(
+            "public-soft-offset-base", left=2, top=6)
+        _, public_offset_shift_box = public_offset_case(
+            "public-soft-offset-shift", left=7, top=11)
+        if (public_offset_shift_box[0] - public_offset_base_box[0],
+                public_offset_shift_box[1] - public_offset_base_box[1]) != (5, -5):
+            raise AssertionError("public character left/top offsets moved wrong pixels")
+
+        public_extension_pdf, _ = public_offset_case(
+            "public-soft-extension", left=2, top=6, extension=b"\xff\x00")
+        if ppm_sha256(public_offset_base_pdf,
+                      tmp / "public-soft-offset-base-hash", dpi=300) != \
+           ppm_sha256(public_extension_pdf,
+                      tmp / "public-soft-extension-hash", dpi=300):
+            raise AssertionError("character descriptor extension bytes became bitmap data")
+
+        _, public_delta_120_box = public_offset_case(
+            "public-soft-delta-120", left=2, top=6, spacing=1,
+            delta_x=120, repeated=True)
+        _, public_delta_124_box = public_offset_case(
+            "public-soft-delta-124", left=2, top=6, spacing=1,
+            delta_x=124, repeated=True)
+        width_120 = public_delta_120_box[2] - public_delta_120_box[0]
+        width_124 = public_delta_124_box[2] - public_delta_124_box[0]
+        if width_124 - width_120 != 1:
+            raise AssertionError("proportional soft-font Delta X did not advance by dots")
+
+        complete_descriptor = ljii_character_descriptor(
+            offset_bitmap, left=2, top=6)
+        continued_stream = (
+            ESC + b"*c4703D" + ESC + b")s64W" + ljii_soft_font_header()
+            + ESC + b"*c65E"
+            + ESC + b"(s" + str(len(complete_descriptor) - 1).encode("ascii")
+            + b"W" + complete_descriptor[:-1]
+            + ESC + b"(s3W" + bytes([4, 1, complete_descriptor[-1]])
+            + ESC + b"(4703X" + ESC + b"*p300x600Y" + b"A" + FF
+        )
+        complete_stream = (
+            ljii_download_font(4703, ljii_soft_font_header(),
+                               [(ord("A"), complete_descriptor)])
+            + ESC + b"(4703X" + ESC + b"*p300x600Y" + b"A" + FF
+        )
+        public_continued = write(tmp / "public-soft-continued.pcl",
+                                 continued_stream)
+        public_complete = write(tmp / "public-soft-complete.pcl", complete_stream)
+        public_continued_pdf = tmp / "public-soft-continued.pdf"
+        public_complete_pdf = tmp / "public-soft-complete.pdf"
+        render(dreamprint, public_continued, public_continued_pdf)
+        render(dreamprint, public_complete, public_complete_pdf)
+        if pdftotext(public_continued_pdf).strip() != "A" or \
+           ppm_sha256(public_continued_pdf,
+                      tmp / "public-soft-continued", dpi=300) != \
+           ppm_sha256(public_complete_pdf,
+                      tmp / "public-soft-complete", dpi=300):
+            raise AssertionError("format-4 continuation did not complete public glyph")
+
+        landscape_descriptor = ljii_character_descriptor(
+            bytes([0x80, 0x40, 0x10]), orientation=1, left=-2, top=8,
+            width=4, height=3)
+        landscape_stream = (
+            ESC + b"&l1O"
+            + ljii_download_font(
+                4704, ljii_soft_font_header(orientation=1),
+                [(ord("A"), landscape_descriptor)])
+            + ESC + b"(4704X" + ESC + b"*p300x600Y" + b"A" + FF
+        )
+        public_landscape = write(tmp / "public-soft-landscape.pcl",
+                                 landscape_stream)
+        public_landscape_pdf = tmp / "public-soft-landscape.pdf"
+        render(dreamprint, public_landscape, public_landscape_pdf)
+        landscape_box = ppm_bbox(public_landscape_pdf,
+                                 tmp / "public-soft-landscape", dpi=300,
+                                 maximum_sum=384)
+        if pdftotext(public_landscape_pdf).strip() != "A" or \
+           landscape_box is None or \
+           (landscape_box[2] - landscape_box[0] + 1,
+            landscape_box[3] - landscape_box[1] + 1) != (3, 4):
+            raise AssertionError("landscape character offsets did not rotate bitmap axes")
 
         soft = write(tmp / "soft.pcl",
                      ESC + b"*c4660D" +
@@ -2312,17 +2534,11 @@ def main():
                         tmp / "soft-metric-download") < 5:
             raise AssertionError("downloaded font metric stream looks blank")
         if ppm_sha256(soft_metric_download_pdf,
-                      tmp / "soft-metric-download", dpi=150) != \
+                      tmp / "soft-metric-download", dpi=150) == \
            ppm_sha256(soft_metric_resync_pdf,
                       tmp / "soft-metric-resync", dpi=150):
             raise AssertionError(
-                "downloaded font payload metrics did not refresh active HMI")
-        if ppm_sha256(soft_metric_download_pdf,
-                      tmp / "soft-metric-download", dpi=150) != \
-           ppm_sha256(soft_metric_housekeeping_pdf,
-                      tmp / "soft-metric-housekeeping", dpi=150):
-            raise AssertionError(
-                "downloaded font housekeeping did not refresh active HMI")
+                "font download selected its metrics before a font request")
 
         def styled_soft_header(style):
             header = bytearray(soft_metric_header)
@@ -2831,7 +3047,7 @@ def main():
             raise AssertionError("invalid resource header installed a glyph")
 
         resource_header = bytes.fromhex(
-            "00 01 02 01 ff ff 00 04 00 06 00 09 01 05 12 34"
+            "00 01 02 01 ff ff 00 04 00 06 00 09 00 05 12 34"
             " 50 00 30 00 00 20 99 ab f0 cd 01 02 03 04 05 06"
             " 00 07 00 08 00 00 00 09 ee f0 00 0a 00 0b 00 0c"
             " 41 42 43 44 45 46 47 48 49 4a 4b 4c 4d 4e 4f 50"
@@ -2858,23 +3074,22 @@ def main():
             ("resource-invalid-type", resource_header[:3] + b"\x03" +
              resource_header[4:] + bytes(16)))
         invalid_resource_payloads.append(
-            ("resource-first-overflow", resource_header[:6] +
-             b"\x10\x68" + resource_header[8:] + bytes(16)))
-        invalid_resource_payloads.append(
-            ("resource-zero-line-count", resource_header[:8] +
+            ("resource-zero-cell-width", resource_header[:8] +
              b"\x00\x00" + resource_header[10:] + bytes(16)))
         invalid_resource_payloads.append(
-            ("resource-high-line-count", resource_header[:8] +
+            ("resource-high-cell-width", resource_header[:8] +
              b"\x10\x69" + resource_header[10:] + bytes(16)))
         invalid_resource_payloads.append(
-            ("resource-reversed-range", resource_header[:6] +
-             b"\x00\x0a" + resource_header[8:10] + b"\x00\x05" +
-             resource_header[12:] + bytes(16)))
+            ("resource-zero-cell-height", resource_header[:10] +
+             b"\x00\x00" + resource_header[12:] + bytes(16)))
         invalid_resource_payloads.append(
-            ("resource-high-range", resource_header[:10] +
+            ("resource-high-cell-height", resource_header[:10] +
              b"\x10\x69" + resource_header[12:] + bytes(16)))
         invalid_resource_payloads.append(
-            ("resource-invalid-class", resource_header[:12] + b"\x02" +
+            ("resource-baseline-at-bottom", resource_header[:6] +
+             resource_header[10:12] + resource_header[8:] + bytes(16)))
+        invalid_resource_payloads.append(
+            ("resource-invalid-orientation", resource_header[:12] + b"\x02" +
              resource_header[13:] + bytes(16)))
         invalid_resource_payloads.append(
             ("resource-short-budget", resource_header[:8]))
@@ -2914,10 +3129,9 @@ def main():
                 type1_width < no_resource_width):
             raise AssertionError("resource header did not select glyph shape")
 
-        resource_header_class0 = resource_header[:12] + b"\x00" + \
-            resource_header[13:]
-        resource_header_class1 = resource_header[:12] + b"\x01" + \
-            resource_header[13:]
+        resource_header_type0 = resource_header[:3] + b"\x00" + \
+            resource_header[4:]
+        resource_header_type1 = resource_header
 
         def resource_high_char_case(name, header, include_glyph):
             stream = (
@@ -2934,21 +3148,21 @@ def main():
             return pdf
 
         resource_high_reject_pdf = resource_high_char_case(
-            "resource-high-char-reject", resource_header_class0, True)
+            "resource-high-char-reject", resource_header_type0, True)
         resource_high_baseline_pdf = resource_high_char_case(
-            "resource-high-char-baseline", resource_header_class0, False)
+            "resource-high-char-baseline", resource_header_type0, False)
         resource_high_allowed_pdf = resource_high_char_case(
-            "resource-high-char-allowed", resource_header_class1, True)
+            "resource-high-char-allowed", resource_header_type1, True)
         if ppm_sha256(resource_high_reject_pdf,
                       tmp / "resource-high-char-reject", dpi=300) != \
            ppm_sha256(resource_high_baseline_pdf,
                       tmp / "resource-high-char-baseline", dpi=300):
-            raise AssertionError("resource header class-0 installed high downloaded character")
+            raise AssertionError("type-0 font installed a high downloaded character")
         if ppm_sha256(resource_high_allowed_pdf,
                       tmp / "resource-high-char-allowed", dpi=300) == \
            ppm_sha256(resource_high_baseline_pdf,
                       tmp / "resource-high-char-baseline-again", dpi=300):
-            raise AssertionError("resource header class-1 did not install high downloaded character")
+            raise AssertionError("type-1 font did not install a high downloaded character")
 
         fixed_record_type0 = bytearray(64)
         fixed_record_type1 = bytearray(64)

@@ -17,6 +17,11 @@ def s8(value: int) -> int:
     return value - 0x100 if value & 0x80 else value
 
 
+def s16(data: bytes, offset: int) -> int:
+    value = u16(data, offset)
+    return value - 0x10000 if value & 0x8000 else value
+
+
 def packed_font_metric(word_value: int, byte_value: int) -> int:
     return (((word_value & 0xFFFF) << 8) | (byte_value & 0xFF)) & 0xFFFFFFFF
 
@@ -43,9 +48,9 @@ def rom_path_for_doc(doc_path: Path, doc: dict) -> Path | None:
     return rom_path if rom_path.exists() else None
 
 
-def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int, int, int, int, int, int, int, int]:
+def record_metadata(rom: bytes | None, record: dict) -> tuple[int, ...]:
     if rom is None:
-        return (0, 0x0115, 1000, 1200, 0, 0, 0, 3, 0, 0, 0)
+        return (0, 0x0115, 1000, 1200, 0, 0, 0, 3, -5, 0, 0, 0)
     base = int(record["record_start"])
     return (
         rom[base + 0x20],
@@ -56,6 +61,7 @@ def record_metadata(rom: bytes | None, record: dict) -> tuple[int, int, int, int
         s8(rom[base + 0x0D]),
         s8(rom[base + 0x30]),
         rom[base + 0x31],
+        s16(rom, base + 0x1A),
         rom[base + 0x2F],
         s8(rom[base + 0x30]),
         rom[base + 0x31],
@@ -151,6 +157,7 @@ def main() -> int:
     out.append("\tuint32_t context; uint32_t first; uint16_t count;")
     out.append("\tuint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;")
     out.append("\tuint8_t spacing; int8_t style; int8_t stroke; uint8_t typeface;")
+    out.append("\tint16_t underline_distance;")
     out.append("\tuint8_t tie_a; int8_t tie_b; uint8_t tie_c;")
     out.append("};")
     out.append("struct LjiiGlyphEntry {")
@@ -162,11 +169,13 @@ def main() -> int:
     out.append("")
     out.append("static constexpr LjiiRecordEntry ljii_records[] = {")
     for (context, first, count, class_id, symbol, pitch, height, spacing,
-         style, stroke, typeface, tie_a, tie_b, tie_c) in records:
+         style, stroke, typeface, underline_distance, tie_a, tie_b,
+         tie_c) in records:
         out.append(
             f"\t{{ 0x{context:08x}u, {first}u, {count}u, {class_id}u, "
             f"0x{symbol:04x}u, {pitch}u, {height}u, {spacing}u, "
-            f"{style}, {stroke}, {typeface}u, {tie_a}u, {tie_b}, {tie_c}u }},"
+            f"{style}, {stroke}, {typeface}u, {underline_distance}, "
+            f"{tie_a}u, {tie_b}, {tie_c}u }},"
         )
     out.append("};")
     out.append("")
@@ -311,6 +320,16 @@ def main() -> int:
     out.append("\tfor (const auto &record : ljii_records)")
     out.append("\t\tif (record.context == context_longword) return record.pitch;")
     out.append("\treturn 0;")
+    out.append("}")
+    out.append("")
+    out.append("LjiiFontMetrics get_ljii_font_metrics(uint32_t context_longword)")
+    out.append("{")
+    out.append("\tfor (const auto &record : ljii_records)")
+    out.append("\t\tif (record.context == context_longword)")
+    out.append("\t\t\treturn { true, record.class_id, record.symbol, record.pitch,")
+    out.append("\t\t\t         record.height, record.spacing, record.style, record.stroke,")
+    out.append("\t\t\t         record.typeface, record.underline_distance };")
+    out.append("\treturn {};")
     out.append("}")
     out.append("")
     out.append("LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte)")
