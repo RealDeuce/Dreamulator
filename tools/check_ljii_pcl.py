@@ -4238,6 +4238,54 @@ def main():
             raise AssertionError(
                 "VFC selector-zero start-after-text lost selectable text")
 
+        vfc_high_setup = ESC + b"&l5.1C" + ESC + b"&l63F" + ESC + b"&a81R"
+        vfc_high_empty_table = bytes(202)
+        vfc_high_line70_table = bytearray(202)
+        vfc_high_line70_table[70 * 2 + 1] = 0x02
+        vfc_high_empty = write(
+            tmp / "vfc-high-empty.pcl",
+            vfc_high_setup + ESC + b"&l202W" + vfc_high_empty_table +
+            ESC + b"&l2V" + b"!" + FF)
+        vfc_high_wrapped = write(
+            tmp / "vfc-high-wrapped.pcl",
+            vfc_high_setup + ESC + b"&l202W" +
+            bytes(vfc_high_line70_table) + ESC + b"&l2V" + b"!" + FF)
+        vfc_high_zero = write(
+            tmp / "vfc-high-zero.pcl",
+            vfc_high_setup + ESC + b"&l0V" + b"!" + FF)
+        vfc_high_default = write(
+            tmp / "vfc-high-default.pcl",
+            vfc_high_setup + ESC + b"&l2V" + b"!" + FF)
+        vfc_high_empty_pdf = tmp / "vfc-high-empty.pdf"
+        vfc_high_wrapped_pdf = tmp / "vfc-high-wrapped.pdf"
+        vfc_high_zero_pdf = tmp / "vfc-high-zero.pdf"
+        vfc_high_default_pdf = tmp / "vfc-high-default.pdf"
+        render(dreamprint, vfc_high_empty, vfc_high_empty_pdf)
+        render(dreamprint, vfc_high_wrapped, vfc_high_wrapped_pdf)
+        render(dreamprint, vfc_high_zero, vfc_high_zero_pdf)
+        render(dreamprint, vfc_high_default, vfc_high_default_pdf)
+        vfc_high_empty_box = ppm_bbox(vfc_high_empty_pdf,
+                                      tmp / "vfc-high-empty", dpi=300)
+        vfc_high_wrapped_box = ppm_bbox(vfc_high_wrapped_pdf,
+                                        tmp / "vfc-high-wrapped", dpi=300)
+        vfc_high_zero_box = ppm_bbox(vfc_high_zero_pdf,
+                                     tmp / "vfc-high-zero", dpi=300)
+        vfc_high_default_box = ppm_bbox(vfc_high_default_pdf,
+                                        tmp / "vfc-high-default", dpi=300)
+        for name, pdf, box in (
+            ("empty", vfc_high_empty_pdf, vfc_high_empty_box),
+            ("wrapped", vfc_high_wrapped_pdf, vfc_high_wrapped_box),
+            ("zero", vfc_high_zero_pdf, vfc_high_zero_box),
+            ("default", vfc_high_default_pdf, vfc_high_default_box),
+        ):
+            if pdftotext(pdf).strip() != "!":
+                raise AssertionError(f"VFC high-start {name} lost selectable text")
+            if box is None:
+                raise AssertionError(f"VFC high-start {name} rendered blank")
+        if not (vfc_high_empty_box[1] < vfc_high_zero_box[1] <
+                vfc_high_wrapped_box[1] < vfc_high_default_box[1]):
+            raise AssertionError("VFC high-start recovery branches collapsed")
+
         vfc_256_table = bytearray(b"\x00\x00" * 128)
         vfc_256_table[2:4] = b"\x00\x02"
         vfc_oversize_store = write(
