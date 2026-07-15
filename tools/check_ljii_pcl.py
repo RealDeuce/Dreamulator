@@ -515,6 +515,39 @@ def main():
         if "".join(pdftotext(esc_question_reparse_pdf).split()) != "A!":
             raise AssertionError("ESC ? non-0x11 byte did not re-enter parser")
 
+        default_slot_text = b"Default primary and secondary slots" + FF
+        default_primary = write(tmp / "default-primary.pcl",
+                                default_slot_text)
+        default_secondary = write(tmp / "default-secondary.pcl",
+                                  b"\x0e" + default_slot_text)
+        default_primary_pdf = tmp / "default-primary.pdf"
+        default_secondary_pdf = tmp / "default-secondary.pdf"
+        render(dreamprint, default_primary, default_primary_pdf)
+        render(dreamprint, default_secondary, default_secondary_pdf)
+        if ppm_sha256(default_primary_pdf, tmp / "default-primary",
+                      dpi=300) != \
+           ppm_sha256(default_secondary_pdf, tmp / "default-secondary",
+                      dpi=300):
+            raise AssertionError(
+                "factory primary and secondary defaults selected different fonts")
+
+        configured_line_primary = write(
+            tmp / "configured-line-primary.pcl", default_slot_text)
+        configured_line_secondary = write(
+            tmp / "configured-line-secondary.pcl", b"\x0e" + default_slot_text)
+        configured_line_primary_pdf = tmp / "configured-line-primary.pdf"
+        configured_line_secondary_pdf = tmp / "configured-line-secondary.pdf"
+        render(dreamprint, configured_line_primary,
+               configured_line_primary_pdf, "--font", "line-printer")
+        render(dreamprint, configured_line_secondary,
+               configured_line_secondary_pdf, "--font", "line-printer")
+        if ppm_sha256(configured_line_primary_pdf,
+                      tmp / "configured-line-primary", dpi=300) != \
+           ppm_sha256(configured_line_secondary_pdf,
+                      tmp / "configured-line-secondary", dpi=300):
+            raise AssertionError(
+                "configured default font was not installed in both slots")
+
         high_mask = write(tmp / "high-mask.pcl", b"\xa1" + FF)
         high_mask_bang = write(tmp / "high-mask-bang.pcl",
                                b"\x0e!" + FF)
@@ -616,16 +649,15 @@ def main():
                transparent_secondary_high_pdf)
         render(dreamprint, transparent_secondary_space,
                transparent_secondary_space_pdf)
-        if ppm_bbox(transparent_secondary_high_pdf,
-                    tmp / "transparent-secondary-high", dpi=300) is None:
-            raise AssertionError("secondary transparent high-control rendered blank")
         if ppm_sha256(transparent_secondary_high_pdf,
-                      tmp / "transparent-secondary-high-shape", dpi=300) == \
+                      tmp / "transparent-secondary-high-shape", dpi=300) != \
            ppm_sha256(transparent_secondary_space_pdf,
                       tmp / "transparent-secondary-space", dpi=300):
-            raise AssertionError("secondary transparent high-control stayed fixed-space")
-        if "\x80" not in pdftotext(transparent_secondary_high_pdf):
-            raise AssertionError("secondary transparent high-control lost selectable byte")
+            raise AssertionError(
+                "nonexistent secondary transparent character was not a space")
+        if not pdftotext(transparent_secondary_high_pdf).startswith("! !"):
+            raise AssertionError(
+                "nonexistent secondary transparent character did not extract as a space")
 
         escape_status_plain = write(tmp / "escape-status-plain.pcl",
                                     b"AB" + FF)

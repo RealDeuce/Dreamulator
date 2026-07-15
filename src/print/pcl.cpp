@@ -548,6 +548,7 @@ private:
 	void reset_ljii_state();
 	float user_default_vmi() const;
 	void reset_user_default_fonts();
+	LjiiFontRequest user_default_font_request(int slot) const;
 	void software_reset();
 	void process_normal(uint8_t b);
 	void process_control(uint8_t b);
@@ -888,20 +889,25 @@ float PclPrinter::user_default_vmi() const
 	return text_height / (float)form_lines;
 }
 
+LjiiFontRequest PclPrinter::user_default_font_request(int slot) const
+{
+	LjiiFontRequest req;
+	req.symbol_set = cfg_.pcl_symbol_set;
+	if (cfg_.pcl_font == 1) {
+		req.stroke = 3;
+	} else if (cfg_.pcl_font == 2) {
+		req.pitch = 1666;
+		req.height = 850;
+		req.typeface = 0;
+	}
+	req.secondary = slot != 0;
+	return req;
+}
+
 void PclPrinter::reset_user_default_fonts()
 {
-	font_req_[0] = LjiiFontRequest{};
-	font_req_[0].symbol_set = cfg_.pcl_symbol_set;
-	if (cfg_.pcl_font == 1) {
-		font_req_[0].stroke = 3;
-	} else if (cfg_.pcl_font == 2) {
-		font_req_[0].pitch = 1666;
-		font_req_[0].height = 850;
-		font_req_[0].typeface = 0;
-	}
-	font_req_[1] = LjiiFontRequest{};
-	font_req_[1].secondary = true;
-	font_req_[1].symbol_set = 0x000e;
+	font_req_[0] = user_default_font_request(0);
+	font_req_[1] = user_default_font_request(1);
 }
 
 void PclPrinter::software_reset()
@@ -3365,23 +3371,7 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	const LjiiFontRequest &req = active_font_request();
 	float char_w_in = hmi_in_;
 	if (b == 0x20) {
-		bool had_pending = consume_previous_width_adjustment(char_w_in);
-		if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
-			if (!wrap_enabled_) {
-				finish_text_advance(char_w_in, char_w_in, had_pending);
-				return true;
-			}
-			ljii_carriage_return();
-			ljii_line_feed();
-		}
-		if (!ljii_nominal_text_vertical_accepts()) {
-			finish_text_advance(char_w_in, char_w_in, had_pending);
-			return true;
-		}
-		note_current_font_underline_distance();
-		start_underline_span();
-		append_ljii_text_glyph(0x20, char_w_in);
-		finish_text_advance(char_w_in, char_w_in, had_pending);
+		advance_fixed_space();
 		return true;
 	}
 
@@ -3395,27 +3385,18 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		source_byte = (uint8_t)(b & 0x7f);
 	}
 	uint8_t glyph_byte = text_glyph_byte_for(*render_req, source_byte);
-	if (glyph_byte == 0)
-		return true;
-	uint32_t context = select_ljii_context(*render_req, orientation_);
-	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
-	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
-	bool had_pending = consume_previous_width_adjustment(char_w_in);
-	if (!glyph.found || !glyph.data) {
-		if (!ljii_nominal_text_vertical_accepts()) {
-			finish_text_advance(char_w_in, char_w_in, had_pending);
-			return true;
-		}
-		note_current_font_underline_distance();
-		start_underline_span();
-		uint16_t cp = text_unicode(b);
-		if (cp >= 0x20) {
-			append_ljii_text_glyph(cp, char_w_in);
-		}
-		finish_text_advance(char_w_in, char_w_in, had_pending);
-		mark_line_output(true);
+	if (glyph_byte == 0) {
+		advance_fixed_space();
 		return true;
 	}
+	uint32_t context = select_ljii_context(*render_req, orientation_);
+	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
+	if (!glyph.found || !glyph.data) {
+		advance_fixed_space();
+		return true;
+	}
+	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
+	bool had_pending = consume_previous_width_adjustment(char_w_in);
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_) {
