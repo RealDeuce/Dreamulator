@@ -254,6 +254,13 @@ def main():
         tmp = Path(tmp_s)
 
         sample = root / "samples/dreamprint/laserjet-ii-text-attributes.bin"
+        sample_bytes = sample.read_bytes()
+        cursor_stack_separator = (
+            b"B" + ESC + b"&f1S" + b"C\r\n\r\n" + ESC + b"&s1C" +
+            b"wrap disabled: ")
+        if cursor_stack_separator not in sample_bytes:
+            raise AssertionError(
+                "sample cursor-stack probe overlaps the wrap-disabled row")
         sample_pdf = tmp / "sample.pdf"
         render(dreamprint, sample, sample_pdf)
         text = pdftotext(sample_pdf)

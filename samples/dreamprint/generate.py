@@ -760,7 +760,6 @@ def build_ljii_text_attributes() -> bytes:
     out += pcl_param(b"&k", b"3G")
     out += b"3G:A\rB\nC\r\n"
     out += pcl_param(b"&k", b"0G")
-    out += b"\r\n"
 
     out += b"Cursor stack, relative position, and wrap\r\n"
     out += b"A"
@@ -768,7 +767,7 @@ def build_ljii_text_attributes() -> bytes:
     out += pcl_param(b"&a", b"8c+1R")
     out += b"B"
     out += pcl_param(b"&f", b"1S")
-    out += b"C\r\n"
+    out += b"C\r\n\r\n"
     out += pcl_param(b"&s", b"1C")
     out += b"wrap disabled: "
     out += b"0123456789" * 9
