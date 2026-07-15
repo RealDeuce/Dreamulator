@@ -263,7 +263,7 @@ def main() -> int:
     out.append("")
     out.append("uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation)")
     out.append("{")
-    out.append("\tuint8_t class_id = request.secondary ? 1u : (uint8_t)(orientation & 1);")
+    out.append("\tuint8_t class_id = (uint8_t)(orientation & 1);")
     out.append("\tuint32_t mask = filter_ljii_records(0x00ffffffu, [class_id](const auto &r) {")
     out.append("\t\treturn r.class_id == class_id;")
     out.append("\t});")
