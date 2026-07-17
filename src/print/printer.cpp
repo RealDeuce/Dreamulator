@@ -2,6 +2,7 @@
 // copyright-holders:Stephen Hurd
 #include "printer.h"
 #include "dotrender.h"
+#include "fontljii.h"
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -800,6 +801,8 @@ PrinterConfig default_config_for(PrinterModel model)
 		cfg.pcl_orientation = 0;
 		cfg.pcl_symbol_set = 0x0115;
 		cfg.pcl_font = 0;
+		cfg.pcl_cartridge_slot_1 = 0;
+		cfg.pcl_cartridge_slot_2 = 0;
 		cfg.page_length_lines = 60;
 	}
 	return cfg;
@@ -944,6 +947,18 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 			int symbol = parse_pcl_symbol_set(val);
 			if (symbol >= 0)
 				cfg.pcl_symbol_set = symbol;
+		} else if ((strcasecmp(key, "cartridge_slot_1") == 0 ||
+		            strcasecmp(key, "cartridge_1") == 0) &&
+		           model == PrinterModel::HpJet) {
+			int cartridge = parse_ljii_cartridge(val);
+			if (cartridge >= 0)
+				cfg.pcl_cartridge_slot_1 = cartridge;
+		} else if ((strcasecmp(key, "cartridge_slot_2") == 0 ||
+		            strcasecmp(key, "cartridge_2") == 0) &&
+		           model == PrinterModel::HpJet) {
+			int cartridge = parse_ljii_cartridge(val);
+			if (cartridge >= 0)
+				cfg.pcl_cartridge_slot_2 = cartridge;
 		} else if (strcasecmp(key, "quality") == 0 &&
 		           model == PrinterModel::EpsonLQ500) {
 			if (strcasecmp(val, "draft") == 0) cfg.font_mode = 0;

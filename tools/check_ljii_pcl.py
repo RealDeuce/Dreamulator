@@ -325,6 +325,118 @@ def main():
            ppm_pages_sha256(config_cli_pdf, tmp / "config-cli", dpi=150):
             raise AssertionError("JET config file did not match command-line defaults")
 
+        def cartridge_font_stream(class_id, symbol, pitch, height, spacing,
+                                  style, stroke, typeface, host_byte):
+            symbol_number, symbol_final = divmod(symbol, 32)
+            symbol_command = (str(symbol_number).encode("ascii") +
+                              bytes([symbol_final + 0x40]))
+
+            def metric(value):
+                return (f"{value / 100:.2f}".rstrip("0").rstrip(".")
+                        .encode("ascii"))
+
+            orientation = ESC + b"&l1O" if class_id else b""
+            selection = (
+                ESC + b"(" + symbol_command + ESC + b"(s" +
+                str(spacing).encode("ascii") + b"p" + metric(pitch) + b"h" +
+                metric(height) + b"v" + str(style).encode("ascii") + b"s" +
+                str(stroke).encode("ascii") + b"b" +
+                str(typeface).encode("ascii") + b"T"
+            )
+            return orientation + selection + bytes([host_byte]) + FF
+
+        cartridge_fonts = (
+            (0, "letter-gothic-16.66", 277, 1666, 949, 0, 0, 0, 6, 33),
+            (0, "letter-gothic-12", 277, 1200, 1200, 0, 0, 0, 6, 33),
+            (0, "letter-gothic-10", 277, 1000, 1399, 0, 0, 0, 6, 33),
+            (0, "ocr-a", 15, 1000, 1200, 0, 0, 0, 104, 33),
+            (0, "ocr-b", 47, 1000, 1200, 0, 0, 0, 110, 33),
+            (0, "line-draw", 2, 1000, 1200, 0, 0, 0, 0, 33),
+            (0, "code-39-4.68", 25, 468, 1200, 0, 0, 0, 0, 36),
+            (0, "code-39-8.10", 25, 810, 1200, 0, 0, 0, 0, 36),
+            (0, "upc-13mil", 281, 1071, 1200, 1, 0, 3, 0, 40),
+            (0, "upc-10mil", 281, 1428, 1200, 1, 0, 0, 0, 40),
+            (0, "usps-zip", 505, 1000, 1200, 1, 0, 0, 0, 35),
+            (1, "landscape-letter-gothic-16.66", 277, 1666, 949,
+             0, 0, 0, 6, 33),
+            (1, "landscape-letter-gothic-12", 277, 1200, 1200,
+             0, 0, 0, 6, 33),
+            (1, "landscape-letter-gothic-10", 277, 1000, 1399,
+             0, 0, 0, 6, 33),
+            (1, "landscape-line-draw", 2, 1000, 1200, 0, 0, 0, 0, 33),
+            (1, "landscape-usps-zip", 505, 1000, 1200, 1, 0, 0, 0, 35),
+        )
+        cartridge_slot_1_hashes = {}
+        for (class_id, label, symbol, pitch, height, spacing, style, stroke,
+             typeface, host_byte) in cartridge_fonts:
+            stream = cartridge_font_stream(
+                class_id, symbol, pitch, height, spacing, style, stroke,
+                typeface, host_byte)
+            source = write(tmp / f"cartridge-{label}.pcl", stream)
+            resident_pdf = tmp / f"cartridge-{label}-resident.pdf"
+            cartridge_pdf = tmp / f"cartridge-{label}-slot-1.pdf"
+            render(dreamprint, source, resident_pdf)
+            render(dreamprint, source, cartridge_pdf,
+                   "--cartridge-1", "c2053a-c06")
+            resident_hash = ppm_sha256(
+                resident_pdf, tmp / f"cartridge-{label}-resident", dpi=300)
+            cartridge_hash = ppm_sha256(
+                cartridge_pdf, tmp / f"cartridge-{label}-slot-1", dpi=300)
+            if cartridge_hash == resident_hash:
+                raise AssertionError(
+                    f"cartridge font {label} fell back to a resident font")
+            expected_text = chr(host_byte)
+            if expected_text not in pdftotext(cartridge_pdf):
+                raise AssertionError(
+                    f"cartridge font {label} lost selectable input text")
+            cartridge_slot_1_hashes[label] = cartridge_hash
+
+        slot_probe = write(
+            tmp / "cartridge-slot-probe.pcl",
+            cartridge_font_stream(0, 277, 1000, 1399, 0, 0, 0, 6, 33))
+        slot_2_pdf = tmp / "cartridge-slot-2.pdf"
+        both_slots_pdf = tmp / "cartridge-both-slots.pdf"
+        explicit_empty_pdf = tmp / "cartridge-explicit-empty.pdf"
+        empty_baseline_pdf = tmp / "cartridge-empty-baseline.pdf"
+        render(dreamprint, slot_probe, slot_2_pdf,
+               "--cartridge-2", "c2053a-c06")
+        render(dreamprint, slot_probe, both_slots_pdf,
+               "--cartridge-1", "c2053a-c06",
+               "--cartridge-2", "c2053a-c06")
+        render(dreamprint, slot_probe, explicit_empty_pdf,
+               "--cartridge-1", "none", "--cartridge-2", "empty")
+        render(dreamprint, slot_probe, empty_baseline_pdf)
+        slot_1_hash = cartridge_slot_1_hashes["letter-gothic-10"]
+        if ppm_sha256(slot_2_pdf, tmp / "cartridge-slot-2", dpi=300) != \
+           slot_1_hash:
+            raise AssertionError("slot 2 did not expose the installed cartridge")
+        if ppm_sha256(both_slots_pdf, tmp / "cartridge-both-slots",
+                      dpi=300) != slot_1_hash:
+            raise AssertionError("slot 1 did not win the equal cartridge tie")
+        if ppm_sha256(explicit_empty_pdf, tmp / "cartridge-explicit-empty",
+                      dpi=300) != \
+           ppm_sha256(empty_baseline_pdf, tmp / "cartridge-empty-baseline",
+                      dpi=300):
+            raise AssertionError("empty cartridge slots changed resident output")
+
+        cartridge_config = tmp / "laserjet-cartridge.conf"
+        cartridge_config.write_text(
+            "cartridge_slot_1=none\ncartridge_slot_2=c2053a-c06\n",
+            encoding="ascii")
+        cartridge_config_pdf = tmp / "cartridge-config.pdf"
+        render(dreamprint, slot_probe, cartridge_config_pdf,
+               "--config", cartridge_config)
+        if ppm_sha256(cartridge_config_pdf, tmp / "cartridge-config",
+                      dpi=300) != slot_1_hash:
+            raise AssertionError("config file did not install cartridge in slot 2")
+
+        invalid_cartridge = subprocess.run(
+            [str(dreamprint), "--model", "JET", "--cartridge-1", "unknown",
+             str(slot_probe), str(tmp / "invalid-cartridge.pdf")],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if invalid_cartridge.returncode == 0:
+            raise AssertionError("unknown cartridge name was accepted")
+
         reset_probe = write(
             tmp / "reset-defaults.pcl",
             ESC + b"&l0O" + ESC + b"(s0B" + b"A" + ESC + b"E" + b"B" + FF)

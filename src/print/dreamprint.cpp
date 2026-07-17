@@ -1,6 +1,7 @@
 // license:BSD-3-Clause
 // copyright-holders:Stephen Hurd
 #include "printer.h"
+#include "fontljii.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -22,6 +23,8 @@ static void usage(const char *argv0)
 		"  --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)\n"
 		"  --copies N       JET default copies (1-99)\n"
 		"  --form-lines N   JET default form length (5-128 lines)\n"
+		"  --cartridge-1 C  JET cartridge slot 1\n"
+		"  --cartridge-2 C  JET cartridge slot 2\n"
 		"\n"
 		"Models:\n"
 		"  X24E      IBM Proprinter X24E (24-pin)\n"
@@ -32,6 +35,12 @@ static void usage(const char *argv0)
 		"  JET       HP LaserJet II\n"
 		"  WRITER    Apple ImageWriter\n",
 		argv0);
+	fprintf(stderr, "\nJET cartridges:\n");
+	for (size_t i = 0; i < ljii_cartridge_count(); i++) {
+		const LjiiCartridgeInfo *info = ljii_cartridge_info(i);
+		if (info)
+			fprintf(stderr, "  %-15s %s\n", info->key, info->label);
+	}
 }
 
 static PrinterModel parse_model(const char *name)
@@ -58,6 +67,7 @@ int main(int argc, char *argv[])
 	const char *pitch_arg = nullptr;
 	const char *orientation_arg = nullptr;
 	const char *symbol_arg = nullptr;
+	const char *cartridge_arg[2] = { nullptr, nullptr };
 	int copies_arg = -1;
 	int form_lines_arg = -1;
 
@@ -78,6 +88,10 @@ int main(int argc, char *argv[])
 			copies_arg = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "--form-lines") && i + 1 < argc) {
 			form_lines_arg = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "--cartridge-1") && i + 1 < argc) {
+			cartridge_arg[0] = argv[++i];
+		} else if (!strcmp(argv[i], "--cartridge-2") && i + 1 < argc) {
+			cartridge_arg[1] = argv[++i];
 		} else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
 			usage(argv[0]);
 			return 0;
@@ -149,6 +163,20 @@ int main(int argc, char *argv[])
 			cfg.copies = std::max(1, std::min(99, copies_arg));
 		if (form_lines_arg >= 0)
 			cfg.page_length_lines = std::max(5, std::min(128, form_lines_arg));
+		for (int slot = 0; slot < 2; slot++) {
+			if (!cartridge_arg[slot])
+				continue;
+			int cartridge = parse_ljii_cartridge(cartridge_arg[slot]);
+			if (cartridge < 0) {
+				fprintf(stderr, "Invalid JET cartridge for slot %d: %s\n",
+				        slot + 1, cartridge_arg[slot]);
+				return 1;
+			}
+			if (slot == 0)
+				cfg.pcl_cartridge_slot_1 = cartridge;
+			else
+				cfg.pcl_cartridge_slot_2 = cartridge;
+		}
 
 		printer->apply_config(cfg);
 	}

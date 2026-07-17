@@ -123,6 +123,8 @@ Options:
   --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)
   --copies N       JET default copies (1-99)
   --form-lines N   JET default form length (5-128 lines)
+  --cartridge-1 C  JET cartridge slot 1 (none, c2053a-c06)
+  --cartridge-2 C  JET cartridge slot 2 (none, c2053a-c06)
 ```
 
 LaserJet II user defaults are also accepted in a config file:
@@ -133,12 +135,16 @@ orientation=portrait
 font=courier
 symbol_set=8U
 form_length=60
+cartridge_slot_1=c2053a-c06
+cartridge_slot_2=none
 ```
 
 The GUI persists the same effective defaults under **Printer -> Settings ->
 HP LaserJet II Settings**. On the original HP 33440, orientation was selected
 implicitly by the default resident font; the emulator exposes font and
 orientation separately while selecting the corresponding resident font data.
+The two cartridge settings represent the printer's physical cartridge slots;
+each may independently be empty or contain a compiled, dumped cartridge.
 
 Sample input streams are provided in `samples/dreamprint/`.
 

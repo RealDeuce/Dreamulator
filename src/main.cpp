@@ -32,6 +32,7 @@
 #include "machine.h"
 #include "paths.h"
 #include "print/printer.h"
+#include "print/fontljii.h"
 #include "prefs.h"
 #include "dbg_regs.h"
 #include "dbg_dis.h"
@@ -929,9 +930,29 @@ static int ljii_symbol_choice_index(int symbol)
 	return 0;
 }
 
+static int ljii_cartridge_choice_index(int id)
+{
+	for (size_t i = 0; i < ljii_cartridge_count(); i++) {
+		const LjiiCartridgeInfo *info = ljii_cartridge_info(i);
+		if (info && info->id == id)
+			return (int)i;
+	}
+	return 0;
+}
+
+static void populate_ljii_cartridge_choice(Fl_Choice &choice, int id)
+{
+	for (size_t i = 0; i < ljii_cartridge_count(); i++) {
+		const LjiiCartridgeInfo *info = ljii_cartridge_info(i);
+		if (info)
+			choice.add(info->label);
+	}
+	choice.value(ljii_cartridge_choice_index(id));
+}
+
 static bool show_jet_settings_dialog(PrinterConfig &cfg)
 {
-	Fl_Window win(540, 285, "HP LaserJet II Settings");
+	Fl_Window win(540, 355, "HP LaserJet II Settings");
 	win.set_modal();
 
 	Fl_Spinner copies(210, 25, 250, 25, "Copies:");
@@ -962,13 +983,19 @@ static bool show_jet_settings_dialog(PrinterConfig &cfg)
 	form.step(1);
 	form.value(cfg.page_length_lines);
 
+	Fl_Choice cartridge_1(210, 200, 250, 25, "Cartridge Slot 1:");
+	populate_ljii_cartridge_choice(cartridge_1, cfg.pcl_cartridge_slot_1);
+
+	Fl_Choice cartridge_2(210, 235, 250, 25, "Cartridge Slot 2:");
+	populate_ljii_cartridge_choice(cartridge_2, cfg.pcl_cartridge_slot_2);
+
 	bool ok = false;
-	Fl_Return_Button btn_ok(350, 235, 80, 30, "OK");
+	Fl_Return_Button btn_ok(350, 305, 80, 30, "OK");
 	btn_ok.callback([](Fl_Widget *w, void *d) {
 		*static_cast<bool *>(d) = true;
 		w->window()->hide();
 	}, &ok);
-	Fl_Button btn_cancel(440, 235, 80, 30, "Cancel");
+	Fl_Button btn_cancel(440, 305, 80, 30, "Cancel");
 	btn_cancel.callback([](Fl_Widget *w, void *) {
 		w->window()->hide();
 	});
@@ -983,6 +1010,12 @@ static bool show_jet_settings_dialog(PrinterConfig &cfg)
 	cfg.pcl_font = font.value();
 	cfg.pcl_symbol_set = kLjiiSymbolChoices[symbol.value()].value;
 	cfg.page_length_lines = (int)form.value();
+	const LjiiCartridgeInfo *slot_1 = ljii_cartridge_info(
+		static_cast<size_t>(cartridge_1.value()));
+	const LjiiCartridgeInfo *slot_2 = ljii_cartridge_info(
+		static_cast<size_t>(cartridge_2.value()));
+	cfg.pcl_cartridge_slot_1 = slot_1 ? slot_1->id : 0;
+	cfg.pcl_cartridge_slot_2 = slot_2 ? slot_2->id : 0;
 	return true;
 }
 
@@ -1049,6 +1082,14 @@ static void printer_cfg_load()
 		"printer_jet", "form_lines", g_jet_cfg.page_length_lines);
 	if (g_jet_cfg.page_length_lines < 5) g_jet_cfg.page_length_lines = 5;
 	if (g_jet_cfg.page_length_lines > 128) g_jet_cfg.page_length_lines = 128;
+	g_jet_cfg.pcl_cartridge_slot_1 = prefs_get_int(
+		"printer_jet", "cartridge_slot_1", g_jet_cfg.pcl_cartridge_slot_1);
+	if (!ljii_valid_cartridge(g_jet_cfg.pcl_cartridge_slot_1))
+		g_jet_cfg.pcl_cartridge_slot_1 = 0;
+	g_jet_cfg.pcl_cartridge_slot_2 = prefs_get_int(
+		"printer_jet", "cartridge_slot_2", g_jet_cfg.pcl_cartridge_slot_2);
+	if (!ljii_valid_cartridge(g_jet_cfg.pcl_cartridge_slot_2))
+		g_jet_cfg.pcl_cartridge_slot_2 = 0;
 }
 
 static void printer_cfg_save_iw()
@@ -1094,6 +1135,10 @@ static void printer_cfg_save_jet()
 	prefs_set_int("printer_jet", "font", g_jet_cfg.pcl_font);
 	prefs_set_int("printer_jet", "symbol_set", g_jet_cfg.pcl_symbol_set);
 	prefs_set_int("printer_jet", "form_lines", g_jet_cfg.page_length_lines);
+	prefs_set_int("printer_jet", "cartridge_slot_1",
+	              g_jet_cfg.pcl_cartridge_slot_1);
+	prefs_set_int("printer_jet", "cartridge_slot_2",
+	              g_jet_cfg.pcl_cartridge_slot_2);
 }
 
 static void cb_iw_dip_switches(Fl_Widget *, void *) {

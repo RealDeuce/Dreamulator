@@ -608,7 +608,7 @@ private:
 	bool ljii_nominal_text_vertical_accepts() const;
 	bool ljii_resident_glyph_vertical_accepts(const LjiiGlyphInfo &glyph) const;
 	bool ljii_soft_glyph_vertical_accepts(const SoftGlyph &glyph) const;
-	float ljii_metric_width_in(uint8_t width, float fallback_in) const;
+	float ljii_metric_width_in(uint16_t width, float fallback_in) const;
 	bool consume_previous_width_adjustment(float current_width_in);
 	void finish_text_advance(float width_in, float advance_in, bool had_pending);
 	void refresh_pending_cursor_y();
@@ -689,6 +689,7 @@ private:
 	bool text_length_custom_ = false;
 	float vfc_limit_in_ = 10.0f;
 	LjiiFontRequest font_req_[2];
+	LjiiCartridgeSlots cartridge_slots_;
 	int active_font_slot_ = 0;
 	std::vector<uint16_t> vfc_table_;
 	int vfc_last_line_ = 63;
@@ -800,6 +801,10 @@ void PclPrinter::reset_ljii_state()
 	text_length_custom_ = false;
 	vfc_limit_in_ = logical_y0_in_ + text_length_in_;
 	reset_user_default_fonts();
+	cartridge_slots_.slot[0] = ljii_valid_cartridge(cfg_.pcl_cartridge_slot_1)
+	                              ? cfg_.pcl_cartridge_slot_1 : 0;
+	cartridge_slots_.slot[1] = ljii_valid_cartridge(cfg_.pcl_cartridge_slot_2)
+	                              ? cfg_.pcl_cartridge_slot_2 : 0;
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_transparent_count_ = -1;
@@ -2461,7 +2466,8 @@ const PclPrinter::SoftFont *PclPrinter::selected_soft_font_candidate(int slot) c
 	const LjiiFontRequest &req = font_request(slot);
 	std::vector<Candidate> candidates;
 	LjiiFontMetrics resident = get_ljii_font_metrics(
-		select_ljii_context(req, orientation_));
+		select_ljii_context(req, orientation_, cartridge_slots_),
+		cartridge_slots_);
 	if (resident.found) {
 		candidates.push_back({ nullptr, resident.symbol_set, resident.pitch,
 		                       resident.height, resident.spacing, resident.style,
@@ -3184,7 +3190,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		draw_soft_glyph_pixels(font.glyphs[soft_char_code_]);
 }
 
-float PclPrinter::ljii_metric_width_in(uint8_t width, float fallback_in) const
+float PclPrinter::ljii_metric_width_in(uint16_t width, float fallback_in) const
 {
 	if (st_.proportional && width > 0)
 		return (float)width / kDotsPerIn;
@@ -3389,8 +3395,10 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		advance_fixed_space();
 		return true;
 	}
-	uint32_t context = select_ljii_context(*render_req, orientation_);
-	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte);
+	uint32_t context = select_ljii_context(*render_req, orientation_,
+	                                       cartridge_slots_);
+	LjiiGlyphInfo glyph = get_ljii_glyph(context, glyph_byte,
+	                                    cartridge_slots_);
 	if (!glyph.found || !glyph.data) {
 		advance_fixed_space();
 		return true;
@@ -3421,9 +3429,9 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 	int active_y = (int)std::lround(st_.y_pos * (float)dpi);
 	int base_x = active_x + glyph.x_offset;
 	int base_y = active_y - glyph.y_offset;
-	for (uint8_t row = 0; row < glyph.rows; row++) {
+	for (uint16_t row = 0; row < glyph.rows; row++) {
 		const uint8_t *src = glyph.data + (size_t)row * glyph.span;
-		for (uint8_t col = 0; col < glyph.width; col++) {
+		for (uint16_t col = 0; col < glyph.width; col++) {
 			uint8_t byte = src[col >> 3];
 			if (!(byte & (0x80u >> (col & 7))))
 				continue;
@@ -3496,7 +3504,8 @@ void PclPrinter::note_current_font_underline_distance()
 		descriptor_distance = soft->underline_distance;
 	} else if (!soft) {
 		LjiiFontMetrics resident = get_ljii_font_metrics(
-			select_ljii_context(active_font_request(), orientation_));
+			select_ljii_context(active_font_request(), orientation_,
+			                    cartridge_slots_), cartridge_slots_);
 		if (resident.found)
 			descriptor_distance = resident.underline_distance;
 	}
@@ -3626,7 +3635,8 @@ void PclPrinter::sync_active_font_state()
 	int pitch = req.pitch;
 	if (!selected_soft_font()) {
 		int context_pitch = ljii_context_pitch(
-			select_ljii_context(req, orientation_));
+			select_ljii_context(req, orientation_, cartridge_slots_),
+			cartridge_slots_);
 		if (context_pitch > 0)
 			pitch = context_pitch;
 	}
