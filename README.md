@@ -117,14 +117,14 @@ dreamprint [options] input.bin output.pdf
 Options:
   --model MODEL    Printer model (default: FX)
   --config PATH    Printer config file
-  --font MODE      Initial font (JET: courier, courier-bold, line-printer)
+  --font FONT      Initial font (JET resident name or cartridge font key)
   --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)
   --orientation O  JET default orientation: portrait or landscape
   --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)
   --copies N       JET default copies (1-99)
   --form-lines N   JET default form length (5-128 lines)
-  --cartridge-1 C  JET cartridge slot 1 (none, c2053a-c06)
-  --cartridge-2 C  JET cartridge slot 2 (none, c2053a-c06)
+  --cartridge-1 C  JET cartridge slot 1 (none, c2053a-c06, 92286pc)
+  --cartridge-2 C  JET cartridge slot 2 (none, c2053a-c06, 92286pc)
 ```
 
 LaserJet II user defaults are also accepted in a config file:
@@ -145,6 +145,13 @@ implicitly by the default resident font; the emulator exposes font and
 orientation separately while selecting the corresponding resident font data.
 The two cartridge settings represent the printer's physical cartridge slots;
 each may independently be empty or contain a compiled, dumped cartridge.
+After a cartridge is assigned to either slot, its portrait or landscape font
+records appear under that cartridge in the GUI's **Font** menu. Selecting one
+also selects the record's symbol set, and the exact record is persisted with
+the other GUI preferences. Each record also has a stable config key such as
+`92286pc:000000`; that key is accepted by `--font` and by the config file.
+Cartridge font keys require that cartridge to be installed in one of the two
+slots.
 
 Sample input streams are provided in `samples/dreamprint/`.
 

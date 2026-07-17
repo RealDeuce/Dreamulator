@@ -110,6 +110,20 @@ def ppm_pages_sha256(pdf, stem, dpi=72):
     return digest.hexdigest()
 
 
+def ppm_page_hashes(pdf, stem, dpi=72):
+    stem = Path(stem)
+    run(["pdftoppm", "-r", str(dpi), str(pdf), str(stem)])
+    pages = list(stem.parent.glob(f"{stem.name}-*.ppm"))
+    if not pages:
+        raise AssertionError("pdftoppm did not emit page images")
+
+    def page_number(path):
+        return int(path.stem.rsplit("-", 1)[1])
+
+    return [hashlib.sha256(page.read_bytes()).hexdigest()
+            for page in sorted(pages, key=page_number)]
+
+
 def ppm_bbox(pdf, stem, dpi=72, min_x_filter=0, maximum_sum=None):
     width, height, pixels = ppm_image(pdf, stem, dpi)
     min_x = width
@@ -335,7 +349,7 @@ def main():
                 return (f"{value / 100:.2f}".rstrip("0").rstrip(".")
                         .encode("ascii"))
 
-            orientation = ESC + b"&l1O" if class_id else b""
+            orientation = ESC + b"&l" + str(class_id).encode("ascii") + b"O"
             selection = (
                 ESC + b"(" + symbol_command + ESC + b"(s" +
                 str(spacing).encode("ascii") + b"p" + metric(pitch) + b"h" +
@@ -396,12 +410,16 @@ def main():
             cartridge_font_stream(0, 277, 1000, 1399, 0, 0, 0, 6, 33))
         slot_2_pdf = tmp / "cartridge-slot-2.pdf"
         both_slots_pdf = tmp / "cartridge-both-slots.pdf"
+        mixed_slots_pdf = tmp / "cartridge-mixed-slots.pdf"
         explicit_empty_pdf = tmp / "cartridge-explicit-empty.pdf"
         empty_baseline_pdf = tmp / "cartridge-empty-baseline.pdf"
         render(dreamprint, slot_probe, slot_2_pdf,
                "--cartridge-2", "c2053a-c06")
         render(dreamprint, slot_probe, both_slots_pdf,
                "--cartridge-1", "c2053a-c06",
+               "--cartridge-2", "c2053a-c06")
+        render(dreamprint, slot_probe, mixed_slots_pdf,
+               "--cartridge-1", "92286pc",
                "--cartridge-2", "c2053a-c06")
         render(dreamprint, slot_probe, explicit_empty_pdf,
                "--cartridge-1", "none", "--cartridge-2", "empty")
@@ -413,6 +431,9 @@ def main():
         if ppm_sha256(both_slots_pdf, tmp / "cartridge-both-slots",
                       dpi=300) != slot_1_hash:
             raise AssertionError("slot 1 did not win the equal cartridge tie")
+        if ppm_sha256(mixed_slots_pdf, tmp / "cartridge-mixed-slots",
+                      dpi=300) != slot_1_hash:
+            raise AssertionError("C2053A font was not selectable beside ProCollection")
         if ppm_sha256(explicit_empty_pdf, tmp / "cartridge-explicit-empty",
                       dpi=300) != \
            ppm_sha256(empty_baseline_pdf, tmp / "cartridge-empty-baseline",
@@ -429,6 +450,229 @@ def main():
         if ppm_sha256(cartridge_config_pdf, tmp / "cartridge-config",
                       dpi=300) != slot_1_hash:
             raise AssertionError("config file did not install cartridge in slot 2")
+
+        procollection_fonts = (
+            (0, "00-tmsrmn", 0x15, 2307, 1200, 1, 1, 0, 5),
+            (0, "01-tmsrmn", 0x35, 2307, 1200, 1, 1, 0, 5),
+            (0, "02-tmsrmn", 0x15, 2307, 1200, 1, 0, 3, 5),
+            (0, "03-tmsrmn", 0x35, 2307, 1200, 1, 0, 3, 5),
+            (0, "04-tmsrmn", 0x15, 2307, 1200, 1, 0, 0, 5),
+            (0, "05-tmsrmn", 0x35, 2307, 1200, 1, 0, 0, 5),
+            (0, "06-tmsrmn", 0x15, 2727, 1000, 1, 1, 0, 5),
+            (0, "07-tmsrmn", 0x35, 2727, 1000, 1, 1, 0, 5),
+            (0, "08-tmsrmn", 0x15, 2727, 1000, 1, 0, 3, 5),
+            (0, "09-tmsrmn", 0x35, 2727, 1000, 1, 0, 3, 5),
+            (0, "10-tmsrmn", 0x15, 2727, 1000, 1, 0, 0, 5),
+            (0, "11-tmsrmn", 0x35, 2727, 1000, 1, 0, 0, 5),
+            (0, "12-tmsrmn", 0x15, 3333, 800, 1, 0, 0, 5),
+            (0, "13-tmsrmn", 0x35, 3333, 800, 1, 0, 0, 5),
+            (0, "14-ltrgothic", 0x15, 1200, 1200, 0, 1, 0, 6),
+            (0, "15-ltrgothic", 0x15, 1200, 1200, 0, 0, 3, 6),
+            (0, "16-ltrgothic", 0x15, 1200, 1200, 0, 0, 0, 6),
+            (0, "17-ltrgothic", 0x15, 1666, 950, 0, 0, 0, 6),
+            (0, "18-ltrgothic", 0x15, 1875, 600, 0, 0, 0, 6),
+            (0, "19-ltrgothic", 0x15, 2727, 360, 0, 0, 0, 6),
+            (0, "20-pres-elite", 0x15, 1200, 1000, 0, 1, 0, 8),
+            (0, "21-pres-elite", 0x35, 1200, 1000, 0, 1, 0, 8),
+            (0, "22-pres-elite", 0x15, 1200, 1000, 0, 0, 3, 8),
+            (0, "23-pres-elite", 0x35, 1200, 1000, 0, 0, 3, 8),
+            (0, "24-pres-elite", 0x15, 1200, 1000, 0, 0, 0, 8),
+            (0, "25-pres-elite", 0x35, 1200, 1000, 0, 0, 0, 8),
+            (0, "26-pres-elite", 0x15, 1666, 700, 0, 0, 0, 8),
+            (0, "27-pres-elite", 0x35, 1666, 700, 0, 0, 0, 8),
+            (0, "28-courier", 0x15, 1000, 1200, 0, 1, 0, 3),
+            (0, "29-courier", 0x35, 1000, 1200, 0, 1, 0, 3),
+            (0, "30-courier", 0x15, 1000, 1200, 0, 0, 3, 3),
+            (0, "31-courier", 0x35, 1000, 1200, 0, 0, 3, 3),
+            (0, "32-courier", 0x35, 1000, 1200, 0, 0, 0, 3),
+            (0, "33-courier", 0x15, 1200, 1000, 0, 1, 0, 3),
+            (0, "34-courier", 0x35, 1200, 1000, 0, 1, 0, 3),
+            (0, "35-courier", 0x15, 1200, 1000, 0, 0, 3, 3),
+            (0, "36-courier", 0x35, 1200, 1000, 0, 0, 3, 3),
+            (0, "37-courier", 0x15, 1200, 1000, 0, 0, 0, 3),
+            (0, "38-courier", 0x35, 1200, 1000, 0, 0, 0, 3),
+            (1, "39-ltrgothic", 0x15, 1200, 1200, 0, 1, 0, 6),
+            (1, "40-ltrgothic", 0x15, 1200, 1200, 0, 0, 3, 6),
+            (1, "41-ltrgothic", 0x15, 1200, 1200, 0, 0, 0, 6),
+            (1, "42-ltrgothic", 0x15, 1666, 950, 0, 0, 0, 6),
+            (1, "43-ltrgothic", 0x15, 1875, 600, 0, 0, 0, 6),
+            (1, "44-ltrgothic", 0x15, 2727, 360, 0, 0, 0, 6),
+            (1, "45-pres-elite", 0x15, 1200, 1000, 0, 1, 0, 8),
+            (1, "46-pres-elite", 0x15, 1200, 1000, 0, 0, 3, 8),
+            (1, "47-pres-elite", 0x15, 1200, 1000, 0, 0, 0, 8),
+            (1, "48-pres-elite", 0x15, 1666, 700, 0, 0, 0, 8),
+            (1, "49-courier", 0x15, 1000, 1200, 0, 1, 0, 3),
+            (1, "50-courier", 0x15, 1000, 1200, 0, 0, 3, 3),
+            (1, "51-courier", 0x15, 1200, 1000, 0, 1, 0, 3),
+            (1, "52-courier", 0x15, 1200, 1000, 0, 0, 3, 3),
+            (1, "53-courier", 0x15, 1200, 1000, 0, 0, 0, 3),
+            (1, "54-line-print", 0x15, 1666, 850, 0, 0, 0, 0),
+            (0, "55-line-print", 0x15, 1666, 850, 0, 0, 0, 0),
+            (0, "56-helv", 0x15, 2000, 1400, 1, 0, 3, 4),
+            (0, "57-helv", 0x35, 2000, 1400, 1, 0, 3, 4),
+            (0, "58-helv", 0x15, 2307, 1200, 1, 1, 0, 4),
+            (0, "59-helv", 0x15, 2307, 1200, 1, 0, 3, 4),
+            (0, "60-helv", 0x15, 2307, 1200, 1, 0, 0, 4),
+            (0, "61-helv", 0x15, 2727, 1000, 1, 1, 0, 4),
+            (0, "62-helv", 0x15, 2727, 1000, 1, 0, 3, 4),
+            (0, "63-helv", 0x15, 2727, 1000, 1, 0, 0, 4),
+            (0, "64-helv", 0x15, 3333, 800, 1, 0, 0, 4),
+        )
+        procollection_sample = (
+            bytes(range(0x21, 0x41)) + bytes(range(0x5b, 0x61)) +
+            bytes(range(0x7b, 0x7f)) + b"Aa0"
+        )
+        procollection_stream = b"".join(
+            cartridge_font_stream(
+                class_id, symbol, pitch, height, spacing, style, stroke,
+                typeface, procollection_sample[0])[:-2] +
+            procollection_sample + FF
+            for (class_id, _label, symbol, pitch, height, spacing, style,
+                 stroke, typeface) in procollection_fonts
+        )
+        procollection_source = write(
+            tmp / "procollection-all-records.pcl", procollection_stream)
+        procollection_slot_1_pdf = tmp / "procollection-slot-1.pdf"
+        procollection_slot_2_pdf = tmp / "procollection-slot-2.pdf"
+        procollection_baseline_pdf = tmp / "procollection-baseline.pdf"
+        render(dreamprint, procollection_source, procollection_slot_1_pdf,
+               "--cartridge-1", "92286pc")
+        render(dreamprint, procollection_source, procollection_slot_2_pdf,
+               "--cartridge-1", "c2053a", "--cartridge-2", "procollection")
+        render(dreamprint, procollection_source, procollection_baseline_pdf)
+        slot_1_pages = ppm_page_hashes(
+            procollection_slot_1_pdf, tmp / "procollection-slot-1", dpi=72)
+        slot_2_pages = ppm_page_hashes(
+            procollection_slot_2_pdf, tmp / "procollection-slot-2", dpi=72)
+        baseline_pages = ppm_page_hashes(
+            procollection_baseline_pdf, tmp / "procollection-baseline", dpi=72)
+        if any(len(pages) != len(procollection_fonts) for pages in
+               (slot_1_pages, slot_2_pages, baseline_pages)):
+            raise AssertionError("ProCollection record matrix page count changed")
+        for ((_class_id, label, *_selection), slot_1_page, slot_2_page,
+             baseline_page) in zip(procollection_fonts, slot_1_pages,
+                                   slot_2_pages, baseline_pages):
+            if slot_1_page != slot_2_page:
+                raise AssertionError(
+                    f"ProCollection record {label} differs between slots")
+            if slot_1_page == baseline_page:
+                raise AssertionError(
+                    f"ProCollection record {label} fell back to resident font")
+        if pdftotext(procollection_slot_1_pdf).count(
+                procollection_sample.decode("ascii")) != len(procollection_fonts):
+            raise AssertionError("ProCollection matrix lost selectable input text")
+
+        procollection_advance_source = write(
+            tmp / "procollection-advance.pcl",
+            cartridge_font_stream(0, 0x15, 2307, 1200, 1, 1, 0, 5,
+                                  ord("!"))[:-2] + b"!!!!!!!!!!" + FF)
+        procollection_advance_pdf = tmp / "procollection-advance.pdf"
+        render(dreamprint, procollection_advance_source,
+               procollection_advance_pdf, "--cartridge-1", "92286pc")
+        advance_box = ppm_bbox(
+            procollection_advance_pdf, tmp / "procollection-advance", dpi=300)
+        if advance_box is None or advance_box[2] - advance_box[0] + 1 != 150:
+            raise AssertionError(
+                "ProCollection proportional glyph advance did not use byte 0x03")
+
+        default_font_probe = write(tmp / "cartridge-default-font.pcl", b"A" + FF)
+        pro_default_pdf = tmp / "pro-default.pdf"
+        pro_default_slot_2_pdf = tmp / "pro-default-slot-2.pdf"
+        pro_explicit_source = write(
+            tmp / "pro-default-explicit.pcl",
+            cartridge_font_stream(0, 0x15, 2307, 1200, 1, 1, 0, 5,
+                                  ord("A")))
+        pro_explicit_pdf = tmp / "pro-default-explicit.pdf"
+        render(dreamprint, default_font_probe, pro_default_pdf,
+               "--cartridge-1", "92286pc", "--font", "92286pc:000000")
+        render(dreamprint, default_font_probe, pro_default_slot_2_pdf,
+               "--cartridge-1", "c2053a-c06", "--cartridge-2", "92286pc",
+               "--font", "92286pc:000000")
+        render(dreamprint, pro_explicit_source, pro_explicit_pdf,
+               "--cartridge-1", "92286pc")
+        explicit_hash = ppm_sha256(
+            pro_explicit_pdf, tmp / "pro-default-explicit", dpi=300)
+        if ppm_sha256(pro_default_pdf, tmp / "pro-default", dpi=300) != \
+           explicit_hash or \
+           ppm_sha256(pro_default_slot_2_pdf,
+                      tmp / "pro-default-slot-2", dpi=300) != explicit_hash:
+            raise AssertionError(
+                "ProCollection default key did not select its exact cartridge record")
+        if "A" not in pdftotext(pro_default_slot_2_pdf):
+            raise AssertionError("cartridge default font lost selectable input text")
+
+        c06_default_pdf = tmp / "c06-default.pdf"
+        c06_explicit_source = write(
+            tmp / "c06-default-explicit.pcl",
+            cartridge_font_stream(0, 277, 1000, 1399, 0, 0, 0, 6,
+                                  ord("A")))
+        c06_explicit_pdf = tmp / "c06-default-explicit.pdf"
+        render(dreamprint, default_font_probe, c06_default_pdf,
+               "--cartridge-2", "c2053a-c06",
+               "--font", "c2053a-c06:0092fc")
+        render(dreamprint, c06_explicit_source, c06_explicit_pdf,
+               "--cartridge-2", "c2053a-c06")
+        if ppm_sha256(c06_default_pdf, tmp / "c06-default", dpi=300) != \
+           ppm_sha256(c06_explicit_pdf, tmp / "c06-default-explicit", dpi=300):
+            raise AssertionError(
+                "offset-table cartridge default did not select its exact record")
+
+        pro_default_config = tmp / "pro-default.conf"
+        pro_default_config.write_text(
+            "font=92286pc:000000\ncartridge_slot_2=92286pc\n",
+            encoding="ascii")
+        pro_default_config_pdf = tmp / "pro-default-config.pdf"
+        render(dreamprint, default_font_probe, pro_default_config_pdf,
+               "--config", pro_default_config)
+        if ppm_sha256(pro_default_config_pdf, tmp / "pro-default-config",
+                      dpi=300) != explicit_hash:
+            raise AssertionError(
+                "config file did not persist the cartridge default font")
+
+        pro_landscape_default_pdf = tmp / "pro-landscape-default.pdf"
+        pro_landscape_explicit_source = write(
+            tmp / "pro-landscape-explicit.pcl",
+            cartridge_font_stream(1, 0x15, 1200, 1200, 0, 1, 0, 6,
+                                  ord("A")))
+        pro_landscape_explicit_pdf = tmp / "pro-landscape-explicit.pdf"
+        render(dreamprint, default_font_probe, pro_landscape_default_pdf,
+               "--cartridge-1", "92286pc", "--font", "92286pc:040000")
+        render(dreamprint, pro_landscape_explicit_source,
+               pro_landscape_explicit_pdf, "--orientation", "landscape",
+               "--cartridge-1", "92286pc")
+        if ppm_sha256(pro_landscape_default_pdf,
+                      tmp / "pro-landscape-default", dpi=300) != \
+           ppm_sha256(pro_landscape_explicit_pdf,
+                      tmp / "pro-landscape-explicit", dpi=300):
+            raise AssertionError(
+                "landscape cartridge default did not restore its orientation")
+
+        changed_default_source = write(
+            tmp / "pro-default-style-change.pcl", ESC + b"(s0S" + b"A" + FF)
+        changed_default_pdf = tmp / "pro-default-style-change.pdf"
+        changed_explicit_source = write(
+            tmp / "pro-default-style-change-explicit.pcl",
+            cartridge_font_stream(0, 0x15, 2307, 1200, 1, 0, 0, 5,
+                                  ord("A")))
+        changed_explicit_pdf = tmp / "pro-default-style-change-explicit.pdf"
+        render(dreamprint, changed_default_source, changed_default_pdf,
+               "--cartridge-1", "92286pc", "--font", "92286pc:000000")
+        render(dreamprint, changed_explicit_source, changed_explicit_pdf,
+               "--cartridge-1", "92286pc")
+        if ppm_sha256(changed_default_pdf,
+                      tmp / "pro-default-style-change", dpi=300) != \
+           ppm_sha256(changed_explicit_pdf,
+                      tmp / "pro-default-style-change-explicit", dpi=300):
+            raise AssertionError(
+                "PCL characteristic command did not release the exact default record")
+
+        unavailable_default = subprocess.run(
+            [str(dreamprint), "--model", "JET", "--font", "92286pc:000000",
+             str(default_font_probe), str(tmp / "unavailable-default.pdf")],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if unavailable_default.returncode == 0:
+            raise AssertionError(
+                "cartridge default font was accepted without its cartridge")
 
         invalid_cartridge = subprocess.run(
             [str(dreamprint), "--model", "JET", "--cartridge-1", "unknown",
@@ -1682,18 +1926,23 @@ def main():
         wrap_fractional = write(tmp / "wrap-fractional.pcl",
                                 b"X" + ESC + b"&s0.9C" + ESC + b"&a81C" +
                                 b"A" + FF)
+        wrap_clipped_cursor = write(
+            tmp / "wrap-clipped-cursor.pcl",
+            b"X" + ESC + b"&s1C" + ESC + b"&a81C" + b"A\x08B" + FF)
         wrap_default_pdf = tmp / "wrap-default.pdf"
         wrap_reset_pdf = tmp / "wrap-reset.pdf"
         wrap_positive_pdf = tmp / "wrap-positive.pdf"
         wrap_negative_pdf = tmp / "wrap-negative.pdf"
         wrap_enabled_pdf = tmp / "wrap-enabled.pdf"
         wrap_fractional_pdf = tmp / "wrap-fractional.pdf"
+        wrap_clipped_cursor_pdf = tmp / "wrap-clipped-cursor.pdf"
         render(dreamprint, wrap_default, wrap_default_pdf)
         render(dreamprint, wrap_reset, wrap_reset_pdf)
         render(dreamprint, wrap_positive, wrap_positive_pdf)
         render(dreamprint, wrap_negative, wrap_negative_pdf)
         render(dreamprint, wrap_enabled, wrap_enabled_pdf)
         render(dreamprint, wrap_fractional, wrap_fractional_pdf)
+        render(dreamprint, wrap_clipped_cursor, wrap_clipped_cursor_pdf)
         if "".join(pdftotext(wrap_default_pdf).split()) != "X":
             raise AssertionError("default wrap state allowed overflow text")
         if "".join(pdftotext(wrap_reset_pdf).split()) != "X":
@@ -1712,6 +1961,8 @@ def main():
         if ppm_sha256(wrap_enabled_pdf, tmp / "wrap-enabled", dpi=150) != \
            ppm_sha256(wrap_fractional_pdf, tmp / "wrap-fractional", dpi=150):
             raise AssertionError("fractional wrap selector rounded")
+        if "".join(pdftotext(wrap_clipped_cursor_pdf).split()) != "XB":
+            raise AssertionError("clipped character did not leave cursor at margin")
 
         control_z = write(tmp / "control-z.pcl",
                           b"A" + bytes([0x1a, 0x58]) + b"B" + FF)

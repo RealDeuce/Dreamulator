@@ -9,6 +9,7 @@
 struct LjiiGlyphInfo {
 	bool found = false;
 	uint16_t width = 0;
+	uint16_t advance = 0;
 	int16_t x_offset = 0;
 	int16_t y_offset = 0;
 	uint16_t rows = 0;
@@ -36,6 +37,18 @@ struct LjiiFontRequest {
 	int stroke = 0;
 	int typeface = 3;
 	bool secondary = false;
+	int exact_cartridge = 0;
+	uint32_t exact_context = 0;
+	bool exact_offset_table = false;
+};
+
+struct LjiiDefaultFontInfo {
+	int id;
+	const char *key;
+	const char *label;
+	const char *family;
+	int orientation;
+	LjiiFontRequest request;
 };
 
 struct LjiiFontMetrics {
@@ -56,6 +69,13 @@ const LjiiCartridgeInfo *ljii_cartridge_info(size_t index);
 const LjiiCartridgeInfo *find_ljii_cartridge(int id);
 bool ljii_valid_cartridge(int id);
 int parse_ljii_cartridge(const char *value);
+
+size_t ljii_default_font_count();
+const LjiiDefaultFontInfo *ljii_default_font_info(size_t index);
+const LjiiDefaultFontInfo *find_ljii_default_font(int id);
+int parse_ljii_default_font(const char *value);
+bool ljii_default_font_available(int id, LjiiCartridgeSlots cartridges,
+                                 int orientation);
 
 LjiiGlyphInfo get_ljii_glyph(uint32_t context_longword, uint8_t host_byte,
                              LjiiCartridgeSlots cartridges = {});

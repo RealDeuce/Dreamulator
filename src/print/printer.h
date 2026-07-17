@@ -70,7 +70,7 @@ struct PrinterConfig {
 	int  copies = 1;
 	int  pcl_orientation = 0;  // 0=portrait, 1=landscape
 	int  pcl_symbol_set = 0x0115;  // Roman-8 (8U)
-	int  pcl_font = 0;  // 0=Courier, 1=Courier Bold, 2=Line Printer
+	int  pcl_font = 0;  // Stable ID from the LaserJet II default-font registry.
 	int  pcl_cartridge_slot_1 = 0;
 	int  pcl_cartridge_slot_2 = 0;
 };

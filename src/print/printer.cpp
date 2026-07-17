@@ -837,20 +837,7 @@ int parse_pcl_symbol_set(const char *val)
 
 int parse_pcl_font(const char *val)
 {
-	if (!val)
-		return -1;
-	if (strcasecmp(val, "courier") == 0 ||
-	    strcasecmp(val, "courier-medium") == 0)
-		return 0;
-	if (strcasecmp(val, "courier-bold") == 0 ||
-	    strcasecmp(val, "courier_bold") == 0 ||
-	    strcasecmp(val, "bold") == 0)
-		return 1;
-	if (strcasecmp(val, "line-printer") == 0 ||
-	    strcasecmp(val, "line_printer") == 0 ||
-	    strcasecmp(val, "lineprinter") == 0)
-		return 2;
-	return -1;
+	return parse_ljii_default_font(val);
 }
 
 float parse_pitch(const char *val, PrinterModel model)
@@ -875,6 +862,9 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 	if (!f) { perror(path); return cfg; }
 
 	bool is_iw = (model == PrinterModel::ImageWriter);
+	bool pcl_font_seen = false;
+	bool pcl_orientation_seen = false;
+	bool pcl_symbol_seen = false;
 
 	char line[256];
 	while (fgets(line, sizeof(line), f)) {
@@ -921,8 +911,10 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 					cfg.font_mode = 0;
 			} else if (model == PrinterModel::HpJet) {
 				int font = parse_pcl_font(val);
-				if (font >= 0)
+				if (font >= 0) {
 					cfg.pcl_font = font;
+					pcl_font_seen = true;
+				}
 			}
 		} else if (strcasecmp(key, "page_length") == 0) {
 			if (model == PrinterModel::HpJet)
@@ -938,15 +930,20 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 			cfg.copies = std::max(1, std::min(99, atoi(val)));
 		} else if (strcasecmp(key, "orientation") == 0 &&
 		           model == PrinterModel::HpJet) {
-			if (strcasecmp(val, "portrait") == 0)
+			if (strcasecmp(val, "portrait") == 0) {
 				cfg.pcl_orientation = 0;
-			else if (strcasecmp(val, "landscape") == 0)
+				pcl_orientation_seen = true;
+			} else if (strcasecmp(val, "landscape") == 0) {
 				cfg.pcl_orientation = 1;
+				pcl_orientation_seen = true;
+			}
 		} else if (strcasecmp(key, "symbol_set") == 0 &&
 		           model == PrinterModel::HpJet) {
 			int symbol = parse_pcl_symbol_set(val);
-			if (symbol >= 0)
+			if (symbol >= 0) {
 				cfg.pcl_symbol_set = symbol;
+				pcl_symbol_seen = true;
+			}
 		} else if ((strcasecmp(key, "cartridge_slot_1") == 0 ||
 		            strcasecmp(key, "cartridge_1") == 0) &&
 		           model == PrinterModel::HpJet) {
@@ -1001,5 +998,14 @@ PrinterConfig load_printer_config(const char *path, PrinterModel model)
 		}
 	}
 	fclose(f);
+	if (model == PrinterModel::HpJet) {
+		const LjiiDefaultFontInfo *font = find_ljii_default_font(cfg.pcl_font);
+		if (pcl_font_seen && font && font->request.exact_cartridge != 0) {
+			if (!pcl_orientation_seen)
+				cfg.pcl_orientation = font->orientation;
+			if (!pcl_symbol_seen)
+				cfg.pcl_symbol_set = font->request.symbol_set;
+		}
+	}
 	return cfg;
 }

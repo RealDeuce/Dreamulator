@@ -24,11 +24,27 @@ CARTRIDGES = (
             "bar-codes-and-more",
         ),
     },
+    {
+        "id": 2,
+        "key": "92286pc",
+        "label": "HP 92286PC ProCollection",
+        "source": "../ljII/generated/roms/cartridges/92286pc/fonts.json",
+        "sha256": "3cb93d9b474f2fc96d307521248c119603dddd5220f34c4ea57f7546079861f6",
+        "aliases": (
+            "92286pc procollection",
+            "procollection",
+            "pro-collection",
+        ),
+    },
 )
 
 
 def u16(data: bytes, offset: int) -> int:
     return (data[offset] << 8) | data[offset + 1]
+
+
+def u32(data: bytes, offset: int) -> int:
+    return (u16(data, offset) << 16) | u16(data, offset + 2)
 
 
 def s8(value: int) -> int:
@@ -178,18 +194,20 @@ def verified_glyph_payload(rom: bytes, glyph: dict) -> tuple[bytes, int]:
 
 
 def append_glyph(data: bytearray, glyphs: list[tuple[int, ...]],
-                 record_index: int, glyph: dict, payload: bytes,
-                 render_span: int) -> None:
+                 record_index: int, host_byte: int, width: int, advance: int,
+                 x_offset: int, y_offset: int, rows: int, render_span: int,
+                 payload: bytes) -> None:
     offset = len(data)
     data.extend(payload)
     glyphs.append(
         (
             record_index,
-            int(glyph["host_byte"]),
-            int(glyph["width"]),
-            int(glyph["x_offset"]),
-            int(glyph["y_offset"]),
-            int(glyph["rows"]),
+            host_byte,
+            width,
+            advance,
+            x_offset,
+            y_offset,
+            rows,
             render_span,
             offset,
             len(payload),
@@ -207,12 +225,19 @@ def append_resident_fonts(source: Path, data: bytearray,
         first_glyph = len(glyphs)
         for glyph in record["glyphs"]:
             payload, render_span = verified_glyph_payload(rom, glyph)
-            append_glyph(data, glyphs, record_index, glyph, payload, render_span)
+            append_glyph(
+                data, glyphs, record_index,
+                int(glyph["host_byte"]), int(glyph["width"]),
+                int(glyph["width"]), int(glyph["x_offset"]),
+                int(glyph["y_offset"]), int(glyph["rows"]), render_span,
+                payload,
+            )
         base = int(record["record_start"])
         records.append(
             (
                 0,
                 int(record["context_longword"]),
+                1,
                 first_glyph,
                 len(glyphs) - first_glyph,
                 *record_metadata(rom, base),
@@ -220,7 +245,7 @@ def append_resident_fonts(source: Path, data: bytearray,
         )
 
 
-def verify_selection_fields(record: dict, header: bytes) -> None:
+def verify_offset_selection_fields(record: dict, header: bytes) -> None:
     fields = record["selection_fields"]
     expected = {
         "byte_0x0c": header[0x0C],
@@ -248,17 +273,11 @@ def verify_selection_fields(record: dict, header: bytes) -> None:
             raise ValueError(f"selection field {name} does not match header")
 
 
-def append_cartridge_fonts(root: Path, spec: dict, data: bytearray,
-                           records: list[tuple[int, ...]],
-                           glyphs: list[tuple[int, ...]]) -> None:
-    source = (root / spec["source"]).resolve()
-    source_bytes = source.read_bytes()
-    if sha256(source_bytes) != spec["sha256"]:
-        raise ValueError(f"cartridge extraction hash mismatch for {spec['key']}")
-    doc = json.loads(source_bytes.decode("utf-8"))
-    if doc.get("schema") != "hp-laserjet-resource-fonts-v1":
-        raise ValueError(f"unsupported cartridge schema for {spec['key']}")
-    _, rom = verify_document_source(source, doc)
+def append_offset_cartridge_fonts(spec: dict, doc: dict, rom: bytes,
+                                  data: bytearray,
+                                  records: list[tuple[int, ...]],
+                                  glyphs: list[tuple[int, ...]],
+                                  default_fonts: list[tuple]) -> None:
     for record in doc["records"]:
         base = int(record["record_offset"])
         length = int(record["record_length"])
@@ -269,7 +288,7 @@ def append_cartridge_fonts(root: Path, spec: dict, data: bytearray,
         header = bytes.fromhex(record["header_hex"])
         if len(header) <= 0x3C or rom[base : base + len(header)] != header:
             raise ValueError(f"cartridge record header mismatch at 0x{base:x}")
-        verify_selection_fields(record, header)
+        verify_offset_selection_fields(record, header)
         decoded = record["decoded_metrics"]
         metadata = record_metadata(rom, base)
         if metadata[2] != int(decoded["pitch_13b76"]) or \
@@ -289,16 +308,304 @@ def append_cartridge_fonts(root: Path, spec: dict, data: bytearray,
             if int(glyph["entry_offset"]) != base + int(glyph["relative_offset"]):
                 raise ValueError(f"cartridge glyph relative offset mismatch at 0x{base:x}")
             payload, render_span = verified_glyph_payload(rom, glyph)
-            append_glyph(data, glyphs, record_index, glyph, payload, render_span)
+            append_glyph(
+                data, glyphs, record_index,
+                int(glyph["host_byte"]), int(glyph["width"]),
+                int(glyph["width"]), int(glyph["x_offset"]),
+                int(glyph["y_offset"]), int(glyph["rows"]), render_span,
+                payload,
+            )
         records.append(
             (
                 int(spec["id"]),
                 base,
+                1,
                 first_glyph,
                 len(glyphs) - first_glyph,
                 *metadata,
             )
         )
+        append_default_font(default_fonts, spec, record, base, True, metadata)
+
+
+FIXED_SYMBOL_TABLE = {
+    0x85: 0x0001, 0x8D: 0x0002, 0x8B: 0x0003, 0x45: 0x0004,
+    0x8E: 0x0005, 0x41: 0x0025, 0x52: 0x0006, 0x4B: 0x0007,
+    0x87: 0x0008, 0x59: 0x0009, 0x4A: 0x000B, 0x49: 0x002B,
+    0x8C: 0x002C, 0x88: 0x000F, 0x89: 0x002F, 0x86: 0x0010,
+    0x8A: 0x0012, 0x4E: 0x0032, 0x43: 0x0013, 0x5A: 0x0033,
+    0x42: 0x0015, 0x8F: 0x00B3, 0x5F: 0x0016, 0x84: 0x001A,
+    0x80: 0x010B, 0x83: 0x010C, 0x82: 0x010D, 0x81: 0x0115,
+}
+
+
+def fixed_symbol_set(encoded: int) -> int:
+    table_value = FIXED_SYMBOL_TABLE.get(encoded)
+    if table_value is not None:
+        return table_value
+    high = encoded & 0xF0
+    suffix = {0xD0: 0x11, 0xE0: 0x15, 0xC0: 0x18}.get(high)
+    if suffix is None:
+        raise ValueError(f"unsupported fixed-record symbol byte 0x{encoded:02x}")
+    return ((encoded & 0x0F) << 5) + suffix
+
+
+def verify_fixed_selection_fields(record: dict, header: bytes) -> None:
+    fields = record["selection_fields"]
+    expected = {
+        "extension_flag_0x0e": header[0x0E],
+        "byte_0x0f": header[0x0F],
+        "byte_0x10": header[0x10],
+        "byte_0x11": header[0x11],
+        "byte_0x16": header[0x16],
+        "symbol_set_0x17": header[0x17],
+        "typeface_0x18": header[0x18],
+        "spacing_0x19": header[0x19],
+        "pitch_0x1a": u16(header, 0x1A),
+        "word_0x1c": u16(header, 0x1C),
+        "height_0x20": u16(header, 0x20),
+        "byte_0x26": header[0x26],
+        "byte_0x27_signed": s8(header[0x27]),
+        "next_record_delta_0x2e": u32(header, 0x2E),
+    }
+    for name, value in expected.items():
+        if int(fields[name]) != value:
+            raise ValueError(f"fixed selection field {name} does not match header")
+
+
+def fixed_glyph_entry(rom: bytes, glyph: dict) -> tuple[int, ...]:
+    entry = int(glyph["entry_offset"])
+    entry_bytes = bytes.fromhex(glyph["entry_hex"])
+    if len(entry_bytes) != 8 or rom[entry : entry + 8] != entry_bytes:
+        raise ValueError(f"fixed glyph entry mismatch at 0x{entry:x}")
+    span = entry_bytes[0]
+    rows = entry_bytes[1]
+    vertical = s8(entry_bytes[2])
+    advance = entry_bytes[3]
+    raw_relative = u32(entry_bytes, 4)
+    relative = raw_relative & 0x00FFFFFF
+    metadata = (
+        span, rows, vertical, advance, raw_relative, relative,
+        int(glyph["span_bytes"]), int(glyph["rows"]),
+        int(glyph["byte_0x02_signed"]), int(glyph["byte_0x03"]),
+        int(glyph["bitmap_relative_raw"]),
+        int(glyph["bitmap_relative_24"]),
+    )
+    if metadata[:6] != metadata[6:]:
+        raise ValueError(f"fixed glyph metadata mismatch at 0x{entry:x}")
+    return span, rows, vertical, advance, relative
+
+
+def fixed_glyph_payload(rom: bytes, record_base: int, bank_start: int,
+                        glyph: dict) -> tuple[bytes, int, int, int, int, int]:
+    span, rows, vertical, advance, relative = fixed_glyph_entry(rom, glyph)
+    entry = int(glyph["entry_offset"])
+    bitmap = record_base + relative
+    length = span * rows
+    bank_end = bank_start + 0x40000
+    if bitmap < bank_start or bitmap + length > bank_end:
+        raise ValueError(f"fixed glyph bitmap outside bank at 0x{entry:x}")
+    payload = rom[bitmap : bitmap + length]
+    extracted = bytes.fromhex(glyph["payload_hex"])
+    if extracted != payload or int(glyph["payload_length"]) != length or \
+       sha256(extracted) != glyph["payload_sha256"]:
+        raise ValueError(f"fixed glyph payload mismatch at 0x{entry:x}")
+    layout = glyph["payload_layout"]
+    expected_layout = "split-last-byte-plane" if span > 1 and span & 1 \
+        else "linear-rows"
+    if layout != expected_layout:
+        raise ValueError(f"fixed glyph layout mismatch at 0x{entry:x}")
+    if layout == "split-last-byte-plane":
+        prefix_span = span - 1
+        trailing = prefix_span * rows
+        payload = b"".join(
+            payload[row * prefix_span : (row + 1) * prefix_span] +
+            payload[trailing + row : trailing + row + 1]
+            for row in range(rows)
+        )
+    return payload, span, rows, vertical, advance, span * 8
+
+
+def append_fixed_cartridge_fonts(spec: dict, doc: dict, rom: bytes,
+                                 data: bytearray,
+                                 records: list[tuple[int, ...]],
+                                 glyphs: list[tuple[int, ...]],
+                                 default_fonts: list[tuple]) -> None:
+    if doc.get("resource_format") != "fixed-FONT-chain":
+        raise ValueError(f"unsupported fixed cartridge format for {spec['key']}")
+    records_in = doc["records"]
+    if len(records_in) != int(doc["summary"]["records"]):
+        raise ValueError(f"fixed cartridge record count mismatch for {spec['key']}")
+    for record_position, record in enumerate(records_in):
+        base = int(record["record_offset"])
+        length = int(record["record_length"])
+        bank_index = int(record["bank_index"])
+        bank_start = bank_index * 0x40000
+        if bank_start < 0 or bank_start + 0x40000 > len(rom) or \
+           base < bank_start or base + length > bank_start + 0x40000:
+            raise ValueError(f"fixed cartridge record outside bank at 0x{base:x}")
+        if sha256(rom[base : base + length]) != record["record_sha256"]:
+            raise ValueError(f"fixed cartridge record hash mismatch at 0x{base:x}")
+        header = bytes.fromhex(record["header_hex"])
+        if len(header) != 0x40 or header[:4] != b"FONT" or \
+           rom[base : base + len(header)] != header:
+            raise ValueError(f"fixed cartridge record header mismatch at 0x{base:x}")
+        if record.get("record_type_ascii") != "FONT" or u32(header, 0x2E) != length:
+            raise ValueError(f"fixed cartridge record type/length mismatch at 0x{base:x}")
+        name = record["name"]
+        if bytes.fromhex(name["bytes_hex"]) != header[4:14]:
+            raise ValueError(f"fixed cartridge record name mismatch at 0x{base:x}")
+        verify_fixed_selection_fields(record, header)
+
+        fields = record["selection_fields"]
+        class_id = int(fields["byte_0x16"])
+        if class_id not in (0, 1):
+            raise ValueError(f"unsupported fixed orientation at 0x{base:x}")
+        if int(fields["extension_flag_0x0e"]) != 0 or \
+           len(record["glyph_slots"]) != 96:
+            raise ValueError(f"unsupported fixed glyph table at 0x{base:x}")
+        if record_position + 1 < len(records_in):
+            next_record = records_in[record_position + 1]
+            if int(next_record["bank_index"]) == bank_index and \
+               base + length != int(next_record["record_offset"]):
+                raise ValueError(f"broken fixed record chain at 0x{base:x}")
+        record_index = len(records)
+        first_glyph = len(glyphs)
+        for glyph_index, glyph in enumerate(record["glyph_slots"]):
+            entry = base + 0x40 + glyph_index * 8
+            if int(glyph["entry_offset"]) != entry:
+                raise ValueError(f"fixed glyph table offset mismatch at 0x{entry:x}")
+            expected_host = 0x20 + glyph_index if glyph_index < 96 \
+                else 0xA0 + glyph_index - 96
+            if int(glyph["host_byte"]) != expected_host or \
+               int(glyph["glyph_index"]) != glyph_index:
+                raise ValueError(f"fixed glyph mapping mismatch at 0x{entry:x}")
+            status = glyph["status"]
+            fixed_glyph_entry(rom, glyph)
+            if status == "absent":
+                if "payload_hex" in glyph or "payload_length" in glyph:
+                    raise ValueError(f"absent fixed glyph has payload at 0x{entry:x}")
+                continue
+            if status != "extracted":
+                raise ValueError(f"unsupported fixed glyph status {status!r}")
+            payload, span, rows, vertical, advance, width = fixed_glyph_payload(
+                rom, base, bank_start, glyph)
+            if class_id == 0:
+                x_offset = 0
+                y_offset = rows - vertical - 1
+            else:
+                x_offset = vertical + 1 - width
+                y_offset = rows - 1
+            append_glyph(
+                data, glyphs, record_index, expected_host, width, advance,
+                x_offset, y_offset, rows, span, payload,
+            )
+
+        metadata = (
+            class_id,
+            fixed_symbol_set(int(fields["symbol_set_0x17"])),
+            int(fields["pitch_0x1a"]),
+            int(fields["height_0x20"]),
+            int(fields["spacing_0x19"]),
+            int(fields["byte_0x26"]),
+            int(fields["byte_0x27_signed"]),
+            int(fields["typeface_0x18"]),
+            -5,
+            int(fields["byte_0x26"]),
+            int(fields["byte_0x27_signed"]),
+            int(fields["typeface_0x18"]),
+        )
+        records.append(
+            (
+                int(spec["id"]), base, 0, first_glyph,
+                len(glyphs) - first_glyph, *metadata,
+            )
+        )
+        append_default_font(default_fonts, spec, record, base, False, metadata)
+
+
+def append_cartridge_fonts(root: Path, spec: dict, data: bytearray,
+                           records: list[tuple[int, ...]],
+                           glyphs: list[tuple[int, ...]],
+                           default_fonts: list[tuple]) -> None:
+    source = (root / spec["source"]).resolve()
+    source_bytes = source.read_bytes()
+    if sha256(source_bytes) != spec["sha256"]:
+        raise ValueError(f"cartridge extraction hash mismatch for {spec['key']}")
+    doc = json.loads(source_bytes.decode("utf-8"))
+    if doc.get("schema") != "hp-laserjet-resource-fonts-v1":
+        raise ValueError(f"unsupported cartridge schema for {spec['key']}")
+    _, rom = verify_document_source(source, doc)
+    resource_format = doc.get("resource_format")
+    if resource_format == "fixed-FONT-chain":
+        append_fixed_cartridge_fonts(
+            spec, doc, rom, data, records, glyphs, default_fonts)
+    elif resource_format is None:
+        append_offset_cartridge_fonts(
+            spec, doc, rom, data, records, glyphs, default_fonts)
+    else:
+        raise ValueError(
+            f"unsupported cartridge format {resource_format!r} for {spec['key']}"
+        )
+
+
+FONT_NAMES = {
+    "TmsRmn": "Times Roman",
+    "LtrGothic": "Letter Gothic",
+    "Pres Elite": "Prestige Elite",
+    "Helv": "Helvetica",
+    "Line Print": "Line Printer",
+}
+
+
+def pcl_symbol_name(value: int) -> str:
+    suffix = value % 32
+    if suffix > 30:
+        raise ValueError(f"invalid PCL symbol-set word 0x{value:04x}")
+    return f"{value // 32}{chr(ord('@') + suffix)}"
+
+
+def decimal_metric(value: int) -> str:
+    return f"{value / 100:.2f}".rstrip("0").rstrip(".")
+
+
+def cartridge_font_family(record: dict) -> str:
+    raw_name = record.get("name", {}).get("text", "Font")
+    return FONT_NAMES.get(raw_name, raw_name)
+
+
+def cartridge_font_label(record: dict, metadata: tuple[int, ...]) -> str:
+    class_id, symbol, pitch, height, spacing, style, stroke, _typeface = metadata[:8]
+    del class_id
+    name = cartridge_font_family(record)
+    size = f"{decimal_metric(height)} pt"
+    if spacing == 0:
+        size = f"{decimal_metric(pitch)} CPI / {size}"
+    style_name = "Upright" if style == 0 else "Italic" if style == 1 \
+        else f"Style {style}"
+    weight_name = "Medium" if stroke == 0 else "Bold" if stroke >= 3 \
+        else "Light" if stroke < 0 else f"Weight {stroke}"
+    return f"{name} {size} {style_name} {weight_name}, {pcl_symbol_name(symbol)}"
+
+
+def append_default_font(default_fonts: list[tuple], spec: dict, record: dict,
+                        context: int, offset_table: bool,
+                        metadata: tuple[int, ...]) -> None:
+    cartridge = int(spec["id"])
+    if cartridge <= 0 or cartridge > 0x3ff or \
+       context < 0 or context >= 0x200000:
+        raise ValueError(f"default font ID cannot encode {spec['key']} 0x{context:x}")
+    font_id = cartridge << 21 | context
+    class_id, symbol, pitch, height, spacing, style, stroke, typeface = metadata[:8]
+    default_fonts.append(
+        (
+            font_id, f"{spec['key']}:{context:06x}",
+            cartridge_font_label(record, metadata),
+            cartridge_font_family(record), class_id,
+            symbol, pitch, height, spacing, style, stroke, typeface,
+            cartridge, context, offset_table,
+        )
+    )
 
 
 def c_array(name: str, data: bytes) -> str:
@@ -397,15 +704,60 @@ def generated_logic_tail() -> str:
 	return -1;
 }
 
+size_t ljii_default_font_count()
+{
+	return sizeof(ljii_default_fonts) / sizeof(ljii_default_fonts[0]);
+}
+
+const LjiiDefaultFontInfo *ljii_default_font_info(size_t index)
+{
+	return index < ljii_default_font_count() ? &ljii_default_fonts[index] : nullptr;
+}
+
+const LjiiDefaultFontInfo *find_ljii_default_font(int id)
+{
+	for (const auto &font : ljii_default_fonts)
+		if (font.id == id) return &font;
+	return nullptr;
+}
+
+int parse_ljii_default_font(const char *value)
+{
+	if (!value) return -1;
+	if (ljii_case_equal(value, "courier") ||
+	    ljii_case_equal(value, "courier-medium")) return 0;
+	if (ljii_case_equal(value, "courier-bold") ||
+	    ljii_case_equal(value, "courier_bold") ||
+	    ljii_case_equal(value, "bold")) return 1;
+	if (ljii_case_equal(value, "line-printer") ||
+	    ljii_case_equal(value, "line_printer") ||
+	    ljii_case_equal(value, "lineprinter")) return 2;
+	for (const auto &font : ljii_default_fonts)
+		if (ljii_case_equal(value, font.key)) return font.id;
+	return -1;
+}
+
+bool ljii_default_font_available(int id, LjiiCartridgeSlots cartridges,
+	                              int orientation)
+{
+	const auto *font = find_ljii_default_font(id);
+	if (!font || (font->orientation >= 0 && font->orientation != (orientation & 1)))
+		return false;
+	int cartridge = font->request.exact_cartridge;
+	return cartridge == 0 || cartridges.slot[0] == cartridge ||
+	       cartridges.slot[1] == cartridge;
+}
+
 struct LjiiCandidate {
 	const LjiiRecordEntry *record;
 	uint32_t context;
 	uint8_t resource_class;
 };
 
-static uint32_t cartridge_context(int slot, uint32_t relative)
+static uint32_t cartridge_context(int slot, const LjiiRecordEntry &record)
 {
-	return 0x40000000u | (slot == 0 ? 0x00200000u : 0x00400000u) | relative;
+	uint32_t form = record.offset_table ? 0x40000000u : 0;
+	return form | (slot == 0 ? 0x00200000u : 0x00400000u) | record.context;
 }
 
 static void append_ljii_candidates(std::vector<LjiiCandidate> &out,
@@ -420,7 +772,7 @@ static void append_ljii_candidates(std::vector<LjiiCandidate> &out,
 		if (id == 0) continue;
 		for (const auto &record : ljii_records)
 			if (record.cartridge == id && record.class_id == class_id)
-				out.push_back({ &record, cartridge_context(slot, record.context), 1 });
+				out.push_back({ &record, cartridge_context(slot, record), 1 });
 	}
 }
 
@@ -492,6 +844,17 @@ uint32_t select_ljii_context(const LjiiFontRequest &request, int orientation,
 	                         LjiiCartridgeSlots cartridges)
 {
 	uint8_t class_id = (uint8_t)(orientation & 1);
+	if (request.exact_cartridge != 0) {
+		for (int slot = 0; slot < 2; slot++) {
+			if (cartridges.slot[slot] != request.exact_cartridge) continue;
+			for (const auto &record : ljii_records)
+				if (record.cartridge == request.exact_cartridge &&
+				    record.context == request.exact_context &&
+				    record.offset_table == request.exact_offset_table &&
+				    record.class_id == class_id)
+					return cartridge_context(slot, record);
+		}
+	}
 	std::vector<LjiiCandidate> candidates;
 	append_ljii_candidates(candidates, class_id, cartridges);
 	auto symbol = filter_ljii_candidates(candidates, [&request](const auto &record) {
@@ -547,7 +910,8 @@ static const LjiiRecordEntry *find_ljii_record(uint32_t context,
 		uint32_t relative = address - base;
 		for (const auto &record : ljii_records)
 			if (record.cartridge == cartridges.slot[slot] &&
-			    record.context == relative)
+			    record.context == relative &&
+			    record.offset_table == ((context & 0x40000000u) != 0))
 				return &record;
 	}
 	return nullptr;
@@ -577,7 +941,7 @@ LjiiGlyphInfo get_ljii_glyph(uint32_t context, uint8_t host_byte,
 	for (uint32_t i = 0; i < record->count; i++) {
 		const auto &glyph = ljii_glyphs[record->first + i];
 		if (glyph.host != host_byte) continue;
-		return { true, glyph.width, glyph.x_offset, glyph.y_offset,
+		return { true, glyph.width, glyph.advance, glyph.x_offset, glyph.y_offset,
 		         glyph.rows, glyph.span, ljii_glyph_data + glyph.offset,
 		         glyph.len };
 	}
@@ -602,9 +966,18 @@ def main() -> int:
     data = bytearray()
     records: list[tuple[int, ...]] = []
     glyphs: list[tuple[int, ...]] = []
+    default_fonts: list[tuple] = []
     append_resident_fonts(source, data, records, glyphs)
     for cartridge in CARTRIDGES:
-        append_cartridge_fonts(root, cartridge, data, records, glyphs)
+        append_cartridge_fonts(
+            root, cartridge, data, records, glyphs, default_fonts)
+    if len({font[0] for font in default_fonts}) != len(default_fonts):
+        raise ValueError("duplicate cartridge default-font ID")
+    if len({font[1] for font in default_fonts}) != len(default_fonts):
+        raise ValueError("duplicate cartridge default-font key")
+    labels = [(font[12], font[4], font[2]) for font in default_fonts]
+    if len(set(labels)) != len(labels):
+        raise ValueError("duplicate cartridge default-font menu label")
 
     out = [
         "// Generated by tools/generate_ljii_fonts.py -- do not edit",
@@ -621,14 +994,16 @@ def main() -> int:
             "#include <vector>",
             "",
             "struct LjiiRecordEntry {",
-            "\tuint16_t cartridge; uint32_t context; uint32_t first; uint16_t count;",
+            "\tuint16_t cartridge; uint32_t context; uint8_t offset_table;",
+            "\tuint32_t first; uint16_t count;",
             "\tuint8_t class_id; uint16_t symbol; uint16_t pitch; uint16_t height;",
             "\tuint8_t spacing; int8_t style; int8_t stroke; uint8_t typeface;",
             "\tint16_t underline_distance;",
             "\tuint8_t tie_a; int8_t tie_b; uint8_t tie_c;",
             "};",
             "struct LjiiGlyphEntry {",
-            "\tuint16_t record; uint8_t host; uint16_t width; int16_t x_offset;",
+            "\tuint16_t record; uint8_t host; uint16_t width; uint16_t advance;",
+            "\tint16_t x_offset;",
             "\tint16_t y_offset; uint16_t rows; uint16_t span; uint32_t offset; uint16_t len;",
             "};",
             "",
@@ -637,19 +1012,23 @@ def main() -> int:
             "static constexpr LjiiRecordEntry ljii_records[] = {",
         ]
     )
-    for (cartridge, context, first, count, class_id, symbol, pitch, height,
+    for (cartridge, context, offset_table, first, count, class_id, symbol,
+         pitch, height,
          spacing, style, stroke, typeface, underline_distance, tie_a, tie_b,
          tie_c) in records:
         out.append(
-            f"\t{{ {cartridge}u, 0x{context:08x}u, {first}u, {count}u, "
+            f"\t{{ {cartridge}u, 0x{context:08x}u, {offset_table}u, "
+            f"{first}u, {count}u, "
             f"{class_id}u, 0x{symbol:04x}u, {pitch}u, {height}u, {spacing}u, "
             f"{style}, {stroke}, {typeface}u, {underline_distance}, "
             f"{tie_a}u, {tie_b}, {tie_c}u }},"
         )
     out.extend(["};", "", "static constexpr LjiiGlyphEntry ljii_glyphs[] = {"])
-    for record, host, width, xoff, yoff, rows, span, offset, length in glyphs:
+    for (record, host, width, advance, xoff, yoff, rows, span, offset,
+         length) in glyphs:
         out.append(
-            f"\t{{ {record}u, 0x{host:02x}u, {width}u, {xoff}, {yoff}, "
+            f"\t{{ {record}u, 0x{host:02x}u, {width}u, {advance}u, "
+            f"{xoff}, {yoff}, "
             f"{rows}u, {span}u, {offset}u, {length}u }},"
         )
     out.extend(["};", "", "static constexpr LjiiCartridgeInfo ljii_cartridges[] = {",
@@ -658,6 +1037,29 @@ def main() -> int:
         out.append(
             f"\t{{ {cartridge['id']}, {c_string(cartridge['key'])}, "
             f"{c_string(cartridge['label'])} }},"
+        )
+    out.extend(
+        [
+            "};",
+            "",
+            "static constexpr LjiiDefaultFontInfo ljii_default_fonts[] = {",
+            '\t{ 0, "courier", "Courier 10 CPI Medium", "Courier", -1, '
+            '{ 0x0115, 1000, 1200, 0, 0, 0, 3, false, 0, 0, false } },',
+            '\t{ 1, "courier-bold", "Courier 10 CPI Bold", "Courier", -1, '
+            '{ 0x0115, 1000, 1200, 0, 0, 3, 3, false, 0, 0, false } },',
+            '\t{ 2, "line-printer", "Line Printer 16.66 CPI", "Line Printer", -1, '
+            '{ 0x0115, 1666, 850, 0, 0, 0, 0, false, 0, 0, false } },',
+        ]
+    )
+    for (font_id, key, label, family, orientation, symbol, pitch, height,
+         spacing, style, stroke, typeface, cartridge, context,
+         offset_table) in default_fonts:
+        out.append(
+            f"\t{{ {font_id}, {c_string(key)}, {c_string(label)}, "
+            f"{c_string(family)}, {orientation}, "
+            f"{{ 0x{symbol:04x}, {pitch}, {height}, {spacing}, {style}, "
+            f"{stroke}, {typeface}, false, {cartridge}, 0x{context:08x}u, "
+            f"{'true' if offset_table else 'false'} }} }},"
         )
     out.extend(["};", "", generated_logic().strip("\n")])
     for cartridge in CARTRIDGES:

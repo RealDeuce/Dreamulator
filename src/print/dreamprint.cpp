@@ -17,7 +17,7 @@ static void usage(const char *argv0)
 		"Options:\n"
 		"  --model MODEL    Printer model (default: FX)\n"
 		"  --config PATH    Printer config file\n"
-		"  --font MODE      Initial font (JET: courier, courier-bold, line-printer)\n"
+		"  --font FONT      Initial font (JET resident name or cartridge font key)\n"
 		"  --pitch PITCH    Initial pitch (e.g. pica, elite, condensed)\n"
 		"  --orientation O  JET default orientation: portrait or landscape\n"
 		"  --symbol-set SET JET default symbol set (e.g. 8U, 10U, 0N)\n"
@@ -135,6 +135,11 @@ int main(int argc, char *argv[])
 					return 1;
 				}
 				cfg.pcl_font = font;
+				const LjiiDefaultFontInfo *info = find_ljii_default_font(font);
+				if (info && info->request.exact_cartridge != 0) {
+					cfg.pcl_orientation = info->orientation;
+					cfg.pcl_symbol_set = info->request.symbol_set;
+				}
 			} else if (!strcasecmp(font_arg, "draft"))  cfg.font_mode = 2;
 			else if (!strcasecmp(font_arg, "standard")) cfg.font_mode = 0;
 			else if (!strcasecmp(font_arg, "nlq"))      cfg.font_mode = 1;
@@ -176,6 +181,16 @@ int main(int argc, char *argv[])
 				cfg.pcl_cartridge_slot_1 = cartridge;
 			else
 				cfg.pcl_cartridge_slot_2 = cartridge;
+		}
+		LjiiCartridgeSlots cartridges = {{ cfg.pcl_cartridge_slot_1,
+		                                    cfg.pcl_cartridge_slot_2 }};
+		if (model == PrinterModel::HpJet && !ljii_default_font_available(
+			    cfg.pcl_font, cartridges, cfg.pcl_orientation)) {
+			const LjiiDefaultFontInfo *font = find_ljii_default_font(cfg.pcl_font);
+			fprintf(stderr, "JET default font %s is not available for the installed "
+			                "cartridges and orientation\n",
+			        font ? font->key : "(unknown)");
+			return 1;
 		}
 
 		printer->apply_config(cfg);

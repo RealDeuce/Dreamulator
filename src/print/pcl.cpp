@@ -19,6 +19,13 @@ namespace {
 static constexpr float kDotsPerIn = 300.0f;
 static constexpr int kSymbolRoman8 = 0x0115;
 
+void clear_exact_ljii_font(LjiiFontRequest &request)
+{
+	request.exact_cartridge = 0;
+	request.exact_context = 0;
+	request.exact_offset_table = false;
+}
+
 struct PageGeometry {
 	int physical_w = 2550;
 	int physical_h = 3300;
@@ -611,6 +618,8 @@ private:
 	float ljii_metric_width_in(uint16_t width, float fallback_in) const;
 	bool consume_previous_width_adjustment(float current_width_in);
 	void finish_text_advance(float width_in, float advance_in, bool had_pending);
+	void finish_clipped_text_advance(float width_in, float advance_in,
+	                                 bool had_pending);
 	void refresh_pending_cursor_y();
 	void clear_pending_cursor_y();
 	void start_underline_span();
@@ -800,11 +809,11 @@ void PclPrinter::reset_ljii_state()
 	text_length_in_ = std::max(0.0f, physical_h_in_ - 1.0f);
 	text_length_custom_ = false;
 	vfc_limit_in_ = logical_y0_in_ + text_length_in_;
-	reset_user_default_fonts();
 	cartridge_slots_.slot[0] = ljii_valid_cartridge(cfg_.pcl_cartridge_slot_1)
 	                              ? cfg_.pcl_cartridge_slot_1 : 0;
 	cartridge_slots_.slot[1] = ljii_valid_cartridge(cfg_.pcl_cartridge_slot_2)
 	                              ? cfg_.pcl_cartridge_slot_2 : 0;
+	reset_user_default_fonts();
 	active_font_slot_ = 0;
 	pending_vfc_count_ = -1;
 	pending_transparent_count_ = -1;
@@ -897,14 +906,13 @@ float PclPrinter::user_default_vmi() const
 LjiiFontRequest PclPrinter::user_default_font_request(int slot) const
 {
 	LjiiFontRequest req;
+	const LjiiDefaultFontInfo *font = find_ljii_default_font(cfg_.pcl_font);
+	if (font && ljii_default_font_available(
+		    font->id, cartridge_slots_, cfg_.pcl_orientation))
+		req = font->request;
+	if (req.symbol_set != cfg_.pcl_symbol_set)
+		req.exact_cartridge = 0;
 	req.symbol_set = cfg_.pcl_symbol_set;
-	if (cfg_.pcl_font == 1) {
-		req.stroke = 3;
-	} else if (cfg_.pcl_font == 2) {
-		req.pitch = 1666;
-		req.height = 850;
-		req.typeface = 0;
-	}
 	req.secondary = slot != 0;
 	return req;
 }
@@ -1245,7 +1253,7 @@ void PclPrinter::advance_fixed_space()
 	bool had_pending = consume_previous_width_adjustment(char_w_in);
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_) {
-			finish_text_advance(char_w_in, char_w_in, had_pending);
+			finish_clipped_text_advance(char_w_in, char_w_in, had_pending);
 			return;
 		}
 		ljii_carriage_return();
@@ -1603,6 +1611,7 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 			}
 			active_font_request().pitch =
 				(int)std::lround(st_.pitch_cpi * 100.0f);
+			clear_exact_ljii_font(active_font_request());
 			refresh_characteristic_selection(active_font_slot_);
 			break;
 		default:
@@ -1666,24 +1675,32 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		default:
 			break;
 		}
-		if (selection_changed)
+		if (selection_changed) {
+			clear_exact_ljii_font(req);
 			refresh_characteristic_selection(slot);
+		}
 	} else if ((group == '(' || group == ')') && subgroup == 0) {
 		int slot = group == ')' ? 1 : 0;
 		if (term == '@') {
 			ival = pcl_integer_word(value);
 			if (ival == 0) {
-				font_request(slot).symbol_set =
+				LjiiFontRequest &req = font_request(slot);
+				req.symbol_set =
 					ljii_default_symbol_word(slot, orientation_);
+				clear_exact_ljii_font(req);
 				refresh_characteristic_selection(slot);
 			} else if (ival == 1) {
-				font_request(slot).symbol_set =
+				LjiiFontRequest &req = font_request(slot);
+				req.symbol_set =
 					ljii_default_symbol_word(0, orientation_);
+				clear_exact_ljii_font(req);
 				refresh_characteristic_selection(slot);
 			} else if (ival == 2) {
 				if (slot != 0) {
-					font_request(slot).symbol_set =
+					LjiiFontRequest &req = font_request(slot);
+					req.symbol_set =
 						font_request(0).symbol_set;
+					clear_exact_ljii_font(req);
 					refresh_characteristic_selection(slot);
 				}
 			} else if (ival == 3) {
@@ -1709,7 +1726,9 @@ void PclPrinter::apply_param(char group, char subgroup, double value, char term)
 		} else if (term > '@' && term <= '^') {
 			ival = pcl_integer_word(value);
 			if (ival <= 0x07ff) {
-				font_request(slot).symbol_set = pcl_symbol_value(ival, term);
+				LjiiFontRequest &req = font_request(slot);
+				req.symbol_set = pcl_symbol_value(ival, term);
+				clear_exact_ljii_font(req);
 				refresh_characteristic_selection(slot);
 			}
 		}
@@ -2622,6 +2641,7 @@ void PclPrinter::refresh_soft_font_request(const SoftFont &font)
 		if (selected_soft_font_id_[slot] != font.id)
 			continue;
 		LjiiFontRequest &req = font_request(slot);
+		clear_exact_ljii_font(req);
 		req.symbol_set = font.symbol_set;
 		req.spacing = font.spacing;
 		if (font.spacing == 0 && font.has_pitch_metric)
@@ -2972,6 +2992,7 @@ void PclPrinter::apply_download_payload(const std::vector<uint8_t> &payload)
 		}
 		if (download_font_slot_ == 0 || download_font_slot_ == 1) {
 			LjiiFontRequest &req = font_request(download_font_slot_);
+			clear_exact_ljii_font(req);
 			req.symbol_set = font.symbol_set;
 			req.spacing = font.spacing;
 			if (font.has_style_metric)
@@ -3219,6 +3240,13 @@ void PclPrinter::finish_text_advance(float width_in, float advance_in,
 	clear_pending_cursor_y();
 }
 
+void PclPrinter::finish_clipped_text_advance(float width_in, float advance_in,
+                                             bool had_pending)
+{
+	finish_text_advance(width_in, advance_in, had_pending);
+	st_.x_pos = st_.right_margin_in;
+}
+
 void PclPrinter::draw_soft_glyph_pixels(const SoftGlyph &glyph)
 {
 	if (glyph.width == 0 || glyph.rows == 0 || glyph.span == 0)
@@ -3277,7 +3305,8 @@ bool PclPrinter::render_soft_glyph(uint8_t b, float char_w_in)
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_) {
-			finish_text_advance(metric_width_in, char_w_in, had_pending);
+			finish_clipped_text_advance(
+				metric_width_in, char_w_in, had_pending);
 			return true;
 		}
 		ljii_carriage_return();
@@ -3403,12 +3432,12 @@ bool PclPrinter::render_ljii_text(uint8_t b)
 		advance_fixed_space();
 		return true;
 	}
-	char_w_in = ljii_metric_width_in(glyph.width, hmi_in_);
+	char_w_in = ljii_metric_width_in(glyph.advance, hmi_in_);
 	bool had_pending = consume_previous_width_adjustment(char_w_in);
 
 	if (st_.x_pos + char_w_in > st_.right_margin_in + 0.001f) {
 		if (!wrap_enabled_) {
-			finish_text_advance(char_w_in, char_w_in, had_pending);
+			finish_clipped_text_advance(char_w_in, char_w_in, had_pending);
 			return true;
 		}
 		ljii_carriage_return();
@@ -3587,6 +3616,7 @@ bool PclPrinter::apply_builtin_font_id(int slot, int id)
 {
 	LjiiFontRequest &req = font_request(slot);
 	if (slot == 0 && id == 7) {
+		clear_exact_ljii_font(req);
 		req.symbol_set = kSymbolRoman8;
 		req.pitch = 1000;
 		req.height = 1200;
@@ -3597,6 +3627,7 @@ bool PclPrinter::apply_builtin_font_id(int slot, int id)
 		return true;
 	}
 	if (slot == 1 && id == 8) {
+		clear_exact_ljii_font(req);
 		req.symbol_set = 0x000e;
 		req.pitch = 1666;
 		req.height = 850;

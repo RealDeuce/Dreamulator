@@ -17,9 +17,13 @@
 #ifdef HAS_PORTAUDIO
 #include <portaudio.h>
 #endif
+#include <algorithm>
 #include <cstdio>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -921,13 +925,11 @@ static constexpr LjiiSymbolChoice kLjiiSymbolChoices[] = {
 	{"ISO 69 French (1F)", 0x0026},
 };
 
-static int ljii_symbol_choice_index(int symbol)
+static int ljii_cartridge_choice_id(const Fl_Choice &choice)
 {
-	for (size_t i = 0; i < sizeof(kLjiiSymbolChoices) /
-	                              sizeof(kLjiiSymbolChoices[0]); i++)
-		if (kLjiiSymbolChoices[i].value == symbol)
-			return (int)i;
-	return 0;
+	const LjiiCartridgeInfo *info = ljii_cartridge_info(
+		static_cast<size_t>(choice.value()));
+	return info ? info->id : 0;
 }
 
 static int ljii_cartridge_choice_index(int id)
@@ -940,62 +942,229 @@ static int ljii_cartridge_choice_index(int id)
 	return 0;
 }
 
+static std::string ljii_menu_component(const char *label);
+
 static void populate_ljii_cartridge_choice(Fl_Choice &choice, int id)
 {
 	for (size_t i = 0; i < ljii_cartridge_count(); i++) {
 		const LjiiCartridgeInfo *info = ljii_cartridge_info(i);
-		if (info)
-			choice.add(info->label);
+		if (info) {
+			std::string label = ljii_menu_component(info->label);
+			choice.add(label.c_str());
+		}
 	}
 	choice.value(ljii_cartridge_choice_index(id));
 }
 
+static LjiiCartridgeSlots ljii_selected_cartridges(
+	const Fl_Choice &slot_1, const Fl_Choice &slot_2)
+{
+	return {{ ljii_cartridge_choice_id(slot_1),
+	          ljii_cartridge_choice_id(slot_2) }};
+}
+
+static std::string ljii_menu_component(const char *label)
+{
+	std::string escaped;
+	for (const char *p = label; p && *p; p++) {
+		if (*p == '/' || *p == '\\')
+			escaped += '\\';
+		if (*p == '&')
+			escaped += '&';
+		escaped += *p;
+	}
+	return escaped;
+}
+
+static int ljii_font_choice_id(const Fl_Choice &choice)
+{
+	const Fl_Menu_Item *item = choice.mvalue();
+	return item && item->user_data()
+	    ? static_cast<int>(reinterpret_cast<intptr_t>(item->user_data()) - 1)
+	    : 0;
+}
+
+static void populate_ljii_font_choice(Fl_Choice &choice, int selected_id,
+	                                  LjiiCartridgeSlots cartridges,
+	                                  int orientation)
+{
+	choice.clear();
+	for (size_t i = 0; i < ljii_default_font_count(); i++) {
+		const LjiiDefaultFontInfo *font = ljii_default_font_info(i);
+		if (!font || !ljii_default_font_available(
+			    font->id, cartridges, orientation))
+			continue;
+		std::string path;
+		if (font->request.exact_cartridge == 0) {
+			path = "Resident/";
+		} else {
+			const LjiiCartridgeInfo *cartridge = find_ljii_cartridge(
+				font->request.exact_cartridge);
+			path = ljii_menu_component(
+				cartridge ? cartridge->label : "Cartridge") + "/";
+			path += ljii_menu_component(font->family) + "/";
+		}
+		path += ljii_menu_component(font->label);
+		choice.add(
+			path.c_str(), 0, nullptr,
+			reinterpret_cast<void *>(static_cast<intptr_t>(font->id) + 1));
+	}
+	int selected_index = -1;
+	int fallback_index = -1;
+	for (int i = 0; i < choice.size(); i++) {
+		const Fl_Menu_Item &item = choice.menu()[i];
+		if (!item.user_data())
+			continue;
+		int id = static_cast<int>(
+			reinterpret_cast<intptr_t>(item.user_data()) - 1);
+		if (id == 0)
+			fallback_index = i;
+		if (id == selected_id)
+			selected_index = i;
+	}
+	choice.value(selected_index >= 0 ? selected_index : fallback_index);
+}
+
+static int ljii_symbol_choice_value(const Fl_Choice &choice)
+{
+	const Fl_Menu_Item *item = choice.mvalue();
+	return item && item->user_data()
+	    ? static_cast<int>(reinterpret_cast<intptr_t>(item->user_data()) - 1)
+	    : 0x0115;
+}
+
+static void populate_ljii_symbol_choice(Fl_Choice &choice, int selected_symbol,
+	                                    LjiiCartridgeSlots cartridges,
+	                                    int orientation)
+{
+	choice.clear();
+	std::vector<int> symbols;
+	int selected_index = -1;
+	auto add_symbol = [&](const char *label, int symbol) {
+		if (std::find(symbols.begin(), symbols.end(), symbol) != symbols.end())
+			return;
+		symbols.push_back(symbol);
+		int index = choice.add(
+			label, 0, nullptr,
+			reinterpret_cast<void *>(static_cast<intptr_t>(symbol) + 1));
+		if (symbol == selected_symbol)
+			selected_index = index;
+	};
+	for (const auto &symbol : kLjiiSymbolChoices)
+		add_symbol(symbol.label, symbol.value);
+	for (size_t i = 0; i < ljii_default_font_count(); i++) {
+		const LjiiDefaultFontInfo *font = ljii_default_font_info(i);
+		if (!font || font->request.exact_cartridge == 0 ||
+		    !ljii_default_font_available(font->id, cartridges, orientation))
+			continue;
+		int value = font->request.symbol_set;
+		char label[48];
+		snprintf(label, sizeof(label), "Cartridge font set (%d%c)",
+		         value / 32, '@' + value % 32);
+		add_symbol(label, value);
+	}
+	if (std::find(symbols.begin(), symbols.end(), selected_symbol) == symbols.end()) {
+		char label[40];
+		snprintf(label, sizeof(label), "Configured set (%d%c)",
+		         selected_symbol / 32, '@' + selected_symbol % 32);
+		add_symbol(label, selected_symbol);
+	}
+	choice.value(selected_index >= 0 ? selected_index : 0);
+}
+
+struct LjiiSettingsChoices {
+	Fl_Choice *orientation;
+	Fl_Choice *font;
+	Fl_Choice *symbol;
+	Fl_Choice *cartridge_1;
+	Fl_Choice *cartridge_2;
+};
+
+static void ljii_rebuild_font_choices(LjiiSettingsChoices &choices)
+{
+	int previous_font = ljii_font_choice_id(*choices.font);
+	int symbol = ljii_symbol_choice_value(*choices.symbol);
+	LjiiCartridgeSlots cartridges = ljii_selected_cartridges(
+		*choices.cartridge_1, *choices.cartridge_2);
+	int orientation = choices.orientation->value() == 1 ? 1 : 0;
+	populate_ljii_font_choice(
+		*choices.font, previous_font, cartridges, orientation);
+	populate_ljii_symbol_choice(
+		*choices.symbol, symbol, cartridges, orientation);
+}
+
+static void cb_ljii_rebuild_fonts(Fl_Widget *, void *data)
+{
+	ljii_rebuild_font_choices(*static_cast<LjiiSettingsChoices *>(data));
+}
+
+static void cb_ljii_select_font(Fl_Widget *, void *data)
+{
+	auto &choices = *static_cast<LjiiSettingsChoices *>(data);
+	int font_id = ljii_font_choice_id(*choices.font);
+	const LjiiDefaultFontInfo *font = find_ljii_default_font(font_id);
+	int symbol = font && font->request.exact_cartridge != 0
+	    ? font->request.symbol_set
+	    : ljii_symbol_choice_value(*choices.symbol);
+	populate_ljii_symbol_choice(
+		*choices.symbol, symbol,
+		ljii_selected_cartridges(*choices.cartridge_1, *choices.cartridge_2),
+		choices.orientation->value() == 1 ? 1 : 0);
+}
+
 static bool show_jet_settings_dialog(PrinterConfig &cfg)
 {
-	Fl_Window win(540, 355, "HP LaserJet II Settings");
+	Fl_Window win(730, 355, "HP LaserJet II Settings");
 	win.set_modal();
 
-	Fl_Spinner copies(210, 25, 250, 25, "Copies:");
+	Fl_Spinner copies(190, 25, 510, 25, "Copies:");
 	copies.type(FL_INT_INPUT);
 	copies.range(1, 99);
 	copies.step(1);
 	copies.value(cfg.copies);
 
-	Fl_Choice orientation(210, 60, 250, 25, "Orientation:");
+	Fl_Choice orientation(190, 60, 510, 25, "Orientation:");
 	orientation.add("Portrait");
 	orientation.add("Landscape");
 	orientation.value(cfg.pcl_orientation == 1 ? 1 : 0);
 
-	Fl_Choice font(210, 95, 250, 25, "Font:");
-	font.add("Courier 10 CPI Medium");
-	font.add("Courier 10 CPI Bold");
-	font.add("Line Printer 16.66 CPI");
-	font.value(cfg.pcl_font >= 0 && cfg.pcl_font <= 2 ? cfg.pcl_font : 0);
+	Fl_Choice font(190, 95, 510, 25, "Font:");
 
-	Fl_Choice symbol(210, 130, 250, 25, "Symbol Set:");
-	for (const auto &choice : kLjiiSymbolChoices)
-		symbol.add(choice.label);
-	symbol.value(ljii_symbol_choice_index(cfg.pcl_symbol_set));
+	Fl_Choice symbol(190, 130, 510, 25, "Symbol Set:");
 
-	Fl_Spinner form(210, 165, 250, 25, "Form Length (lines):");
+	Fl_Spinner form(190, 165, 510, 25, "Form Length (lines):");
 	form.type(FL_INT_INPUT);
 	form.range(5, 128);
 	form.step(1);
 	form.value(cfg.page_length_lines);
 
-	Fl_Choice cartridge_1(210, 200, 250, 25, "Cartridge Slot 1:");
+	Fl_Choice cartridge_1(190, 200, 510, 25, "Cartridge Slot 1:");
 	populate_ljii_cartridge_choice(cartridge_1, cfg.pcl_cartridge_slot_1);
 
-	Fl_Choice cartridge_2(210, 235, 250, 25, "Cartridge Slot 2:");
+	Fl_Choice cartridge_2(190, 235, 510, 25, "Cartridge Slot 2:");
 	populate_ljii_cartridge_choice(cartridge_2, cfg.pcl_cartridge_slot_2);
 
+	LjiiCartridgeSlots cartridges = ljii_selected_cartridges(
+		cartridge_1, cartridge_2);
+	populate_ljii_font_choice(
+		font, cfg.pcl_font, cartridges, orientation.value());
+	populate_ljii_symbol_choice(
+		symbol, cfg.pcl_symbol_set, cartridges, orientation.value());
+	LjiiSettingsChoices choices = {
+		&orientation, &font, &symbol, &cartridge_1, &cartridge_2
+	};
+	orientation.callback(cb_ljii_rebuild_fonts, &choices);
+	cartridge_1.callback(cb_ljii_rebuild_fonts, &choices);
+	cartridge_2.callback(cb_ljii_rebuild_fonts, &choices);
+	font.callback(cb_ljii_select_font, &choices);
+
 	bool ok = false;
-	Fl_Return_Button btn_ok(350, 305, 80, 30, "OK");
+	Fl_Return_Button btn_ok(540, 305, 80, 30, "OK");
 	btn_ok.callback([](Fl_Widget *w, void *d) {
 		*static_cast<bool *>(d) = true;
 		w->window()->hide();
 	}, &ok);
-	Fl_Button btn_cancel(440, 305, 80, 30, "Cancel");
+	Fl_Button btn_cancel(630, 305, 80, 30, "Cancel");
 	btn_cancel.callback([](Fl_Widget *w, void *) {
 		w->window()->hide();
 	});
@@ -1007,15 +1176,11 @@ static bool show_jet_settings_dialog(PrinterConfig &cfg)
 
 	cfg.copies = (int)copies.value();
 	cfg.pcl_orientation = orientation.value() == 1 ? 1 : 0;
-	cfg.pcl_font = font.value();
-	cfg.pcl_symbol_set = kLjiiSymbolChoices[symbol.value()].value;
+	cfg.pcl_font = ljii_font_choice_id(font);
+	cfg.pcl_symbol_set = ljii_symbol_choice_value(symbol);
 	cfg.page_length_lines = (int)form.value();
-	const LjiiCartridgeInfo *slot_1 = ljii_cartridge_info(
-		static_cast<size_t>(cartridge_1.value()));
-	const LjiiCartridgeInfo *slot_2 = ljii_cartridge_info(
-		static_cast<size_t>(cartridge_2.value()));
-	cfg.pcl_cartridge_slot_1 = slot_1 ? slot_1->id : 0;
-	cfg.pcl_cartridge_slot_2 = slot_2 ? slot_2->id : 0;
+	cfg.pcl_cartridge_slot_1 = ljii_cartridge_choice_id(cartridge_1);
+	cfg.pcl_cartridge_slot_2 = ljii_cartridge_choice_id(cartridge_2);
 	return true;
 }
 
@@ -1072,11 +1237,11 @@ static void printer_cfg_load()
 	g_jet_cfg.pcl_orientation = prefs_get_int(
 		"printer_jet", "orientation", g_jet_cfg.pcl_orientation) == 1 ? 1 : 0;
 	g_jet_cfg.pcl_font = prefs_get_int("printer_jet", "font", g_jet_cfg.pcl_font);
-	if (g_jet_cfg.pcl_font < 0 || g_jet_cfg.pcl_font > 2) g_jet_cfg.pcl_font = 0;
 	g_jet_cfg.pcl_symbol_set = prefs_get_int(
 		"printer_jet", "symbol_set", g_jet_cfg.pcl_symbol_set);
-	if (ljii_symbol_choice_index(g_jet_cfg.pcl_symbol_set) == 0 &&
-	    g_jet_cfg.pcl_symbol_set != kLjiiSymbolChoices[0].value)
+	if (g_jet_cfg.pcl_symbol_set < 0 ||
+	    g_jet_cfg.pcl_symbol_set / 32 > 0x07ff ||
+	    g_jet_cfg.pcl_symbol_set % 32 > 30)
 		g_jet_cfg.pcl_symbol_set = kLjiiSymbolChoices[0].value;
 	g_jet_cfg.page_length_lines = prefs_get_int(
 		"printer_jet", "form_lines", g_jet_cfg.page_length_lines);
@@ -1090,6 +1255,11 @@ static void printer_cfg_load()
 		"printer_jet", "cartridge_slot_2", g_jet_cfg.pcl_cartridge_slot_2);
 	if (!ljii_valid_cartridge(g_jet_cfg.pcl_cartridge_slot_2))
 		g_jet_cfg.pcl_cartridge_slot_2 = 0;
+	LjiiCartridgeSlots cartridges = {{ g_jet_cfg.pcl_cartridge_slot_1,
+	                                    g_jet_cfg.pcl_cartridge_slot_2 }};
+	if (!ljii_default_font_available(
+		    g_jet_cfg.pcl_font, cartridges, g_jet_cfg.pcl_orientation))
+		g_jet_cfg.pcl_font = 0;
 }
 
 static void printer_cfg_save_iw()
