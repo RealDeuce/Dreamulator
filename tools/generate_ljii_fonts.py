@@ -557,6 +557,18 @@ FONT_NAMES = {
     "Line Print": "Line Printer",
 }
 
+PCL_SYMBOL_NAMES = {
+    0x0002: "Line Drawing",
+    0x000F: "OCR-A",
+    0x0015: "US-ASCII",
+    0x0019: "Code 39",
+    0x002F: "OCR-B",
+    0x0035: "US Legal",
+    0x0115: "Roman-8",
+    0x0119: "UPC/EAN",
+    0x01F9: "USPS ZIP",
+}
+
 
 def pcl_symbol_name(value: int) -> str:
     suffix = value % 32
@@ -585,7 +597,12 @@ def cartridge_font_label(record: dict, metadata: tuple[int, ...]) -> str:
         else f"Style {style}"
     weight_name = "Medium" if stroke == 0 else "Bold" if stroke >= 3 \
         else "Light" if stroke < 0 else f"Weight {stroke}"
-    return f"{name} {size} {style_name} {weight_name}, {pcl_symbol_name(symbol)}"
+    symbol_name = PCL_SYMBOL_NAMES.get(symbol)
+    if symbol_name is None:
+        raise ValueError(
+            f"no display name for cartridge symbol set {pcl_symbol_name(symbol)}"
+        )
+    return f"{name} {size} {style_name} {weight_name}, {symbol_name}"
 
 
 def append_default_font(default_fonts: list[tuple], spec: dict, record: dict,

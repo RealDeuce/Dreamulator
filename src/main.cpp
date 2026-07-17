@@ -910,7 +910,8 @@ static constexpr LjiiSymbolChoice kLjiiSymbolChoices[] = {
 	{"PC-8 Denmark/Norway (11U)", 0x0175},
 	{"ISO 2 International (2U)", 0x0055},
 	{"ISO 4 United Kingdom (1E)", 0x0025},
-	{"ISO 6 ASCII (0U)", 0x0015},
+	{"US-ASCII (0U)", 0x0015},
+	{"US Legal (1U)", 0x0035},
 	{"ISO 10 Swedish (3S)", 0x0073},
 	{"ISO 11 Swedish (0S)", 0x0013},
 	{"ISO 14 JIS ASCII (0K)", 0x000b},
@@ -1058,8 +1059,8 @@ static void populate_ljii_symbol_choice(Fl_Choice &choice, int selected_symbol,
 		    !ljii_default_font_available(font->id, cartridges, orientation))
 			continue;
 		int value = font->request.symbol_set;
-		char label[48];
-		snprintf(label, sizeof(label), "Cartridge font set (%d%c)",
+		char label[64];
+		snprintf(label, sizeof(label), "%s (%d%c)", font->family,
 		         value / 32, '@' + value % 32);
 		add_symbol(label, value);
 	}
